@@ -1,0 +1,10 @@
+CONSOLE_EVENT: debug [vite] connecting...
+CONSOLE_EVENT: debug [vite] connected.
+CONSOLE_EVENT: info %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold
+CONSOLE_EVENT: log AuthContext.jsx: file loaded
+PAGE_ERROR_TRACE:
+TypeError: Cannot read properties of undefined (reading 'S')
+    at Tt.exports (http://localhost:5173/node_modules/.vite/deps/@react-three_fiber.js?v=34a82370:8094:528)
+    at createReconciler (http://localhost:5173/node_modules/.vite/deps/@react-three_fiber.js?v=34a82370:9278:23)
+    at <anonymous> (http://localhost:5173/node_modules/.vite/deps/@react-three_fiber.js?v=34a82370:9490:18)
+ROOT_HTML_LENGTH: 0

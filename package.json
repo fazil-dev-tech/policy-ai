@@ -1,0 +1,16 @@
+{
+    "name": "policyai",
+    "version": "1.0.0",
+    "description": "PolicyAI — AI-Powered Insurance Intelligence Platform",
+    "scripts": {
+        "build": "cd frontend && npm install --legacy-peer-deps && npm run build",
+        "start": "cd backend && node server.js",
+        "dev:backend": "cd backend && npm run dev",
+        "dev:frontend": "cd frontend && npm run dev",
+        "install:all": "cd backend && npm install && cd ../frontend && npm install --legacy-peer-deps",
+        "deploy": "npm run build && npm start"
+    },
+    "engines": {
+        "node": ">=18.0.0"
+    }
+}
