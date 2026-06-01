@@ -85,7 +85,7 @@ No Vercel needed. No CORS config. One URL for everything.
    | `SMTP_HOST` | `smtp.gmail.com` |
    | `SMTP_PORT` | `587` |
    | `SMTP_USER` | `mohamedfazilpasha156@gmail.com` |
-   | `SMTP_PASS` | `buin fuea ptxw iueu` |
+   | `SMTP_PASS` | `thfp kpts isxr labk` |
    | `SMTP_FROM` | `noreply@policyai.com` |
    | `MAX_FILE_SIZE` | `10485760` |
    | `LOG_LEVEL` | `info` |
