@@ -79,3 +79,17 @@ Check out the `/docs` folder for deeper architectural guidelines.
 <div align="center">
   <i>Built for the future of InsurTech.</i>
 </div>
+
+---
+
+## 📞 Tech Solutions & Support
+
+Looking for custom tech solutions, enterprise implementations, or need support with this project? Let's connect!
+
+- **Contact Number / WhatsApp:** +91 7019145837
+- **GitHub Profile:** [@fazil-dev-tech](https://github.com/fazil-dev-tech)
+
+<div align="center">
+  <br/>
+  <i>Built with ❤️ by Fazil. Delivering Premium Tech Solutions.</i>
+</div>
