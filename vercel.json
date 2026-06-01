@@ -1,0 +1,12 @@
+{
+  "experimentalServices": [
+    {
+      "src": "frontend",
+      "route": "/"
+    },
+    {
+      "src": "backend",
+      "route": "/_/backend/*"
+    }
+  ]
+}
