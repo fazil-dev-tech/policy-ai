@@ -409,33 +409,35 @@ export default function ArchitectureOrbit3D() {
 
             {/* Unified Glass Pipeline Dock & Inspector Drawer */}
             <div className="arch-footer-area">
-                <div className="arch-pipeline-dock" role="tablist" aria-label="System Architecture Pipeline">
-                    {ARCHITECTURE_NODES.map((n, i) => {
-                        const isActive = selectedId === n.id;
-                        return (
-                            <button
-                                key={n.id}
-                                type="button"
-                                role="tab"
-                                aria-selected={isActive}
-                                onClick={() => setSelectedId(n.id)}
-                                className={`arch-dock-item ${isActive ? 'active' : ''}`}
-                                style={{ '--node-color': n.color }}
-                            >
-                                {isActive && (
-                                    <motion.span
-                                        layoutId="archPipelineDockPill"
-                                        className="arch-dock-active-bg"
-                                        transition={{ type: 'spring', stiffness: 420, damping: 32 }}
-                                    />
-                                )}
-                                <span className="arch-dock-content">
-                                    <span className="arch-node-dot" style={{ background: n.color }} />
-                                    <span>{i + 1}. {n.title}</span>
-                                </span>
-                            </button>
-                        );
-                    })}
+                <div className="arch-pipeline-dock">
+                    <div className="arch-pipeline-tabs" role="tablist" aria-label="System Architecture Pipeline">
+                        {ARCHITECTURE_NODES.map((n, i) => {
+                            const isActive = selectedId === n.id;
+                            return (
+                                <button
+                                    key={n.id}
+                                    type="button"
+                                    role="tab"
+                                    aria-selected={isActive}
+                                    onClick={() => setSelectedId(n.id)}
+                                    className={`arch-dock-item ${isActive ? 'active' : ''}`}
+                                    style={{ '--node-color': n.color }}
+                                >
+                                    {isActive && (
+                                        <motion.span
+                                            layoutId="archPipelineDockPill"
+                                            className="arch-dock-active-bg"
+                                            transition={{ type: 'spring', stiffness: 420, damping: 32 }}
+                                        />
+                                    )}
+                                    <span className="arch-dock-content">
+                                        <span className="arch-node-dot" style={{ background: n.color }} />
+                                        <span>{i + 1}. {n.title}</span>
+                                    </span>
+                                </button>
+                            );
+                        })}
+                    </div>
 
                     <button
                         type="button"
