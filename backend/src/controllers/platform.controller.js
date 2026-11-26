@@ -162,7 +162,7 @@ const downloadExtensionZip = async (req, res, next) => {
             return;
         }
 
-        return res.status(404).json({ error: 'Extension package not found on server' });
+        return res.redirect('/policyguard-extension.zip');
     } catch (error) {
         next(error);
     }
