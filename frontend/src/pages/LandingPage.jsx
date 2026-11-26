@@ -22,14 +22,17 @@ const PREVIEW_SCENARIOS = [
         id: 'health',
         label: 'Health Audit',
         badge: 'RULE-CHECKED',
-        scoreLabel: 'Illustrative Policy Health Score',
+        badgeTone: 'rose',
+        scoreLabel: 'Policy Clarity Score',
+        scoreSub: 'IRDAI 2024 Audit Rulebook',
         scoreValue: '94 / 100',
+        scoreColor: '#34d399',
         scorePct: 94,
-        barGradient: 'linear-gradient(90deg, #10b981, #38bdf8)',
+        barGradient: 'linear-gradient(90deg, #e11d48 0%, #fb7185 55%, #fda4af 100%)',
         rows: [
-            ['Room-Rent Deduction Check', 'Single AC · 0% Cut', '#fb7185'],
-            ['Pre-Existing Wait Status', 'Cleared (60m Rule)', '#38bdf8'],
-            ['Cashless Discharge Timer', '3-Hour IRDAI SLA Ready', '#34d399'],
+            ['Room-Rent Cap', 'Single AC Room', '0% Cut', 'ok'],
+            ['Pre-Existing Wait', '60-Month Rule', 'Cleared', 'ok'],
+            ['Cashless SLA', 'Discharge Window', '3h Ready', 'ok'],
         ],
         footer: '10 MB private vault · Page-cited answers · Instant appeal PDFs',
     },
@@ -37,14 +40,17 @@ const PREVIEW_SCENARIOS = [
         id: 'motor',
         label: 'Motor Estimate',
         badge: 'PHOTO ESTIMATE',
-        scoreLabel: 'Illustrative Bumper Damage Match',
+        badgeTone: 'amber',
+        scoreLabel: 'Bumper Damage Match',
+        scoreSub: 'OEM Range & Depreciation Tier',
         scoreValue: '88% Fit',
+        scoreColor: '#fbbf24',
         scorePct: 88,
-        barGradient: 'linear-gradient(90deg, #f59e0b, #fb7185)',
+        barGradient: 'linear-gradient(90deg, #d97706 0%, #fbbf24 100%)',
         rows: [
-            ['Front Bumper Assessment', '₹11k – ₹16k OEM Range', '#fbbf24'],
-            ['Zero-Dep Waiver Check', '50% Plastic Cut Waived', '#38bdf8'],
-            ['Workshop Quote Check', 'Alert if >25% above OEM', '#fb7185'],
+            ['Front Bumper', 'OEM Benchmark', '₹11k – ₹16k', 'warn'],
+            ['Zero-Dep Waiver', 'Plastic Parts Tier', '50% Waived', 'ok'],
+            ['Workshop Quote', 'Garage Overcharge', 'Flags >25%', 'info'],
         ],
         footer: 'Up to 6 accident photos · Standard vs Zero-Dep depreciation',
     },
@@ -52,14 +58,17 @@ const PREVIEW_SCENARIOS = [
         id: 'shield',
         label: 'Scam Shield',
         badge: 'CHROME SHIELD',
-        scoreLabel: 'Illustrative Phishing Check',
-        scoreValue: '98 / 100 Risk',
+        badgeTone: 'sky',
+        scoreLabel: 'Phishing Risk Score',
+        scoreSub: 'Web, WhatsApp Web & Gmail',
+        scoreValue: '98 / 100',
+        scoreColor: '#fb7185',
         scorePct: 98,
-        barGradient: 'linear-gradient(90deg, #e11d48, #f59e0b)',
+        barGradient: 'linear-gradient(90deg, #0284c7 0%, #fb7185 100%)',
         rows: [
-            ['Suspicious Attachment', 'Fake .APK Installer Blocked', '#fb7185'],
-            ['Payment Request Trap', 'Reverse-UPI PIN Lure Flagged', '#fbbf24'],
-            ['Website Domain Check', 'Lookalike Renewal Highlighted', '#38bdf8'],
+            ['Suspicious File', 'KYC Installer Link', '.APK Blocked', 'risk'],
+            ['Payment Trap', 'Reverse-UPI Collect', 'PIN Lure Alert', 'warn'],
+            ['Domain Check', 'Insurer Registry', 'Lookalike Match', 'info'],
         ],
         footer: 'Protects Websites, WhatsApp Web & Gmail in real time',
     },
@@ -294,13 +303,14 @@ export default function LandingPage() {
                             </div>
                         </div>
 
-                        {/* Interactive Sample Preview Console */}
+                        {/* Structured Frosted Specimen Console */}
                         <SpotlightCard className="hero-diagnostic-card" hoverLift={false}>
                             <div className="hero-diag-header">
                                 <span className="hero-diag-title">
-                                    <Activity size={14} style={{ color: '#fb7185' }} /> INTERACTIVE SAMPLE PREVIEW
+                                    <Activity size={14} style={{ color: '#fb7185' }} />
+                                    <span>Sample Workspace Audit</span>
                                 </span>
-                                <span className="hero-diag-pill">{preview.badge}</span>
+                                <span className={`hero-diag-pill tone-${preview.badgeTone}`}>{preview.badge}</span>
                             </div>
 
                             <div className="hero-diag-tabs" role="tablist" aria-label="Sample preview modes">
@@ -329,35 +339,47 @@ export default function LandingPage() {
                                 <motion.div
                                     key={preview.id}
                                     className="hero-diag-metrics"
-                                    initial={{ opacity: 0, y: 6 }}
+                                    initial={{ opacity: 0, y: 5 }}
                                     animate={{ opacity: 1, y: 0 }}
-                                    exit={{ opacity: 0, y: -6 }}
-                                    transition={{ duration: 0.2 }}
+                                    exit={{ opacity: 0, y: -5 }}
+                                    transition={{ duration: 0.18 }}
                                 >
-                                    <div className="hero-diag-row">
-                                        <span>{preview.scoreLabel}</span>
-                                        <strong style={{ color: '#34d399' }}>{preview.scoreValue}</strong>
-                                    </div>
-                                    <div className="hero-diag-bar">
-                                        <motion.span
-                                            initial={{ width: 0 }}
-                                            animate={{ width: `${preview.scorePct}%` }}
-                                            transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
-                                            style={{ background: preview.barGradient }}
-                                        />
+                                    <div className="hero-diag-kpi">
+                                        <div className="hero-diag-kpi-top">
+                                            <div>
+                                                <div className="hero-diag-kpi-label">{preview.scoreLabel}</div>
+                                                <div className="hero-diag-kpi-sub">{preview.scoreSub}</div>
+                                            </div>
+                                            <strong className="hero-diag-kpi-val" style={{ color: preview.scoreColor }}>
+                                                {preview.scoreValue}
+                                            </strong>
+                                        </div>
+                                        <div className="hero-diag-bar">
+                                            <motion.span
+                                                initial={{ width: 0 }}
+                                                animate={{ width: `${preview.scorePct}%` }}
+                                                transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
+                                                style={{ background: preview.barGradient }}
+                                            />
+                                        </div>
                                     </div>
 
-                                    {preview.rows.map(([lbl, val, clr], rIdx) => (
-                                        <div key={lbl} className="hero-diag-row" style={{ marginTop: rIdx === 0 ? 10 : 0 }}>
-                                            <span>{lbl}</span>
-                                            <strong style={{ color: clr }}>{val}</strong>
-                                        </div>
-                                    ))}
+                                    <div className="hero-diag-list">
+                                        {preview.rows.map(([title, sub, status, tone]) => (
+                                            <div key={title} className="hero-diag-item">
+                                                <div className="hero-diag-item-left">
+                                                    <span className="hero-diag-item-title">{title}</span>
+                                                    <span className="hero-diag-item-sub">{sub}</span>
+                                                </div>
+                                                <span className={`hero-diag-badge tone-${tone}`}>{status}</span>
+                                            </div>
+                                        ))}
+                                    </div>
                                 </motion.div>
                             </AnimatePresence>
 
                             <div className="hero-diag-footer">
-                                <Sparkles size={13} style={{ color: '#38bdf8', flexShrink: 0 }} />
+                                <CheckCircle2 size={13} style={{ color: '#fb7185', flexShrink: 0 }} />
                                 <span>{preview.footer}</span>
                             </div>
                         </SpotlightCard>
@@ -365,15 +387,24 @@ export default function LandingPage() {
 
                     <div className="hero-telemetry-grid">
                         <SpotlightCard className="hero-telemetry-cell">
-                            <span className="hero-telemetry-val">IRDAI 2024 Protection</span>
+                            <div className="hero-telemetry-top">
+                                <span className="hero-telemetry-icon"><ShieldCheck size={15} /></span>
+                                <span className="hero-telemetry-val">IRDAI 2024 Protection</span>
+                            </div>
                             <span className="hero-telemetry-lbl">Checks 60-month pre-existing moratorium, 3-hour cashless discharge SLA &amp; room-rent caps</span>
                         </SpotlightCard>
                         <SpotlightCard className="hero-telemetry-cell">
-                            <span className="hero-telemetry-val">Policy + Vehicle Photo AI</span>
+                            <div className="hero-telemetry-top">
+                                <span className="hero-telemetry-icon"><FileCheck2 size={15} /></span>
+                                <span className="hero-telemetry-val">Policy + Vehicle Photo AI</span>
+                            </div>
                             <span className="hero-telemetry-lbl">Turns multi-column PDFs into page-cited cards and audits up to 6 accident photos cleanly</span>
                         </SpotlightCard>
                         <SpotlightCard className="hero-telemetry-cell">
-                            <span className="hero-telemetry-val">3-Surface Scam Shield</span>
+                            <div className="hero-telemetry-top">
+                                <span className="hero-telemetry-icon"><Shield size={15} /></span>
+                                <span className="hero-telemetry-val">3-Surface Scam Shield</span>
+                            </div>
                             <span className="hero-telemetry-lbl">Blocks fake KYC .apk apps, UPI refund lures &amp; lookalike links on Web, WhatsApp &amp; Gmail</span>
                         </SpotlightCard>
                     </div>

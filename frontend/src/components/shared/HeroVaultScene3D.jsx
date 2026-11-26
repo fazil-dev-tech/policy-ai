@@ -3,14 +3,44 @@ import { Canvas, useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import CanvasErrorBoundary from './CanvasErrorBoundary';
 import CameraRig from './CameraRig';
-import GridFloor from './GridFloor';
 import DataStreamField from './DataStreamField';
 
 const MODE_PALETTES = {
-    health: { core: '#e11d48', rim: '#38bdf8', glow: '#fb7185', grid: '#e11d4840', crystalTint: '#11182c' },
-    motor: { core: '#d97706', rim: '#38bdf8', glow: '#fbbf24', grid: '#f59e0b40', crystalTint: '#16131c' },
-    shield: { core: '#0284c7', rim: '#10b981', glow: '#38bdf8', grid: '#38bdf840', crystalTint: '#0b1828' },
+    health: { core: '#e11d48', rim: '#fda4af', glow: '#fb7185', crystalTint: '#140c18' },
+    motor: { core: '#d97706', rim: '#fde68a', glow: '#fbbf24', crystalTint: '#17110b' },
+    shield: { core: '#0284c7', rim: '#7dd3fc', glow: '#38bdf8', crystalTint: '#0b1422' },
 };
+
+function AmbientHorizonMist({ color = '#fda4af', reducedMotion }) {
+    const ref = useRef();
+    const positions = useMemo(() => {
+        const count = 420;
+        const arr = new Float32Array(count * 3);
+        for (let i = 0; i < count; i++) {
+            const x = (Math.random() - 0.5) * 32;
+            const z = (Math.random() - 0.5) * 18 - 3;
+            const wave = Math.sin(x * 0.28) * 0.35 + Math.cos(z * 0.35) * 0.25;
+            arr[i * 3] = x;
+            arr[i * 3 + 1] = -3.6 + wave;
+            arr[i * 3 + 2] = z;
+        }
+        return arr;
+    }, []);
+
+    useFrame(({ clock }) => {
+        if (reducedMotion || !ref.current) return;
+        ref.current.rotation.y = Math.sin(clock.elapsedTime * 0.08) * 0.06;
+    });
+
+    return (
+        <points ref={ref}>
+            <bufferGeometry>
+                <bufferAttribute attach="attributes-position" args={[positions, 3]} />
+            </bufferGeometry>
+            <pointsMaterial size={0.055} color={color} transparent opacity={0.34} sizeAttenuation depthWrite={false} />
+        </points>
+    );
+}
 
 function CalibrationDial({ reducedMotion, rimColor }) {
     const dialRef = useRef();
@@ -18,7 +48,7 @@ function CalibrationDial({ reducedMotion, rimColor }) {
     const ticks = useMemo(() => {
         const list = [];
         const total = 32;
-        const radius = 3.65;
+        const radius = 3.55;
         for (let i = 0; i < total; i++) {
             const angle = (i / total) * Math.PI * 2;
             list.push({
@@ -33,23 +63,23 @@ function CalibrationDial({ reducedMotion, rimColor }) {
 
     useFrame(({ clock }) => {
         if (reducedMotion || !dialRef.current) return;
-        dialRef.current.rotation.z = -clock.elapsedTime * 0.045;
+        dialRef.current.rotation.z = -clock.elapsedTime * 0.04;
     });
 
     return (
-        <group ref={dialRef} rotation={[Math.PI / 2.78, 0.24, 0]}>
+        <group ref={dialRef} rotation={[Math.PI / 2.75, 0.2, 0]}>
             <mesh>
-                <torusGeometry args={[3.65, 0.011, 10, 128]} />
-                <meshBasicMaterial color="#64748b" transparent opacity={0.36} />
+                <torusGeometry args={[3.55, 0.008, 10, 128]} />
+                <meshBasicMaterial color="#64748b" transparent opacity={0.22} depthWrite={false} />
             </mesh>
             <mesh>
-                <torusGeometry args={[2.85, 0.009, 10, 110]} />
-                <meshBasicMaterial color={rimColor} transparent opacity={0.34} />
+                <torusGeometry args={[2.8, 0.007, 10, 110]} />
+                <meshBasicMaterial color={rimColor} transparent opacity={0.24} depthWrite={false} />
             </mesh>
             {ticks.map((t, idx) => (
                 <mesh key={idx} position={[t.x, t.y, 0]} rotation={[0, 0, t.rotZ]}>
-                    <boxGeometry args={[t.major ? 0.2 : 0.08, 0.018, 0.018]} />
-                    <meshBasicMaterial color={t.major ? rimColor : '#94a3b8'} transparent opacity={t.major ? 0.85 : 0.38} />
+                    <boxGeometry args={[t.major ? 0.16 : 0.06, 0.014, 0.014]} />
+                    <meshBasicMaterial color={t.major ? rimColor : '#64748b'} transparent opacity={t.major ? 0.55 : 0.25} depthWrite={false} />
                 </mesh>
             ))}
         </group>
@@ -69,31 +99,32 @@ function VaultCoreAssembly({ mode = 'health', reducedMotion }) {
         if (!rootRef.current) return;
         if (!reducedMotion) {
             const t = clock.elapsedTime;
-            rootRef.current.position.y = 0.28 + Math.sin(t * 0.85) * 0.14;
-            rootRef.current.rotation.y = THREE.MathUtils.lerp(rootRef.current.rotation.y, t * 0.09 + pointer.x * 0.2, 0.045);
-            rootRef.current.rotation.x = THREE.MathUtils.lerp(rootRef.current.rotation.x, -0.06 + pointer.y * 0.11, 0.045);
-            if (ringA.current) ringA.current.rotation.z = t * 0.22;
-            if (ringB.current) ringB.current.rotation.x = -t * 0.16;
-            if (ringC.current) ringC.current.rotation.y = t * 0.14;
-            if (crystalRef.current) crystalRef.current.rotation.y = -t * 0.24;
+            rootRef.current.position.y = 0.22 + Math.sin(t * 0.8) * 0.12;
+            rootRef.current.rotation.y = THREE.MathUtils.lerp(rootRef.current.rotation.y, t * 0.08 + pointer.x * 0.16, 0.04);
+            rootRef.current.rotation.x = THREE.MathUtils.lerp(rootRef.current.rotation.x, -0.06 + pointer.y * 0.09, 0.04);
+            if (ringA.current) ringA.current.rotation.z = t * 0.18;
+            if (ringB.current) ringB.current.rotation.x = -t * 0.14;
+            if (ringC.current) ringC.current.rotation.y = t * 0.12;
+            if (crystalRef.current) crystalRef.current.rotation.y = -t * 0.2;
             if (nucleusRef.current) {
-                nucleusRef.current.rotation.y = t * 0.42;
-                const pulse = 1 + Math.sin(t * 2.2) * 0.06;
+                nucleusRef.current.rotation.y = t * 0.35;
+                const pulse = 1 + Math.sin(t * 2.0) * 0.05;
                 nucleusRef.current.scale.setScalar(pulse);
             }
         }
     });
 
     return (
-        <group ref={rootRef} position={[1.35, 0.28, -0.95]} scale={1.18}>
+        /* Centered neatly behind the right frosted glass card so halo & rings frame all 4 glass edges symmetrically */
+        <group ref={rootRef} position={[2.65, 0.22, -1.75]} scale={1.36}>
             {/* Luminous Inner Energy Nucleus */}
             <mesh ref={nucleusRef}>
-                <octahedronGeometry args={[0.58, 0]} />
+                <octahedronGeometry args={[0.56, 0]} />
                 <meshStandardMaterial
-                    color="#ffffff"
+                    color="#fff1f5"
                     emissive={palette.glow}
-                    emissiveIntensity={1.6}
-                    roughness={0.15}
+                    emissiveIntensity={1.45}
+                    roughness={0.18}
                 />
             </mesh>
 
@@ -103,78 +134,78 @@ function VaultCoreAssembly({ mode = 'health', reducedMotion }) {
                 <meshPhysicalMaterial
                     color={palette.crystalTint}
                     emissive={palette.core}
-                    emissiveIntensity={0.48}
-                    metalness={0.25}
-                    roughness={0.1}
+                    emissiveIntensity={0.42}
+                    metalness={0.28}
+                    roughness={0.12}
                     clearcoat={1}
                     clearcoatRoughness={0.08}
                     reflectivity={0.95}
-                    iridescence={0.45}
+                    iridescence={0.35}
                     transparent
-                    opacity={0.86}
+                    opacity={0.78}
                     depthWrite={false}
                     flatShading
                 />
             </mesh>
 
-            {/* Outer Precision Geodesic Cage */}
+            {/* Outer Subtle Geodesic Wireframe */}
             <mesh renderOrder={3}>
                 <icosahedronGeometry args={[1.56, 1]} />
                 <meshStandardMaterial
                     color="#475569"
                     emissive={palette.rim}
-                    emissiveIntensity={0.42}
+                    emissiveIntensity={0.28}
                     metalness={0.85}
-                    roughness={0.2}
+                    roughness={0.22}
                     wireframe
                     transparent
-                    opacity={0.72}
+                    opacity={0.42}
                     depthWrite={false}
                 />
             </mesh>
 
-            {/* Volumetric Dual Halo Glow */}
+            {/* Volumetric Dual Aura Glow behind Glass Card */}
             <mesh renderOrder={1}>
-                <sphereGeometry args={[2.15, 32, 32]} />
-                <meshBasicMaterial color={palette.core} transparent opacity={0.14} blending={THREE.AdditiveBlending} side={THREE.BackSide} depthWrite={false} />
+                <sphereGeometry args={[2.25, 32, 32]} />
+                <meshBasicMaterial color={palette.core} transparent opacity={0.16} blending={THREE.AdditiveBlending} side={THREE.BackSide} depthWrite={false} />
             </mesh>
             <mesh renderOrder={1}>
-                <sphereGeometry args={[2.75, 32, 32]} />
-                <meshBasicMaterial color={palette.rim} transparent opacity={0.06} blending={THREE.AdditiveBlending} side={THREE.BackSide} depthWrite={false} />
+                <sphereGeometry args={[2.95, 32, 32]} />
+                <meshBasicMaterial color={palette.rim} transparent opacity={0.07} blending={THREE.AdditiveBlending} side={THREE.BackSide} depthWrite={false} />
             </mesh>
 
             {/* Precision Gyroscopic Orbit Rings */}
-            <group ref={ringA} rotation={[Math.PI / 3.1, 0.42, 0]}>
+            <group ref={ringA} rotation={[Math.PI / 3.1, 0.36, 0]}>
                 <mesh renderOrder={2}>
-                    <torusGeometry args={[2.32, 0.015, 12, 128]} />
-                    <meshBasicMaterial color={palette.glow} transparent opacity={0.88} depthWrite={false} />
+                    <torusGeometry args={[2.32, 0.011, 12, 128]} />
+                    <meshBasicMaterial color={palette.glow} transparent opacity={0.58} depthWrite={false} />
                 </mesh>
                 <mesh position={[2.32, 0, 0]}>
-                    <sphereGeometry args={[0.072, 14, 14]} />
-                    <meshBasicMaterial color="#ffffff" />
+                    <sphereGeometry args={[0.056, 12, 12]} />
+                    <meshBasicMaterial color={palette.rim} />
                 </mesh>
             </group>
 
-            <group ref={ringB} rotation={[-Math.PI / 4, -0.45, 0.3]}>
+            <group ref={ringB} rotation={[-Math.PI / 4.2, -0.4, 0.28]}>
                 <mesh renderOrder={2}>
-                    <torusGeometry args={[2.7, 0.012, 12, 128, Math.PI * 1.55]} />
-                    <meshBasicMaterial color={palette.rim} transparent opacity={0.78} depthWrite={false} />
+                    <torusGeometry args={[2.72, 0.009, 12, 128, Math.PI * 1.5]} />
+                    <meshBasicMaterial color={palette.rim} transparent opacity={0.46} depthWrite={false} />
                 </mesh>
-                <mesh position={[0, 2.7, 0]}>
-                    <sphereGeometry args={[0.058, 12, 12]} />
+                <mesh position={[0, 2.72, 0]}>
+                    <sphereGeometry args={[0.048, 12, 12]} />
                     <meshBasicMaterial color={palette.rim} />
                 </mesh>
             </group>
 
             <group ref={ringC} rotation={[Math.PI / 2.2, -0.32, 0.55]}>
                 <mesh renderOrder={2}>
-                    <torusGeometry args={[1.92, 0.009, 10, 100, Math.PI * 1.25]} />
-                    <meshBasicMaterial color="#e2e8f0" transparent opacity={0.35} depthWrite={false} />
+                    <torusGeometry args={[1.92, 0.007, 10, 100, Math.PI * 1.25]} />
+                    <meshBasicMaterial color="#cbd5e1" transparent opacity={0.22} depthWrite={false} />
                 </mesh>
             </group>
 
             <CalibrationDial reducedMotion={reducedMotion} rimColor={palette.rim} />
-            <pointLight position={[0, 0, 1.5]} distance={9} intensity={2.4} color={palette.glow} />
+            <pointLight position={[0, 0, 1.5]} distance={10} intensity={2.2} color={palette.glow} />
         </group>
     );
 }
@@ -185,18 +216,18 @@ export default function HeroVaultScene3D({ mode = 'health', reducedMotion = fals
         <CanvasErrorBoundary fallbackTitle="3D Core Engine Preview Ready">
             <Canvas
                 dpr={[1, 1.5]}
-                camera={{ position: [0, 0.35, 10.6], fov: 46 }}
+                camera={{ position: [0, 0.25, 10.6], fov: 44 }}
                 gl={{ alpha: true, antialias: true }}
             >
-                <ambientLight intensity={1.15} />
-                <directionalLight position={[8, 9, 8]} intensity={2.4} color="#ffffff" />
-                <directionalLight position={[-6, 6, 4]} intensity={1.6} color={palette.glow} />
-                <pointLight position={[-8, -5, 4]} intensity={1.5} color={palette.rim} />
-                <CameraRig intensity={0.48} />
-                <DataStreamField active={mode !== 'health'} color={palette.glow} />
-                <GridFloor colorPrimary={palette.grid} colorSecondary="#33415534" y={-4.35} />
+                <ambientLight intensity={1.1} />
+                <directionalLight position={[8, 9, 8]} intensity={2.2} color="#ffffff" />
+                <directionalLight position={[-6, 6, 4]} intensity={1.4} color={palette.glow} />
+                <pointLight position={[2.6, -3, 4]} intensity={1.2} color={palette.rim} />
+                <CameraRig intensity={0.42} />
+                <DataStreamField active={mode !== 'health'} color={palette.rim} />
+                <AmbientHorizonMist color={palette.rim} reducedMotion={reducedMotion} />
                 <VaultCoreAssembly mode={mode} reducedMotion={reducedMotion} />
-                <fog attach="fog" args={['#090d16', 11, 29]} />
+                <fog attach="fog" args={['#060913', 10, 28]} />
             </Canvas>
         </CanvasErrorBoundary>
     );
