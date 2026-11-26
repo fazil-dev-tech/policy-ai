@@ -7,6 +7,8 @@ import { Canvas } from '@react-three/fiber';
 import CanvasErrorBoundary from '../components/shared/CanvasErrorBoundary';
 import CyberCore from '../components/shared/CyberCore';
 import DataStreamField from '../components/shared/DataStreamField';
+import GridFloor from '../components/shared/GridFloor';
+import { SpotlightCard } from '../components/shared/MotionPrimitives';
 
 export default function RegisterPage() {
     const { register, verifyOtp } = useAuth();
@@ -45,7 +47,7 @@ export default function RegisterPage() {
         setLoading(true);
         try {
             await verifyOtp(form.email, otp, 'signup');
-            toast.success('Email verified! Welcome to PolicyAI.');
+            toast.success('Email verified! Welcome to PolicyGuard AI.');
             navigate('/dashboard');
         } catch (err) {
             toast.error(err.response?.data?.error || err.message || 'Invalid verification code');
@@ -56,23 +58,28 @@ export default function RegisterPage() {
 
     return (
         <div className="auth-split-layout auth-obsidian-shell">
-            {/* Ambient Obsidian 3D Canvas */}
-            <div className="auth-canvas-bg">
-                <CanvasErrorBoundary fallbackTitle="PolicyGuard Sign Up">
-                    <Canvas dpr={[1, 1.5]} camera={{ position: [0, 0, 10], fov: 56 }} gl={{ alpha: true, antialias: true }}>
-                        <ambientLight intensity={1.2} />
-                        <directionalLight position={[10, 10, 10]} intensity={1.8} color="#e11d48" />
-                        <pointLight position={[-10, -10, -10]} intensity={1.1} color="#22d3ee" />
-                        <CyberCore position={[-0.6, 0, 0]} active={needsVerification} />
-                        <DataStreamField active={needsVerification} color="#22d3ee" />
-                        <fog attach="fog" args={['#050814', 8, 22]} />
-                    </Canvas>
-                </CanvasErrorBoundary>
-            </div>
-
-            {/* Left Editorial Brand Panel */}
+            {/* Left Editorial Brand Panel with Dedicated Centered 3D Canvas */}
             <div className="auth-brand-panel auth-brand-dark">
+                <div className="auth-panel-canvas" aria-hidden="true">
+                    <CanvasErrorBoundary fallbackTitle="PolicyGuard Sign Up">
+                        <Canvas dpr={[1, 1.5]} camera={{ position: [0, 0.25, 9.2], fov: 46 }} gl={{ alpha: true, antialias: true }}>
+                            <ambientLight intensity={1.15} />
+                            <directionalLight position={[8, 9, 8]} intensity={2.0} color="#ffffff" />
+                            <directionalLight position={[-6, 6, 4]} intensity={1.5} color="#fb7185" />
+                            <pointLight position={[-8, -6, 4]} intensity={1.2} color="#22d3ee" />
+                            <CyberCore position={[0, 1.35, -0.4]} active={needsVerification} />
+                            <DataStreamField active={needsVerification} color="#22d3ee" />
+                            <GridFloor colorPrimary={needsVerification ? '#22d3ee40' : '#e11d4840'} colorSecondary="#33415532" y={-3.6} />
+                            <fog attach="fog" args={['#050814', 9, 24]} />
+                        </Canvas>
+                    </CanvasErrorBoundary>
+                </div>
+
                 <div className="auth-brand-inner auth-brand-dark-inner">
+                    <div className="auth-brand-badge">
+                        <span className="hero-live-dot" aria-hidden="true" />
+                        <span>FREE POLICYHOLDER VAULT</span>
+                    </div>
                     <div className="auth-brand-logo-row">
                         <img src="/logo.png" alt="PolicyGuard AI" className="auth-logo-mark" />
                         <div>
@@ -82,18 +89,18 @@ export default function RegisterPage() {
                     </div>
 
                     <div className="auth-brand-features-obsidian">
-                        <div className="auth-brand-feature-obsidian"><Zap size={15} style={{ color: '#fb7185' }} /> <span>IRDAI CIS &amp; Room-Rent Audit</span></div>
+                        <div className="auth-brand-feature-obsidian"><Zap size={15} style={{ color: '#fb7185' }} /> <span>Page-Cited Policy &amp; Room-Rent Audit</span></div>
                         <div className="auth-brand-feature-obsidian"><Shield size={15} style={{ color: '#22d3ee' }} /> <span>7-Scenario Payout Calculator</span></div>
                         <div className="auth-brand-feature-obsidian"><Lock size={15} style={{ color: '#10b981' }} /> <span>Private Family Emergency Vault</span></div>
                     </div>
                 </div>
             </div>
 
-            {/* Right Crisp Form Panel */}
-            <div className="auth-form-panel auth-form-light">
-                <div className="auth-card auth-card-clean">
+            {/* Right Floating Crystal Glass Form Panel */}
+            <div className="auth-form-panel auth-form-glass-stage">
+                <SpotlightCard className="auth-card auth-card-clean" hoverLift={false}>
                     <div className="auth-logo">
-                        <img src="/logo.png" alt="PolicyGuard AI" style={{ width: 48, height: 48, borderRadius: 12, objectFit: 'cover', marginBottom: 10 }} />
+                        <img src="/logo.png" alt="PolicyGuard AI" style={{ width: 42, height: 42, borderRadius: 11, objectFit: 'cover', marginBottom: 6 }} />
                         <h1>{needsVerification ? 'Verify Email' : 'Create Account'}</h1>
                         <p>{needsVerification ? `Enter the verification code sent to ${form.email}` : 'Join PolicyGuard AI — completely free'}</p>
                     </div>
@@ -175,10 +182,10 @@ export default function RegisterPage() {
                     )}
 
                     <div className="auth-footer">Already have an account? <Link to="/login">Sign in</Link></div>
-                    <div className="auth-footer" style={{ marginTop: 8 }}>
-                        <Link to="/" style={{ color: 'var(--text-muted)', fontSize: 13 }}>← Back to home</Link>
+                    <div className="auth-footer" style={{ marginTop: 6 }}>
+                        <Link to="/" style={{ color: '#64748b', fontSize: 13 }}>← Back to home</Link>
                     </div>
-                </div>
+                </SpotlightCard>
             </div>
         </div>
     );

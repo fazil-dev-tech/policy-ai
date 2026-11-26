@@ -327,6 +327,7 @@ const getPolicyInsights = async (req, res, next) => {
 const VALID_FOLLOWUP_CHANNELS = ['agent', 'broker', 'bank', 'online', 'direct', 'other'];
 
 const compareRenewalPolicy = async (req, res, next) => {
+    let preUploadedPath = null;
     try {
         const { data: oldPolicy, error } = await supabaseAdmin
             .from('policies')
@@ -341,7 +342,6 @@ const compareRenewalPolicy = async (req, res, next) => {
         let buffer = req.file?.buffer;
         let originalname = req.file?.originalname || req.body?.fileName || 'renewal.pdf';
         let mimeType = req.file?.mimetype || req.body?.mimeType || 'application/pdf';
-        let preUploadedPath = null;
 
         if (!buffer && req.body?.storagePath) {
             preUploadedPath = storageService.assertSafeUserStoragePath(req.user.id, req.body.storagePath);
@@ -385,9 +385,17 @@ const compareRenewalPolicy = async (req, res, next) => {
             .eq('user_id', req.user.id);
         if (updateErr) return next(updateErr);
 
+        if (preUploadedPath) {
+            await storageService.deleteStorageFile(preUploadedPath).catch(() => {});
+            preUploadedPath = null;
+        }
         res.json({ renewalDiff: diffPayload });
     } catch (error) {
         next(error);
+    } finally {
+        if (preUploadedPath) {
+            await storageService.deleteStorageFile(preUploadedPath).catch(() => {});
+        }
     }
 };
 

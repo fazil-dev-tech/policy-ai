@@ -15,6 +15,7 @@ export default function ParinidhiFloatingLauncher() {
             title="Talk with Parinidhi AI (3D Voice & Policy Research)"
             aria-label="Open Parinidhi AI Voice Advisor"
         >
+            <span className="parinidhi-fab-pulse" aria-hidden="true" />
             <Mic size={16} />
             <span className="parinidhi-fab-label">Ask Parinidhi</span>
             <Sparkles size={14} />

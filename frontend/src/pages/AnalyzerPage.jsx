@@ -262,10 +262,14 @@ export default function AnalyzerPage() {
             {/* Upload Zone */}
             <div
                 className={`upload-zone ${dragOver ? 'dragover' : ''} ${uploading ? 'uploading' : ''}`}
+                role="button"
+                tabIndex={0}
+                aria-label="Upload PDF document to analyze"
                 onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
                 onDragLeave={() => setDragOver(false)}
                 onDrop={(e) => { e.preventDefault(); setDragOver(false); handleUpload(e.dataTransfer.files[0]); }}
                 onClick={() => !uploading && fileRef.current?.click()}
+                onKeyDown={(e) => { if (!uploading && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); fileRef.current?.click(); } }}
                 style={{ marginBottom: 32 }}
             >
                 <input ref={fileRef} type="file" accept=".pdf"
@@ -273,7 +277,7 @@ export default function AnalyzerPage() {
                 {uploading ? (
                     <div className="upload-progress-container">
                         <div className="upload-progress-ring">
-                            <svg width="80" height="80"><circle cx="40" cy="40" r="32" fill="none" stroke="rgba(139,92,246,0.2)" strokeWidth="6" /><circle cx="40" cy="40" r="32" fill="none" stroke="url(#pg)" strokeWidth="6" strokeDasharray="60 140" strokeLinecap="round"><animateTransform attributeName="transform" type="rotate" from="0 40 40" to="360 40 40" dur="1s" repeatCount="indefinite" /></circle><defs><linearGradient id="pg" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stopColor="#8b5cf6" /><stop offset="100%" stopColor="#3b82f6" /></linearGradient></defs></svg>
+                            <svg width="80" height="80"><circle cx="40" cy="40" r="32" fill="none" stroke="rgba(225,29,72,0.2)" strokeWidth="6" /><circle cx="40" cy="40" r="32" fill="none" stroke="url(#pg)" strokeWidth="6" strokeDasharray="60 140" strokeLinecap="round"><animateTransform attributeName="transform" type="rotate" from="0 40 40" to="360 40 40" dur="1s" repeatCount="indefinite" /></circle><defs><linearGradient id="pg" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stopColor="#e11d48" /><stop offset="100%" stopColor="#ec4899" /></linearGradient></defs></svg>
                         </div>
                         <h3 className="gradient-text">Analyzing with AI...</h3>
                         <div className="upload-steps">
@@ -362,7 +366,7 @@ export default function AnalyzerPage() {
                         <div className="modal policy-modal" onClick={e => e.stopPropagation()}>
                             <div className="modal-header">
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-                                    <div className="upload-icon" style={{ width: 50, height: 50, background: 'rgba(139, 92, 246, 0.1)' }}><FileText size={24} color="#8b5cf6" /></div>
+                                    <div className="upload-icon" style={{ width: 50, height: 50, background: 'rgba(225, 29, 72, 0.1)' }}><FileText size={24} color="var(--accent-primary)" /></div>
                                     <div>
                                         <h2 style={{ fontSize: 20, fontWeight: 700 }}>{selectedDoc.documentName}</h2>
                                         <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
@@ -373,7 +377,7 @@ export default function AnalyzerPage() {
                                         </div>
                                     </div>
                                 </div>
-                                <button className="modal-close" onClick={() => setSelectedDoc(null)}><X size={18} /></button>
+                                <button type="button" className="modal-close" aria-label="Close document details" onClick={() => setSelectedDoc(null)}><X size={18} /></button>
                             </div>
 
                             {/* Document Meta */}
@@ -431,7 +435,7 @@ export default function AnalyzerPage() {
                             {/* Chat Panel */}
                             {showChat && (
                                 <div style={{ marginTop: 16, borderRadius: 16, overflow: 'hidden', border: '1px solid var(--border-color)', background: 'var(--bg-card)' }}>
-                                    <div style={{ padding: '12px 16px', background: 'linear-gradient(135deg, #8b5cf6, #3b82f6)', color: '#fff', display: 'flex', alignItems: 'center', gap: 8 }}>
+                                    <div style={{ padding: '12px 16px', background: 'var(--accent-gradient)', color: '#fff', display: 'flex', alignItems: 'center', gap: 8 }}>
                                         <Bot size={18} /> <span style={{ fontWeight: 700 }}>Ask about this document</span>
                                     </div>
                                     <div style={{ maxHeight: 280, overflowY: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -443,7 +447,7 @@ export default function AnalyzerPage() {
                                         {chatMessages.map((msg, i) => (
                                             <div key={i} style={{
                                                 alignSelf: msg.role === 'user' ? 'flex-end' : 'flex-start',
-                                                background: msg.role === 'user' ? 'linear-gradient(135deg, #8b5cf6, #3b82f6)' : 'var(--bg-glass)',
+                                                background: msg.role === 'user' ? 'var(--accent-gradient)' : 'var(--bg-glass)',
                                                 color: msg.role === 'user' ? '#fff' : 'var(--text-primary)',
                                                 padding: '10px 14px', borderRadius: 14, maxWidth: '80%', fontSize: 13.5, lineHeight: 1.6,
                                                 whiteSpace: 'pre-wrap', boxShadow: '0 2px 8px rgba(0,0,0,0.06)'

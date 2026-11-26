@@ -214,13 +214,13 @@ export default function ClaimsPage() {
 
     const handleGenerateSlaDraft = async () => {
         try {
-            const elapsedMinutes = dischargeSeconds !== null ? Math.max(181, Math.round(dischargeSeconds / 60)) : 185;
+            const elapsedMinutes = dischargeSeconds !== null ? Math.round(dischargeSeconds / 60) : 0;
             const { data } = await api.post('/incidents/sla-escalation', {
                 policyId: selectedPolicyId || undefined,
                 elapsedMinutes,
             });
             setSlaDraft(data.draft);
-            toast.success('IRDAI 3h Cashless Discharge SLA escalation drafted!');
+            toast.success(data.isBreached ? 'IRDAI 3h Cashless Discharge SLA escalation drafted!' : 'SLA monitoring draft generated (180m window active)');
         } catch {
             toast.error('Failed to draft SLA escalation');
         }
@@ -460,16 +460,27 @@ export default function ClaimsPage() {
                                 <table className="table">
                                     <thead><tr><th>Scenario</th><th>Verdict</th><th>Estimate</th><th>Insurer Share</th><th>Readiness</th><th>Guide PDF</th></tr></thead>
                                     <tbody>
-                                        {incidentsHistory.map((inc) => (
-                                            <tr key={inc.id} style={{ cursor: 'pointer' }} onClick={() => {
+                                        {incidentsHistory.map((inc) => {
+                                            const openSavedIncident = () => {
+                                                const checks = Array.isArray(inc.readiness_checklist) ? inc.readiness_checklist : [];
+                                                const doneCount = checks.filter((c) => c.completed).length;
                                                 setIncidentResult({
                                                     incident: inc,
                                                     payoutCalculation: inc.payout_calculation,
-                                                    readiness: inc.readiness_checklist,
+                                                    readiness: {
+                                                        readinessScore: Number(inc.readiness_score ?? (checks.length ? Math.round((doneCount / checks.length) * 100) : 0)),
+                                                        doneCount,
+                                                        totalCount: checks.length,
+                                                        checks,
+                                                    },
                                                 });
                                                 setWhatIfResult(null);
                                                 setActiveTab('estimator');
-                                            }}>
+                                            };
+                                            return (
+                                            <tr key={inc.id} tabIndex={0} style={{ cursor: 'pointer' }}
+                                                onClick={openSavedIncident}
+                                                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openSavedIncident(); } }}>
                                                 <td><strong>{inc.scenario_type}</strong></td>
                                                 <td><span className="badge badge-purple">{inc.payout_calculation?.verdict || inc.status}</span></td>
                                                 <td>₹{Number(inc.estimated_amount || 0).toLocaleString('en-IN')}</td>
@@ -481,7 +492,8 @@ export default function ClaimsPage() {
                                                     </button>
                                                 </td>
                                             </tr>
-                                        ))}
+                                            );
+                                        })}
                                     </tbody>
                                 </table>
                             </div>
@@ -538,7 +550,7 @@ export default function ClaimsPage() {
                             </div>
                         )}
 
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                        <div className="claims-two-col">
                             <div>
                                 <label className="form-label">Hospital Estimate (₹)</label>
                                 <input type="number" className="form-input" value={estimatedBill} onChange={(e) => setEstimatedBill(Number(e.target.value))} />
@@ -650,11 +662,11 @@ export default function ClaimsPage() {
                                             <div style={{ marginTop: 14 }}>
                                                 <strong style={{ fontSize: 12, display: 'block', marginBottom: 6 }}>Interactive Claim Readiness Checklist (click to toggle)</strong>
                                                 {readiness.checks.map((c) => (
-                                                    <div key={c.key} onClick={() => handleToggleChecklist(incidentResult.incident.id, c.key)}
-                                                        style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, padding: '5px 8px', cursor: 'pointer', borderRadius: 6, background: c.completed ? 'rgba(5,150,105,0.06)' : 'transparent', marginBottom: 4 }}>
+                                                    <button key={c.key} type="button" onClick={() => handleToggleChecklist(incidentResult.incident.id, c.key)}
+                                                        style={{ width: '100%', border: 'none', textAlign: 'left', color: 'inherit', display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, padding: '5px 8px', cursor: 'pointer', borderRadius: 6, background: c.completed ? 'rgba(5,150,105,0.06)' : 'transparent', marginBottom: 4 }}>
                                                         {c.completed ? <CheckSquare size={14} color="#059669" /> : <Square size={14} color="#64748b" />}
                                                         <span>{c.label}</span>
-                                                    </div>
+                                                    </button>
                                                 ))}
                                             </div>
                                         )}
@@ -690,7 +702,7 @@ export default function ClaimsPage() {
                     <div className="grid-2" style={{ marginBottom: 24 }}>
                         <form className="card" style={{ padding: 22 }} onSubmit={handleMotorAnalyze}>
                             <h3 style={{ marginBottom: 14 }}><Car size={17} /> Motor Accident Photo & Benchmark Estimator</h3>
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
+                            <div className="claims-two-col" style={{ marginBottom: 10 }}>
                                 <input className="form-input" placeholder="Make (e.g. Hyundai)" value={vehicleInfo.make} onChange={(e) => setVehicleInfo({ ...vehicleInfo, make: e.target.value })} />
                                 <input className="form-input" placeholder="Model (e.g. i20)" value={vehicleInfo.model} onChange={(e) => setVehicleInfo({ ...vehicleInfo, model: e.target.value })} />
                                 <input className="form-input" type="number" placeholder="Year" value={vehicleInfo.year} onChange={(e) => setVehicleInfo({ ...vehicleInfo, year: Number(e.target.value) })} />
@@ -826,7 +838,7 @@ export default function ClaimsPage() {
                                     setSettlementEditedManually(false);
                                 }} />
 
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
+                            <div className="claims-two-col" style={{ marginBottom: 12 }}>
                                 <div>
                                     <label className="form-label">Claimed Bill (₹)</label>
                                     <input className="form-input" type="number" value={claimedAmount} onChange={(e) => { setClaimedAmount(e.target.value); setSettlementEditedManually(true); }} />

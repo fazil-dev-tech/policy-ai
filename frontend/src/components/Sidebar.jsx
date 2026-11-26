@@ -1,4 +1,6 @@
+import { useEffect } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
+import { motion } from 'framer-motion';
 import { useAuth } from '../context/AuthContext';
 import {
     LayoutDashboard, FileText, FileSearch, MessageSquare, Shield,
@@ -25,8 +27,26 @@ export default function Sidebar({ mobileOpen = false, onClose = () => {} }) {
     const { user, logout } = useAuth();
     const navigate = useNavigate();
 
+    useEffect(() => {
+        if (!mobileOpen) return undefined;
+        const onKeyDown = (e) => {
+            if (e.key === 'Escape') onClose();
+        };
+        const prevOverflow = document.body.style.overflow;
+        document.body.style.overflow = 'hidden';
+        window.addEventListener('keydown', onKeyDown);
+        return () => {
+            document.body.style.overflow = prevOverflow;
+            window.removeEventListener('keydown', onKeyDown);
+        };
+    }, [mobileOpen, onClose]);
+
     const handleLogout = async () => {
         onClose();
+        try {
+            sessionStorage.removeItem('pg_standard_session');
+            sessionStorage.removeItem('pg_parinidhi_session');
+        } catch {}
         await logout();
         navigate('/login', { replace: true });
     };
@@ -60,8 +80,21 @@ export default function Sidebar({ mobileOpen = false, onClose = () => {} }) {
                         onClick={onClose}
                         className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}
                     >
-                        <Icon />
-                        {label}
+                        {({ isActive }) => (
+                            <>
+                                {isActive && (
+                                    <motion.span
+                                        layoutId="sidebarActivePill"
+                                        className="sidebar-active-pill"
+                                        transition={{ type: 'spring', stiffness: 420, damping: 34 }}
+                                    />
+                                )}
+                                <span className="sidebar-link-content">
+                                    <Icon />
+                                    <span>{label}</span>
+                                </span>
+                            </>
+                        )}
                     </NavLink>
                 ))}
 
@@ -75,8 +108,21 @@ export default function Sidebar({ mobileOpen = false, onClose = () => {} }) {
                                 onClick={onClose}
                                 className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}
                             >
-                                <Icon />
-                                {label}
+                                {({ isActive }) => (
+                                    <>
+                                        {isActive && (
+                                            <motion.span
+                                                layoutId="sidebarActivePill"
+                                                className="sidebar-active-pill"
+                                                transition={{ type: 'spring', stiffness: 420, damping: 34 }}
+                                            />
+                                        )}
+                                        <span className="sidebar-link-content">
+                                            <Icon />
+                                            <span>{label}</span>
+                                        </span>
+                                    </>
+                                )}
                             </NavLink>
                         ))}
                     </>
@@ -85,10 +131,13 @@ export default function Sidebar({ mobileOpen = false, onClose = () => {} }) {
 
             <div className="sidebar-footer">
                 <div className="sidebar-user">
-                    <div className="sidebar-avatar">{initials}</div>
+                    <div className="sidebar-avatar" style={{ position: 'relative' }}>
+                        {initials}
+                        <span className="sidebar-status-dot" aria-hidden="true" />
+                    </div>
                     <div className="sidebar-user-info">
                         <div className="name">{user?.name}</div>
-                        <div className="role">{user?.role}</div>
+                        <div className="role">{user?.role} · Protected</div>
                     </div>
                 </div>
                 <button

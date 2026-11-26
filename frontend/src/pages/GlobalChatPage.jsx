@@ -545,7 +545,7 @@ export default function GlobalChatPage() {
                                                     <div style={{ fontSize: 11, color: 'var(--accent-primary)', fontWeight: 700, marginBottom: 6 }}>{card.insurer}</div>
                                                     <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 4 }}>{card.coverageHighlights}</div>
                                                     {card.waitingPeriodNote && <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Waiting: {card.waitingPeriodNote}</div>}
-                                                    {card.sourceUrl && (
+                                                    {card.sourceUrl && /^https?:\/\//i.test(String(card.sourceUrl)) && (
                                                         <a href={card.sourceUrl} target="_blank" rel="noreferrer" style={{ fontSize: 11, color: 'var(--accent-primary)', display: 'inline-flex', alignItems: 'center', gap: 4, marginTop: 6 }}>
                                                             Source <ExternalLink size={10} />
                                                         </a>
@@ -575,11 +575,16 @@ export default function GlobalChatPage() {
                                     {msg.sources?.length > 0 && (
                                         <div style={{ marginTop: 8, fontSize: 11, color: 'var(--text-muted)', display: 'flex', gap: 10, flexWrap: 'wrap' }}>
                                             <Globe size={12} /> Sources ({msg.searchEngine}):
-                                            {msg.sources.slice(0, 3).map((s, si) => (
-                                                <a key={si} href={s.url} target="_blank" rel="noreferrer" style={{ color: 'var(--accent-primary)' }}>
-                                                    [{si + 1}] {s.title?.slice(0, 28)}
-                                                </a>
-                                            ))}
+                                            {msg.sources.slice(0, 3).map((s, si) => {
+                                                const safeHref = /^https?:\/\//i.test(String(s.url || '')) ? s.url : null;
+                                                return safeHref ? (
+                                                    <a key={si} href={safeHref} target="_blank" rel="noreferrer" style={{ color: 'var(--accent-primary)' }}>
+                                                        [{si + 1}] {s.title?.slice(0, 28)}
+                                                    </a>
+                                                ) : (
+                                                    <span key={si}>[{si + 1}] {s.title?.slice(0, 28)}</span>
+                                                );
+                                            })}
                                         </div>
                                     )}
                                 </div>

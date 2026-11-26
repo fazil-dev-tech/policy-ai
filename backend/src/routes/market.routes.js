@@ -1,8 +1,23 @@
 const express = require('express');
+const { z } = require('zod');
 const { getProviders, getInsights, addProvider } = require('../controllers/market.controller');
 const { authenticate, authorize } = require('../middleware/auth');
+const validate = require('../middleware/validate');
 
 const router = express.Router();
+
+const addProviderSchema = z.object({
+    body: z.object({
+        providerName: z.string().trim().min(1, 'providerName is required').max(150),
+        claimSettlementRatio: z.coerce.number().min(0).max(100),
+        averageClaimTime: z.coerce.number().min(0),
+        rating: z.coerce.number().min(0).max(5),
+        premiumRange: z.any().optional(),
+        policyTypes: z.array(z.string()).optional(),
+        customerReviews: z.any().optional(),
+        fraudReports: z.coerce.number().min(0).optional(),
+    }),
+});
 
 /**
  * @swagger
@@ -48,6 +63,6 @@ router.get('/insights', authenticate, getInsights);
  *     responses:
  *       201: { description: Provider added }
  */
-router.post('/providers', authenticate, authorize('admin'), addProvider);
+router.post('/providers', authenticate, authorize('admin'), validate(addProviderSchema), addProvider);
 
 module.exports = router;

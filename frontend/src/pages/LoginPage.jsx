@@ -1,16 +1,24 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { LogIn, Eye, EyeOff, Shield, Zap, Lock, Mail, Key } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { motion } from 'framer-motion';
 import { Canvas } from '@react-three/fiber';
 import CanvasErrorBoundary from '../components/shared/CanvasErrorBoundary';
 import CyberCore from '../components/shared/CyberCore';
 import DataStreamField from '../components/shared/DataStreamField';
+import GridFloor from '../components/shared/GridFloor';
+import { SpotlightCard } from '../components/shared/MotionPrimitives';
 
 export default function LoginPage() {
     const { login, sendOtp, verifyOtp } = useAuth();
     const navigate = useNavigate();
+    const location = useLocation();
+    const rawFrom = location.state?.from;
+    const postLoginPath = (typeof rawFrom === 'string' && rawFrom.startsWith('/') && !rawFrom.startsWith('//') && rawFrom !== '/login' && rawFrom !== '/register')
+        ? rawFrom
+        : '/dashboard';
 
     const [loginMethod, setLoginMethod] = useState('password');
     const [form, setForm] = useState({ email: '', password: '', otp: '' });
@@ -24,7 +32,7 @@ export default function LoginPage() {
         try {
             await login(form.email, form.password);
             toast.success('Welcome back!');
-            navigate('/dashboard');
+            navigate(postLoginPath, { replace: true });
         } catch (err) {
             toast.error(err.response?.data?.error || err.message || 'Login failed');
         } finally {
@@ -54,7 +62,7 @@ export default function LoginPage() {
         try {
             await verifyOtp(form.email, form.otp);
             toast.success('Welcome back!');
-            navigate('/dashboard');
+            navigate(postLoginPath, { replace: true });
         } catch (err) {
             toast.error(err.response?.data?.error || err.message || 'Invalid OTP');
         } finally {
@@ -64,23 +72,28 @@ export default function LoginPage() {
 
     return (
         <div className="auth-split-layout auth-obsidian-shell">
-            {/* Ambient Obsidian 3D Canvas */}
-            <div className="auth-canvas-bg">
-                <CanvasErrorBoundary fallbackTitle="PolicyGuard Auth">
-                    <Canvas dpr={[1, 1.5]} camera={{ position: [0, 0, 10], fov: 56 }} gl={{ alpha: true, antialias: true }}>
-                        <ambientLight intensity={1.2} />
-                        <directionalLight position={[10, 10, 10]} intensity={1.8} color={otpSent ? '#06b6d4' : '#e11d48'} />
-                        <pointLight position={[-10, -10, -10]} intensity={1.1} color="#22d3ee" />
-                        <CyberCore position={[-0.6, 0, 0]} active={otpSent} />
-                        <DataStreamField active={otpSent} color="#f472b6" />
-                        <fog attach="fog" args={['#050814', 8, 22]} />
-                    </Canvas>
-                </CanvasErrorBoundary>
-            </div>
-
-            {/* Left Editorial Brand Panel */}
+            {/* Left Editorial Brand Panel with Dedicated Centered 3D Canvas */}
             <div className="auth-brand-panel auth-brand-dark">
+                <div className="auth-panel-canvas" aria-hidden="true">
+                    <CanvasErrorBoundary fallbackTitle="PolicyGuard Auth">
+                        <Canvas dpr={[1, 1.5]} camera={{ position: [0, 0.25, 9.2], fov: 46 }} gl={{ alpha: true, antialias: true }}>
+                            <ambientLight intensity={1.15} />
+                            <directionalLight position={[8, 9, 8]} intensity={2.0} color="#ffffff" />
+                            <directionalLight position={[-6, 6, 4]} intensity={1.5} color={otpSent ? '#06b6d4' : '#fb7185'} />
+                            <pointLight position={[-8, -6, 4]} intensity={1.2} color="#22d3ee" />
+                            <CyberCore position={[0, 1.35, -0.4]} active={otpSent} />
+                            <DataStreamField active={otpSent} color="#f472b6" />
+                            <GridFloor colorPrimary={otpSent ? '#22d3ee40' : '#e11d4840'} colorSecondary="#33415532" y={-3.6} />
+                            <fog attach="fog" args={['#050814', 9, 24]} />
+                        </Canvas>
+                    </CanvasErrorBoundary>
+                </div>
+
                 <div className="auth-brand-inner auth-brand-dark-inner">
+                    <div className="auth-brand-badge">
+                        <span className="hero-live-dot" aria-hidden="true" />
+                        <span>IRDAI COMPLIANCE ENGINE</span>
+                    </div>
                     <div className="auth-brand-logo-row">
                         <img src="/logo.png" alt="PolicyGuard AI" className="auth-logo-mark" />
                         <div>
@@ -97,17 +110,17 @@ export default function LoginPage() {
                             <Shield size={15} style={{ color: '#22d3ee' }} /> <span>3-Surface Anti-Phishing Shield</span>
                         </div>
                         <div className="auth-brand-feature-obsidian">
-                            <Lock size={15} style={{ color: '#10b981' }} /> <span>Supabase RLS Encrypted Vault</span>
+                            <Lock size={15} style={{ color: '#10b981' }} /> <span>User-Scoped Encrypted Policy Vault</span>
                         </div>
                     </div>
                 </div>
             </div>
 
-            {/* Right Crisp Light Form Panel */}
-            <div className="auth-form-panel auth-form-light">
-                <div className="auth-card auth-card-clean">
+            {/* Right Floating Crystal Glass Form Panel */}
+            <div className="auth-form-panel auth-form-glass-stage">
+                <SpotlightCard className="auth-card auth-card-clean" hoverLift={false}>
                     <div className="auth-logo">
-                        <img src="/logo.png" alt="PolicyGuard AI" style={{ width: 48, height: 48, borderRadius: 12, objectFit: 'cover', marginBottom: 10 }} />
+                        <img src="/logo.png" alt="PolicyGuard AI" style={{ width: 44, height: 44, borderRadius: 11, objectFit: 'cover', marginBottom: 8 }} />
                         <h1>{otpSent ? 'Verify Email Code' : 'Welcome Back'}</h1>
                         <p>{otpSent ? 'Enter the code sent to your inbox' : 'Sign in to your PolicyGuard AI workspace'}</p>
                     </div>
@@ -119,14 +132,28 @@ export default function LoginPage() {
                             onClick={() => { setLoginMethod('password'); setOtpSent(false); }}
                             className={`auth-method-tab ${loginMethod === 'password' ? 'active' : ''}`}
                         >
-                            <Key size={14} /> Password
+                            {loginMethod === 'password' && (
+                                <motion.span
+                                    layoutId="authLoginTabPill"
+                                    className="auth-method-tab-pill"
+                                    transition={{ type: 'spring', stiffness: 420, damping: 32 }}
+                                />
+                            )}
+                            <span className="auth-method-tab-label"><Key size={14} /> Password</span>
                         </button>
                         <button
                             type="button"
                             onClick={() => { setLoginMethod('otp'); setForm((prev) => ({ ...prev, password: '' })); }}
                             className={`auth-method-tab ${loginMethod === 'otp' ? 'active' : ''}`}
                         >
-                            <Mail size={14} /> Email Code
+                            {loginMethod === 'otp' && (
+                                <motion.span
+                                    layoutId="authLoginTabPill"
+                                    className="auth-method-tab-pill"
+                                    transition={{ type: 'spring', stiffness: 420, damping: 32 }}
+                                />
+                            )}
+                            <span className="auth-method-tab-label"><Mail size={14} /> Email Code</span>
                         </button>
                     </div>
 
@@ -210,7 +237,7 @@ export default function LoginPage() {
 
                             {otpSent && (
                                 <div className="form-group" style={{ animation: 'fadeIn 0.3s ease' }}>
-                                    <label className="form-label" style={{ color: '#d946ef' }}>Email Verification Code (6–8 Digits)</label>
+                                    <label className="form-label" style={{ color: 'var(--accent-primary)' }}>Email Verification Code (6–8 Digits)</label>
                                     <input
                                         type="text"
                                         inputMode="numeric"
@@ -221,7 +248,7 @@ export default function LoginPage() {
                                         onChange={(e) => setForm({ ...form, otp: e.target.value.replace(/\D/g, '').slice(0, 8) })}
                                         required
                                         autoComplete="one-time-code"
-                                        style={{ letterSpacing: '4px', fontSize: 18, textAlign: 'center', background: '#fdf2f8', borderColor: '#fbcfe8', color: '#be185d', fontWeight: 'bold' }}
+                                        style={{ letterSpacing: '4px', fontSize: 18, textAlign: 'center', background: '#fff1f5', borderColor: '#fecdd3', color: '#be123c', fontWeight: 'bold' }}
                                     />
                                 </div>
                             )}
@@ -231,7 +258,7 @@ export default function LoginPage() {
                                 className="btn btn-primary btn-lg"
                                 style={{
                                     width: '100%', marginTop: 8,
-                                    background: otpSent ? 'linear-gradient(135deg, #10b981, #059669)' : 'linear-gradient(135deg, #d946ef, #a21caf)',
+                                    background: otpSent ? 'linear-gradient(135deg, #10b981, #059669)' : 'var(--accent-gradient)',
                                     color: '#fff'
                                 }}
                                 disabled={loading}
@@ -257,12 +284,12 @@ export default function LoginPage() {
                     )}
 
                     <div className="auth-footer" style={{ color: '#64748b' }}>
-                        Don&apos;t have an account? <Link to="/register" style={{ color: '#d946ef' }}>Create Account</Link>
+                        Don&apos;t have an account? <Link to="/register" style={{ color: 'var(--accent-primary)' }}>Create Account</Link>
                     </div>
                     <div className="auth-footer" style={{ marginTop: 8 }}>
-                        <Link to="/" style={{ color: '#94a3b8', fontSize: 13 }}>← Back to home</Link>
+                        <Link to="/" style={{ color: '#64748b', fontSize: 13 }}>← Back to home</Link>
                     </div>
-                </div>
+                </SpotlightCard>
             </div>
         </div>
     );

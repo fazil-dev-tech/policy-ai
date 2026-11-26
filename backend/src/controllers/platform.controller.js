@@ -10,9 +10,14 @@ const logger = require('../utils/logger');
 
 const { normalizeEnum } = require('../utils/mappers');
 
-const VALID_SCAM_CATEGORIES = ['phishing', 'fake_portal', 'reverse_upi', 'apk_malware', 'fake_agent', 'other'];
+const VALID_SCAM_CATEGORIES = ['phishing', 'fake_renewal', 'apk_malware', 'upi_scam', 'impersonation', 'other'];
+const SCAM_CATEGORY_ALIASES = {
+    fake_portal: 'fake_renewal',
+    reverse_upi: 'upi_scam',
+    fake_agent: 'impersonation',
+};
 const VALID_SURFACES = ['web', 'whatsapp', 'gmail', 'manual'];
-const VALID_RELATIONSHIPS = ['self', 'spouse', 'parent', 'child', 'sibling', 'other'];
+const VALID_RELATIONSHIPS = ['self', 'spouse', 'parent', 'child', 'in_law', 'sibling', 'other'];
 
 /**
  * Optional auth helper: attaches req.userId if Bearer token is valid, otherwise continues anonymously
@@ -128,7 +133,8 @@ const submitScamReport = async (req, res, next) => {
         const { url, category = 'phishing', description = '', sourceSurface = 'web' } = req.body || {};
         if (!url) return res.status(400).json({ error: 'url is required' });
         const userId = await resolveOptionalUserId(req);
-        const safeCategory = normalizeEnum(category, VALID_SCAM_CATEGORIES, 'phishing');
+        const rawCat = String(category || '').trim().toLowerCase();
+        const safeCategory = normalizeEnum(SCAM_CATEGORY_ALIASES[rawCat] || rawCat, VALID_SCAM_CATEGORIES, 'phishing');
         const safeSurface = normalizeEnum(sourceSurface, VALID_SURFACES, 'web');
         const safeUrl = securityService.sanitizeUrlForStorage(String(url));
         const domain = securityService.getRegistrableDomain(securityService.extractHostname(url)) || safeUrl.slice(0, 100);

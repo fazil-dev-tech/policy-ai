@@ -147,7 +147,9 @@ export default function PolicyPage() {
         try {
             const { data } = await api.get(`/policy/${policy._id || policy.id}/insights`);
             setPolicyInsights(data);
-        } catch {}
+        } catch {
+            toast.error('Showing saved summary (live clause lookup unavailable)');
+        }
     };
 
     const searchClauses = async () => {
@@ -217,10 +219,12 @@ export default function PolicyPage() {
 
     const handleRenewalCompare = async (file) => {
         if (!file || !selectedPolicy) return;
-        const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name || '');
-        if (!isPdf) {
+        const normalizedMime = file.type === 'image/jpg' ? 'image/jpeg' : file.type;
+        const allowed = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'];
+        const extValid = /\.(pdf|jpe?g|png|webp)$/i.test(file.name || '');
+        if (!allowed.includes(normalizedMime) && !extValid) {
             if (renewalRef.current) renewalRef.current.value = '';
-            return toast.error('Upload a renewal policy PDF to compare');
+            return toast.error('Upload a renewal policy PDF or photo (JPG/PNG/WEBP)');
         }
         if (file.size > 10 * 1024 * 1024) {
             if (renewalRef.current) renewalRef.current.value = '';
@@ -345,10 +349,14 @@ export default function PolicyPage() {
             {/* Upload Zone */}
             <div
                 className={`upload-zone ${dragOver ? 'dragover' : ''} ${uploading ? 'uploading' : ''}`}
+                role="button"
+                tabIndex={0}
+                aria-label="Upload policy PDF or E-Card image"
                 onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
                 onDragLeave={() => setDragOver(false)}
                 onDrop={(e) => { e.preventDefault(); setDragOver(false); handleUpload(e.dataTransfer.files[0]); }}
                 onClick={() => !uploading && fileRef.current?.click()}
+                onKeyDown={(e) => { if (!uploading && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); fileRef.current?.click(); } }}
                 style={{ marginBottom: 32 }}
             >
                 <input ref={fileRef} type="file" accept=".pdf,.jpg,.jpeg,.png,.webp"
@@ -467,7 +475,7 @@ export default function PolicyPage() {
                                     </div>
                                 </div>
                             </div>
-                            <button className="modal-close" onClick={() => setSelectedPolicy(null)}><X size={18} /></button>
+                            <button type="button" className="modal-close" aria-label="Close policy details" onClick={() => setSelectedPolicy(null)}><X size={18} /></button>
                         </div>
 
                         <div className="policy-meta-grid">
@@ -592,9 +600,9 @@ export default function PolicyPage() {
                                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 16 }}>
                                         <div>
                                             <h4 style={{ marginBottom: 8 }}><GitCompare size={15} /> Renewal PDF Diff Checker</h4>
-                                            <input ref={renewalRef} type="file" accept=".pdf" onChange={(e) => handleRenewalCompare(e.target.files[0])} style={{ display: 'none' }} />
+                                            <input ref={renewalRef} type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" onChange={(e) => handleRenewalCompare(e.target.files[0])} style={{ display: 'none' }} />
                                             <button className="btn btn-secondary btn-sm" onClick={() => renewalRef.current?.click()} disabled={renewalLoading}>
-                                                {renewalLoading ? 'Comparing...' : 'Upload Renewal PDF to Compare'}
+                                                {renewalLoading ? 'Comparing...' : 'Upload Renewal PDF / Photo'}
                                             </button>
                                             {policyInsights?.renewalDiff && (policyInsights.renewalDiff.diffs || []).length === 0 && (
                                                 <div style={{ marginTop: 10, padding: 10, borderRadius: 8, background: 'rgba(5,150,105,0.08)', fontSize: 12, color: 'var(--success)' }}>

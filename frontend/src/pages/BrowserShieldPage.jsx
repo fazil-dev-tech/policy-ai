@@ -130,7 +130,7 @@ export default function BrowserShieldPage() {
                     </button>
 
                     {verdict && (
-                        <div style={{ marginTop: 14, padding: 12, borderRadius: 10, border: '1px solid var(--border-color)', background: '#fff' }}>
+                        <div style={{ marginTop: 14, padding: 14, borderRadius: 12, border: '1px solid var(--border-color)', background: 'rgba(255, 255, 255, 0.78)', backdropFilter: 'blur(12px)' }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
                                 <strong>{verdict.domain || verdict.url}</strong>
                                 <span className={`badge ${verdict.status === 'threat' ? 'badge-danger' : verdict.status === 'suspicious' ? 'badge-warning' : 'badge-success'}`}>

@@ -182,6 +182,17 @@ def infer_damaged_zones_from_box(bgr_img, box_xyxy) -> List[dict]:
     return zones
 
 
+@app.get("/")
+def root():
+    return {
+        "service": "PolicyGuard Local ML Sidecar",
+        "status": "running",
+        "healthCheck": "/health",
+        "docs": "/docs",
+        "frontendApp": "http://localhost:5173",
+    }
+
+
 @app.get("/health")
 def health():
     return {

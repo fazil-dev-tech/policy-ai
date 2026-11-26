@@ -38,6 +38,7 @@ const refreshSchema = z.object({
 const sendOtpSchema = z.object({
     body: z.object({
         email: z.string().trim().email(),
+        createIfMissing: z.boolean().optional(),
     }),
 });
 

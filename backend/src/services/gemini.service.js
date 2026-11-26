@@ -195,7 +195,7 @@ const extractPolicyFromScannedImages = async (images = [], deterministicHints = 
     }
 };
 
-const chatAboutPolicy = async (userMessage, policySummary, conversationHistory = [], matchedClauses = []) => {
+const chatAboutPolicy = async (userMessage, policySummary, conversationHistory = [], matchedClauses = [], options = {}) => {
     try {
         let prompt = '';
         if (policySummary && Object.keys(policySummary).length > 0) {
@@ -214,7 +214,10 @@ const chatAboutPolicy = async (userMessage, policySummary, conversationHistory =
         }
         prompt += `\nUser: ${userMessage}\nAssistant:`;
 
-        const result = await aiService.generateText(prompt, { systemPrompt: CHATBOT_SYSTEM_PROMPT });
+        const result = await aiService.generateText(prompt, {
+            systemPrompt: CHATBOT_SYSTEM_PROMPT,
+            ...(options?.aiModel ? { model: String(options.aiModel).trim() } : {}),
+        });
         logger.info(`Chat response generated via ${result.provider} in ${result.responseTimeMs}ms`);
 
         return {

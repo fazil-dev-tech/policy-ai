@@ -187,6 +187,7 @@ const deleteStorageFile = async (storagePath) => {
 module.exports = {
     BUCKET,
     ALLOWED_MIMES,
+    assertSafeUserStoragePath,
     validateMagicBytes,
     uploadFileBuffer,
     uploadPdfBuffer,

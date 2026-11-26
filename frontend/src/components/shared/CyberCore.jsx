@@ -14,12 +14,14 @@ export default function CyberCore({ position = [4, 0, -2], active = false }) {
         []
     );
 
+    const baseY = Number(position?.[1] ?? 0);
+
     useFrame(({ clock }) => {
         if (reducedMotion) return;
         const t = clock.elapsedTime;
         const speed = active ? 2.2 : 1.1;
         if (groupRef.current) {
-            groupRef.current.position.y = Math.sin(t * 1.4) * 0.2;
+            groupRef.current.position.y = baseY + Math.sin(t * 1.4) * 0.2;
             groupRef.current.rotation.y = t * 0.14 * speed;
         }
         if (ring1.current) ring1.current.rotation.x = t * 0.26 * speed;
@@ -52,19 +54,29 @@ export default function CyberCore({ position = [4, 0, -2], active = false }) {
     return (
         <group ref={groupRef} position={position}>
             {/* Ambient Base Glow */}
-            <mesh>
+            <mesh renderOrder={1}>
                 <sphereGeometry args={[2.5, 32, 32]} />
-                <meshBasicMaterial color={primaryColor} transparent opacity={0.12} blending={THREE.AdditiveBlending} side={THREE.BackSide} />
+                <meshBasicMaterial color={primaryColor} transparent opacity={0.12} blending={THREE.AdditiveBlending} side={THREE.BackSide} depthWrite={false} />
             </mesh>
-            <mesh>
+            <mesh renderOrder={1}>
                 <sphereGeometry args={[1.5, 32, 32]} />
-                <meshBasicMaterial color={secondaryColor} transparent opacity={0.25} blending={THREE.AdditiveBlending} side={THREE.BackSide} />
+                <meshBasicMaterial color={secondaryColor} transparent opacity={0.25} blending={THREE.AdditiveBlending} side={THREE.BackSide} depthWrite={false} />
             </mesh>
 
-            {/* Dark Energy Core - Ultra Glossy */}
+            {/* Refractive Crystal Core */}
             <mesh>
-                <icosahedronGeometry args={[1.2, 2]} />
-                <meshPhongMaterial color="#0f172a" emissive={primaryColor} emissiveIntensity={0.6} specular="#ffffff" shininess={500} flatShading />
+                <icosahedronGeometry args={[1.18, 1]} />
+                <meshPhysicalMaterial
+                    color="#0b1224"
+                    emissive={primaryColor}
+                    emissiveIntensity={0.62}
+                    metalness={0.25}
+                    roughness={0.1}
+                    clearcoat={1}
+                    clearcoatRoughness={0.08}
+                    iridescence={0.4}
+                    flatShading
+                />
             </mesh>
 
             {/* Geometric Outer Shell */}

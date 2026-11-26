@@ -1,256 +1,632 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Canvas } from '@react-three/fiber';
+import { AnimatePresence, motion } from 'framer-motion';
 import {
-    Shield, ChevronRight, Zap, Lock, Globe, BarChart2,
-    Cpu, FileText, Calculator, Car, ShieldAlert, ArrowUpRight, CheckCircle2
+    Shield, ChevronRight, Lock, Activity, Sparkles, ArrowUpRight,
+    CheckCircle2, ChevronDown, Database, Cpu, ShieldCheck, FileCheck2
 } from 'lucide-react';
-import CanvasErrorBoundary from '../components/shared/CanvasErrorBoundary';
-import CyberCore from '../components/shared/CyberCore';
-import DataStreamField from '../components/shared/DataStreamField';
-import CameraRig from '../components/shared/CameraRig';
-import GridFloor from '../components/shared/GridFloor';
+import HeroVaultScene3D from '../components/shared/HeroVaultScene3D';
 import ArchitectureOrbit3D from '../components/ArchitectureOrbit3D';
+import { Reveal, SpotlightCard } from '../components/shared/MotionPrimitives';
+import {
+    SvgPolicyCisGraph,
+    SvgPayoutWaterfall,
+    SvgVehicleDamageBlueprint,
+    SvgBrowserShieldRadar,
+    SvgParinidhiAcoustic,
+    SvgFamilyEmergencyCard,
+} from '../components/LandingVectors';
 
-function FeatureCard({ icon: Icon, title, desc, tag, color }) {
-    return (
-        <article className="feature-card">
-            <div className="feature-card-top">
-                <div className="feature-icon" style={{ background: `${color}15`, color }}>
-                    <Icon size={22} />
-                </div>
-                <span className="feature-tag">{tag}</span>
-            </div>
-            <h3>{title}</h3>
-            <p>{desc}</p>
-        </article>
-    );
-}
+const PREVIEW_SCENARIOS = [
+    {
+        id: 'health',
+        label: 'Health Audit',
+        badge: 'RULE-CHECKED',
+        scoreLabel: 'Illustrative Policy Health Score',
+        scoreValue: '94 / 100',
+        scorePct: 94,
+        barGradient: 'linear-gradient(90deg, #10b981, #38bdf8)',
+        rows: [
+            ['Room-Rent Deduction Check', 'Single AC · 0% Cut', '#fb7185'],
+            ['Pre-Existing Wait Status', 'Cleared (60m Rule)', '#38bdf8'],
+            ['Cashless Discharge Timer', '3-Hour IRDAI SLA Ready', '#34d399'],
+        ],
+        footer: '10 MB private vault · Page-cited answers · Instant appeal PDFs',
+    },
+    {
+        id: 'motor',
+        label: 'Motor Estimate',
+        badge: 'PHOTO ESTIMATE',
+        scoreLabel: 'Illustrative Bumper Damage Match',
+        scoreValue: '88% Fit',
+        scorePct: 88,
+        barGradient: 'linear-gradient(90deg, #f59e0b, #fb7185)',
+        rows: [
+            ['Front Bumper Assessment', '₹11k – ₹16k OEM Range', '#fbbf24'],
+            ['Zero-Dep Waiver Check', '50% Plastic Cut Waived', '#38bdf8'],
+            ['Workshop Quote Check', 'Alert if >25% above OEM', '#fb7185'],
+        ],
+        footer: 'Up to 6 accident photos · Standard vs Zero-Dep depreciation',
+    },
+    {
+        id: 'shield',
+        label: 'Scam Shield',
+        badge: 'CHROME SHIELD',
+        scoreLabel: 'Illustrative Phishing Check',
+        scoreValue: '98 / 100 Risk',
+        scorePct: 98,
+        barGradient: 'linear-gradient(90deg, #e11d48, #f59e0b)',
+        rows: [
+            ['Suspicious Attachment', 'Fake .APK Installer Blocked', '#fb7185'],
+            ['Payment Request Trap', 'Reverse-UPI PIN Lure Flagged', '#fbbf24'],
+            ['Website Domain Check', 'Lookalike Renewal Highlighted', '#38bdf8'],
+        ],
+        footer: 'Protects Websites, WhatsApp Web & Gmail in real time',
+    },
+];
+
+const CORE_CAPABILITIES = [
+    {
+        span: 'bento-span-7',
+        delay: 40,
+        kicker: 'POLICY VAULT',
+        tag: 'PDF & E-Card',
+        title: 'Plain-English Policy Decoder',
+        desc: 'Upload policy PDFs or E-Cards up to 10 MB to extract room-rent sub-limits, waiting periods, and exclusions cleanly—with personal IDs masked and every answer linked to its PDF page.',
+        route: '/policies',
+        cta: 'Open Policy Vault',
+        dark: false,
+        Vector: SvgPolicyCisGraph,
+    },
+    {
+        span: 'bento-span-5',
+        delay: 90,
+        kicker: 'CLAIMS SIMULATOR',
+        tag: '7 Scenarios',
+        title: 'Payout Waterfall & Cashless Timer',
+        desc: 'Test how room selection, consumables, deductibles, and co-pays change your final payout before hospitalization, track the 3-hour cashless discharge rule, and download appeal PDFs.',
+        route: '/claims',
+        cta: 'Open Claims Studio',
+        dark: false,
+        Vector: SvgPayoutWaterfall,
+    },
+    {
+        span: 'bento-span-5',
+        delay: 130,
+        kicker: 'MOTOR ACCIDENT AI',
+        tag: 'Photo + Quote',
+        title: 'Vehicle Damage & Garage Audit',
+        desc: 'Upload up to 6 accident photos and an optional repair bill. Estimates part repair ranges using statutory or Zero-Dep rules and flags garage quotes 25% above OEM benchmarks.',
+        route: '/claims',
+        cta: 'Estimate Car Damage',
+        dark: true,
+        Vector: SvgVehicleDamageBlueprint,
+    },
+    {
+        span: 'bento-span-7',
+        delay: 170,
+        kicker: 'SCAM SHIELD',
+        tag: 'Chrome Extension',
+        title: 'Web, WhatsApp & Gmail Protection',
+        desc: 'Detects malicious KYC .apk downloads, reverse-UPI refund lures, and lookalike insurer domains across normal web tabs, WhatsApp Web chats, and Gmail threads.',
+        route: '/shield',
+        cta: 'Check URL or Get Extension',
+        dark: false,
+        Vector: SvgBrowserShieldRadar,
+    },
+    {
+        span: 'bento-span-6',
+        delay: 200,
+        kicker: 'AI & VOICE ADVISOR',
+        tag: 'Multilingual',
+        title: 'Parinidhi Voice & Live Policy Q&A',
+        desc: 'Ask coverage questions by voice or text in English, Hindi, and regional languages—backed by cited pages from your uploaded policy and verified insurer sources.',
+        route: '/terminal',
+        cta: 'Ask Parinidhi',
+        dark: false,
+        Vector: SvgParinidhiAcoustic,
+    },
+    {
+        span: 'bento-span-6',
+        delay: 240,
+        kicker: 'FAMILY & MIS-SELLING',
+        tag: 'Emergency Ready',
+        title: 'Family Vault, E-Cards & Free-Look Check',
+        desc: 'Centralize family blood groups and linked policies for printable Emergency Cards, audit agent promises within the 30-day free-look window, and access 112, 108, 1930 & 155255.',
+        route: '/family',
+        cta: 'Open Family Vault',
+        dark: false,
+        Vector: SvgFamilyEmergencyCard,
+    },
+];
+
+const SECURITY_PILLARS = [
+    {
+        icon: ShieldCheck,
+        tone: 'emerald',
+        title: 'Personal IDs Masked Before AI',
+        desc: 'PAN numbers, Aadhaar IDs, and +91 mobile numbers are masked automatically before any AI model reads your policy text.',
+        tag: 'PII Masking',
+    },
+    {
+        icon: Database,
+        tone: 'sky',
+        title: 'Private Vault & Expiring Links',
+        desc: 'Uploaded policy files and family emergency profiles stay isolated inside your account with per-user security rules and expiring file links.',
+        tag: 'Private Vault',
+    },
+    {
+        icon: Cpu,
+        tone: 'rose',
+        title: 'Rule-Checked Claim Math',
+        desc: 'Room-rent ratios, deductibles, and car part depreciation run on explicit formulas—AI explains your clauses, it never invents payout rupees.',
+        tag: 'Rule Engine',
+    },
+    {
+        icon: FileCheck2,
+        tone: 'amber',
+        title: 'Verified Uploads & Auto Cleanup',
+        desc: 'Every uploaded file up to 10 MB is checked by file type, and temporary accident photo packets are deleted right after your assessment.',
+        tag: 'Safe Uploads',
+    },
+];
+
+const FORMULA_STEPS = [
+    { op: '', label: 'Hospital Bill', tone: 'neutral' },
+    { op: '−', label: 'Non-Payables', tone: 'warn' },
+    { op: '×', label: 'Room Cap Ratio', tone: 'rose' },
+    { op: '−', label: 'Deductible & Co-Pay', tone: 'blue' },
+    { op: '=', label: 'Est. Insurer Share', tone: 'ok' },
+];
+
+const ARCHITECTURE_FAQS = [
+    {
+        q: 'Does AI calculate my hospital claim or vehicle payout?',
+        a: 'No. Every deduction—including proportionate room-rent cuts, deductibles, co-pays, and motor plastic or metal depreciation—runs on fixed IRDAI-aligned formulas. AI is only used to summarize plain-English clauses and inspect damage photos.',
+    },
+    {
+        q: 'How are my PAN, Aadhaar, and policy PDFs kept private?',
+        a: 'Sensitive personal IDs and phone numbers are masked automatically before any text reaches an AI model. Your uploaded policies live in user-isolated cloud storage protected by Row-Level Security and signed expiring URLs.',
+    },
+    {
+        q: 'How does the Chrome Scam Shield guard WhatsApp Web and Gmail?',
+        a: 'Our Chrome extension evaluates suspicious domains, fake KYC .apk links, and reverse-UPI refund phrases directly inside your browser first—flagging threats on Websites, WhatsApp Web, and Gmail without uploading your private emails or chats.',
+    },
+    {
+        q: 'What if I upload accident photos with poor lighting?',
+        a: 'Up to 6 photos are inspected using multimodal vision with an automatic local Python fallback estimator. You can also select or adjust damaged panels manually and compare any workshop bill against OEM price benchmarks.',
+    },
+    {
+        q: 'Is PolicyGuard AI completely free for policyholders?',
+        a: 'Yes. Creating an account, decoding policies, running all 7 claim scenarios, checking suspicious links, managing Family Emergency Cards, and downloading Claim Prep & GRO appeal PDFs are 100% free.',
+    },
+];
 
 export default function LandingPage() {
     const navigate = useNavigate();
+    const [navScrolled, setNavScrolled] = useState(false);
+    const [previewIdx, setPreviewIdx] = useState(0);
+    const [openFaq, setOpenFaq] = useState(0);
+
     const reducedMotion = useMemo(
         () => typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches,
         []
     );
 
+    useEffect(() => {
+        const onScroll = () => setNavScrolled((window.scrollY || 0) > 24);
+        window.addEventListener('scroll', onScroll, { passive: true });
+        return () => window.removeEventListener('scroll', onScroll);
+    }, []);
+
     const scrollTo = (id) => {
         document.getElementById(id)?.scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth' });
     };
 
+    const preview = PREVIEW_SCENARIOS[previewIdx];
+
     return (
         <div className="landing-root">
-            {/* Editorial Obsidian Nav */}
-            <nav className="landing-nav">
-                <div className="landing-nav-logo" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
-                    <img src="/logo.png" alt="PolicyGuard AI" className="landing-nav-img" />
+            {/* Crystal Floating Navigation Bar */}
+            <header className={`landing-nav ${navScrolled ? 'scrolled' : ''}`}>
+                <div
+                    className="landing-nav-logo"
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => window.scrollTo({ top: 0, behavior: reducedMotion ? 'auto' : 'smooth' })}
+                    onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            window.scrollTo({ top: 0, behavior: reducedMotion ? 'auto' : 'smooth' });
+                        }
+                    }}
+                >
+                    <img src="/logo.png" alt="PolicyGuard AI" width={34} height={34} className="landing-nav-img" />
                     <span>PolicyGuard <span className="landing-logo-badge">AI</span></span>
                 </div>
-
-                <div className="landing-nav-links">
-                    <button type="button" onClick={() => scrollTo('architecture')}>Architecture</button>
-                    <button type="button" onClick={() => scrollTo('capabilities')}>Capabilities</button>
-                    <button type="button" onClick={() => scrollTo('workflow')}>Workflow</button>
-                </div>
-
+                <nav className="landing-nav-links" aria-label="Landing Navigation">
+                    <button type="button" onClick={() => scrollTo('capabilities')}>Tools</button>
+                    <button type="button" onClick={() => scrollTo('architecture')}>How It Works</button>
+                    <button type="button" onClick={() => scrollTo('workflow')}>Payout Math</button>
+                    <button type="button" onClick={() => scrollTo('security')}>Privacy</button>
+                </nav>
                 <div className="landing-nav-actions">
                     <button type="button" className="btn-nav-ghost" onClick={() => navigate('/login')}>Sign In</button>
                     <button type="button" className="btn btn-primary btn-sm" onClick={() => navigate('/register')}>
-                        Get Started <ChevronRight size={15} />
+                        Get Started <ChevronRight size={14} />
                     </button>
                 </div>
-            </nav>
+            </header>
 
-            {/* Dark Atmospheric Hero Stage */}
+            <main>
+            {/* HERO STAGE: Obsidian Vault 3D + Interactive Sample Console */}
             <section className="landing-hero-stage">
-                <div className="landing-hero-canvas">
-                    <CanvasErrorBoundary fallbackTitle="3D Core visualization ready when WebGL is enabled.">
-                        <Canvas
-                            dpr={[1, 1.5]}
-                            camera={{ position: [0, 0, 12], fov: 56 }}
-                            gl={{ alpha: true, antialias: true }}
-                        >
-                            <ambientLight intensity={1.1} />
-                            <directionalLight position={[10, 10, 10]} intensity={1.8} color="#f43f5e" />
-                            <pointLight position={[-10, -8, -8]} intensity={1.2} color="#22d3ee" />
-                            <CameraRig />
-                            <DataStreamField active={false} color="#f472b6" />
-                            <CyberCore position={[4.1, -0.1, -2]} active={false} />
-                            <GridFloor />
-                            <fog attach="fog" args={['#050814', 10, 28]} />
-                        </Canvas>
-                    </CanvasErrorBoundary>
+                <div className="landing-hero-canvas" aria-hidden="true">
+                    <HeroVaultScene3D mode={preview.id} reducedMotion={reducedMotion} />
                 </div>
 
                 <div className="landing-hero-inner">
-                    <div className="hero-badge-obsidian">
-                        <Zap size={13} />
-                        <span>IRDAI-Aligned Policy &amp; Claims Intelligence</span>
-                    </div>
+                    <div className="hero-split-grid">
+                        <div className="hero-copy-col">
+                            <div className="hero-badge-obsidian">
+                                <span className="hero-live-dot" aria-hidden="true" />
+                                <Sparkles size={13} /> IRDAI-Aligned Policy &amp; Claim Clarity
+                            </div>
+                            <h1 className="hero-title-obsidian">
+                                Decode Every Clause.
+                                <span className="hero-title-accent">Win Every Fair Claim.</span>
+                            </h1>
+                            <p className="hero-subtitle-obsidian">
+                                Decode confusing policy PDFs into plain language, estimate real hospital or car payouts before billing surprises hit, and block WhatsApp &amp; Gmail insurance scams automatically.
+                            </p>
+                            <div className="hero-cta">
+                                <button type="button" className="btn btn-primary btn-lg" onClick={() => navigate('/register')}>
+                                    Start Free Analysis <ChevronRight size={18} />
+                                </button>
+                                <button type="button" className="btn-hero-outline" onClick={() => scrollTo('capabilities')}>
+                                    Explore 6 Core Tools <ArrowUpRight size={16} />
+                                </button>
+                            </div>
+                            <div className="hero-guarantees-inline">
+                                <span><Lock size={13} /> PAN &amp; Aadhaar Masked</span>
+                                <span><Shield size={13} /> Rule-Checked Payouts</span>
+                                <span><CheckCircle2 size={13} /> Free Personal Vault</span>
+                            </div>
+                        </div>
 
-                    <h1 className="hero-title-obsidian">
-                        Decode Every Clause.<br />
-                        <span className="hero-title-accent">Win Every Fair Claim.</span>
-                    </h1>
+                        {/* Interactive Sample Preview Console */}
+                        <SpotlightCard className="hero-diagnostic-card" hoverLift={false}>
+                            <div className="hero-diag-header">
+                                <span className="hero-diag-title">
+                                    <Activity size={14} style={{ color: '#fb7185' }} /> INTERACTIVE SAMPLE PREVIEW
+                                </span>
+                                <span className="hero-diag-pill">{preview.badge}</span>
+                            </div>
 
-                    <p className="hero-subtitle-obsidian">
-                        Stop signing blind PDF renewals. PolicyGuard AI extracts hidden room-rent traps, computes deterministic claim payouts, verifies vehicle damage, and blocks WhatsApp &amp; Gmail scams in real time.
-                    </p>
+                            <div className="hero-diag-tabs" role="tablist" aria-label="Sample preview modes">
+                                {PREVIEW_SCENARIOS.map((item, idx) => (
+                                    <button
+                                        key={item.id}
+                                        type="button"
+                                        role="tab"
+                                        aria-selected={previewIdx === idx}
+                                        className={`hero-diag-tab ${previewIdx === idx ? 'active' : ''}`}
+                                        onClick={() => setPreviewIdx(idx)}
+                                    >
+                                        {previewIdx === idx && (
+                                            <motion.span
+                                                layoutId="heroPreviewTabPill"
+                                                className="hero-diag-tab-pill"
+                                                transition={{ type: 'spring', stiffness: 420, damping: 32 }}
+                                            />
+                                        )}
+                                        <span style={{ position: 'relative', zIndex: 1 }}>{item.label}</span>
+                                    </button>
+                                ))}
+                            </div>
 
-                    <div className="hero-cta">
-                        <button type="button" className="btn btn-primary btn-lg" onClick={() => navigate('/register')}>
-                            Start Free Analysis <ChevronRight size={18} />
-                        </button>
-                        <button type="button" className="btn-hero-outline" onClick={() => scrollTo('architecture')}>
-                            Inspect 3D Architecture <ArrowUpRight size={16} />
-                        </button>
+                            <AnimatePresence mode="wait">
+                                <motion.div
+                                    key={preview.id}
+                                    className="hero-diag-metrics"
+                                    initial={{ opacity: 0, y: 6 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    exit={{ opacity: 0, y: -6 }}
+                                    transition={{ duration: 0.2 }}
+                                >
+                                    <div className="hero-diag-row">
+                                        <span>{preview.scoreLabel}</span>
+                                        <strong style={{ color: '#34d399' }}>{preview.scoreValue}</strong>
+                                    </div>
+                                    <div className="hero-diag-bar">
+                                        <motion.span
+                                            initial={{ width: 0 }}
+                                            animate={{ width: `${preview.scorePct}%` }}
+                                            transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
+                                            style={{ background: preview.barGradient }}
+                                        />
+                                    </div>
+
+                                    {preview.rows.map(([lbl, val, clr], rIdx) => (
+                                        <div key={lbl} className="hero-diag-row" style={{ marginTop: rIdx === 0 ? 10 : 0 }}>
+                                            <span>{lbl}</span>
+                                            <strong style={{ color: clr }}>{val}</strong>
+                                        </div>
+                                    ))}
+                                </motion.div>
+                            </AnimatePresence>
+
+                            <div className="hero-diag-footer">
+                                <Sparkles size={13} style={{ color: '#38bdf8', flexShrink: 0 }} />
+                                <span>{preview.footer}</span>
+                            </div>
+                        </SpotlightCard>
                     </div>
 
                     <div className="hero-telemetry-grid">
-                        <div className="hero-telemetry-cell">
-                            <span className="hero-telemetry-val">IRDAI 2024</span>
-                            <span className="hero-telemetry-lbl">60m Moratorium &amp; 3h SLA Rules</span>
-                        </div>
-                        <div className="hero-telemetry-cell">
-                            <span className="hero-telemetry-val">Nemotron + Gemma 4</span>
-                            <span className="hero-telemetry-lbl">$0 Free Multi-Model Failover</span>
-                        </div>
-                        <div className="hero-telemetry-cell">
-                            <span className="hero-telemetry-val">3-Surface Shield</span>
-                            <span className="hero-telemetry-lbl">Chrome Web · WhatsApp · Gmail</span>
-                        </div>
+                        <SpotlightCard className="hero-telemetry-cell">
+                            <span className="hero-telemetry-val">IRDAI 2024 Protection</span>
+                            <span className="hero-telemetry-lbl">Checks 60-month pre-existing moratorium, 3-hour cashless discharge SLA &amp; room-rent caps</span>
+                        </SpotlightCard>
+                        <SpotlightCard className="hero-telemetry-cell">
+                            <span className="hero-telemetry-val">Policy + Vehicle Photo AI</span>
+                            <span className="hero-telemetry-lbl">Turns multi-column PDFs into page-cited cards and audits up to 6 accident photos cleanly</span>
+                        </SpotlightCard>
+                        <SpotlightCard className="hero-telemetry-cell">
+                            <span className="hero-telemetry-val">3-Surface Scam Shield</span>
+                            <span className="hero-telemetry-lbl">Blocks fake KYC .apk apps, UPI refund lures &amp; lookalike links on Web, WhatsApp &amp; Gmail</span>
+                        </SpotlightCard>
                     </div>
                 </div>
             </section>
 
-            {/* Interactive 3D System Architecture Showcase */}
-            <section id="architecture" className="landing-arch-section">
-                <div className="landing-section-shell">
-                    <div className="arch-section-header">
-                        <span className="arch-eyebrow">LIVE TELEMETRY PIPELINE</span>
-                        <h2>Deterministic + Multi-Model System Architecture</h2>
-                        <p>
-                            Inspect how encrypted PDFs, Chrome Shield signals, OpenRouter zero-cost models, Supabase RLS tables, and IRDAI actuarial math connect end-to-end. Click any orbital node below.
-                        </p>
-                    </div>
-
-                    <ArchitectureOrbit3D />
-                </div>
-            </section>
-
-            {/* Clean Editorial Light Band — Core Capabilities */}
+            {/* BENTO SHOWCASE: Six Clear Policyholder Tools */}
             <section id="capabilities" className="landing-features">
                 <div className="landing-section-shell">
-                    <div className="section-heading-left">
-                        <span className="section-kicker">Core Modules</span>
-                        <h2 className="section-title-clean">Precision tools built for real policyholders</h2>
-                        <p className="section-subtitle-clean">
-                            Every button maps directly to deterministic rules, indexed PDF citations, and auditable outputs — never vague guesses.
-                        </p>
-                    </div>
+                    <Reveal className="capabilities-header-row">
+                        <div>
+                            <span className="section-kicker">Core Product Suite</span>
+                            <h2 className="section-title-clean">Six clear tools for every stage of your policy</h2>
+                            <p className="section-subtitle-clean">
+                                Every calculation follows transparent insurance rules and links directly back to your uploaded policy pages—never vague guesswork.
+                            </p>
+                        </div>
+                        <div className="capabilities-trust-glass">
+                            <div className="trust-stat-item">
+                                <strong>100%</strong>
+                                <span>Rule-Checked Math</span>
+                            </div>
+                            <span className="trust-divider" aria-hidden="true" />
+                            <div className="trust-stat-item">
+                                <strong>7</strong>
+                                <span>Claim Scenarios</span>
+                            </div>
+                            <span className="trust-divider" aria-hidden="true" />
+                            <div className="trust-stat-item">
+                                <strong>10 MB</strong>
+                                <span>Private Vault Upload</span>
+                            </div>
+                        </div>
+                    </Reveal>
 
-                    <div className="features-grid">
-                        <FeatureCard
-                            icon={FileText}
-                            tag="PDF + OCR"
-                            color="#e11d48"
-                            title="Table-Aware Policy CIS & Index"
-                            desc="Parses multi-column policy tables cleanly into IRDAI CIS cards, room-rent sub-limits, waiting periods, and searchable page-cited clauses."
-                        />
-                        <FeatureCard
-                            icon={Calculator}
-                            tag="Deterministic"
-                            color="#059669"
-                            title="7-Scenario Payout Waterfall"
-                            desc="Interactive What-If room rent sliders, co-pay & deductible calculators, 3-hour cashless SLA countdowns, and downloadable Claim Guide PDFs."
-                        />
-                        <FeatureCard
-                            icon={Car}
-                            tag="Vision + ML"
-                            color="#d97706"
-                            title="Vehicle Damage & Quote Audit"
-                            desc="Multimodal vision with local FastAPI YOLOv8/sklearn fallback detects damaged parts, calculates IRDAI part depreciation, and flags garage overcharges."
-                        />
-                        <FeatureCard
-                            icon={ShieldAlert}
-                            tag="Chrome MV3"
-                            color="#0284c7"
-                            title="3-Surface Browser Scam Shield"
-                            desc="Blocks malicious .apk installers, reverse-UPI refund lures, lookalike insurer domains, and phishing banners across Chrome, WhatsApp Web & Gmail."
-                        />
-                        <FeatureCard
-                            icon={Cpu}
-                            tag="3D Voice"
-                            color="#7c3aed"
-                            title="Parinidhi Voice & Live Research"
-                            desc="Multilingual 3D voice advisor backed by indexed clause citations and live insurer portal & brochure verification."
-                        />
-                        <FeatureCard
-                            icon={Lock}
-                            tag="Zero-Leak"
-                            color="#0f766e"
-                            title="Family Vault & Emergency SOS"
-                            desc="Centralize blood groups, PED history, linked policies, 1-tap SOS playbooks (112/108/1930/155255), and printable Emergency E-Cards."
-                        />
+                    <div className="bento-grid-12">
+                        {CORE_CAPABILITIES.map(({ span, delay, kicker, tag, title, desc, route, cta, dark, Vector }, idx) => (
+                            <Reveal key={title} delay={delay} className={span}>
+                                <SpotlightCard as="article" className="bento-card">
+                                    <div className="bento-card-head">
+                                        <span className="bento-kicker">
+                                            <span className="bento-index">0{idx + 1}</span>
+                                            {kicker}
+                                        </span>
+                                        <span className="feature-tag">{tag}</span>
+                                    </div>
+                                    <h3>{title}</h3>
+                                    <p>{desc}</p>
+                                    <div className={`bento-schematic-wrap ${dark ? 'dark-blueprint' : ''}`}>
+                                        <Vector />
+                                    </div>
+                                    <div className="bento-card-foot">
+                                        <button
+                                            type="button"
+                                            className="bento-action-link"
+                                            onClick={() => navigate(route)}
+                                        >
+                                            <span>{cta}</span>
+                                            <ArrowUpRight size={15} />
+                                        </button>
+                                    </div>
+                                </SpotlightCard>
+                            </Reveal>
+                        ))}
                     </div>
                 </div>
             </section>
 
-            {/* Clean Workflow Band */}
+            {/* INTERACTIVE 3D SYSTEM PIPELINE */}
+            <section id="architecture" className="landing-arch-section">
+                <div className="landing-section-shell">
+                    <Reveal className="arch-section-header">
+                        <span className="arch-eyebrow">CONNECTED DATA FLOW</span>
+                        <h2>See how your policy moves safely from upload to payout clarity</h2>
+                        <p>
+                            Inspect the six connected layers linking your browser shield, API security gate, free AI router, encrypted user vault, payout &amp; vehicle engine, and downloadable PDFs.
+                        </p>
+                    </Reveal>
+                    <Reveal delay={100}>
+                        <ArchitectureOrbit3D />
+                    </Reveal>
+                </div>
+            </section>
+
+            {/* TRANSPARENT PAYOUT MATH & 3-STEP WORKFLOW */}
             <section id="workflow" className="landing-workflow">
                 <div className="landing-section-shell">
                     <div className="workflow-grid">
-                        <div>
-                            <span className="section-kicker">3-Step Execution</span>
-                            <h2 className="section-title-clean">From confusing fine print to clear claim action in seconds</h2>
+                        <Reveal>
+                            <span className="section-kicker">Transparent Claim Math</span>
+                            <h2 className="section-title-clean">From buried PDF tables to clear claim outcomes</h2>
                             <p className="section-subtitle-clean">
-                                Upload an insurer schedule, run live Claim &amp; Settlement decoders, and export formal GRO escalation PDFs when a TPA short-pays.
+                                PolicyGuard AI converts complex insurance rules into transparent math backed by page numbers, countdown timers, and ready-to-send appeal letters.
                             </p>
-                            <button type="button" className="btn btn-primary" onClick={() => navigate('/register')}>
-                                Launch Workspace <ChevronRight size={16} />
+
+                            <SpotlightCard className="formula-proof-card">
+                                <span className="formula-proof-label">HOW YOUR INSURER CALCULATES PAYOUT</span>
+                                <div className="formula-steps-row" aria-label="Hospital claim payout breakdown formula">
+                                    {FORMULA_STEPS.map((step) => (
+                                        <span key={step.label} className="formula-token-group">
+                                            {step.op && <span className="formula-op" aria-hidden="true">{step.op}</span>}
+                                            <span className={`formula-chip tone-${step.tone}`}>
+                                                {step.label}
+                                            </span>
+                                        </span>
+                                    ))}
+                                </div>
+                                <div className="workflow-trust-pills" style={{ marginTop: 14, marginBottom: 0 }}>
+                                    <span>Capped at Sum Insured</span>
+                                    <span>3h Cashless Timer</span>
+                                    <span>Ready Appeal PDFs</span>
+                                </div>
+                            </SpotlightCard>
+
+                            <button type="button" className="btn btn-primary" style={{ marginTop: 22 }} onClick={() => navigate('/register')}>
+                                Launch Free Workspace <ChevronRight size={16} />
                             </button>
-                        </div>
+                        </Reveal>
 
                         <div className="workflow-steps">
                             {[
-                                ['01', 'Upload Policy PDF or E-Card Photo', 'Signed private storage with PII masking and multi-page clause indexing.'],
-                                ['02', 'Audit Coverage Gaps & Run What-Ifs', 'Simulate room-rent proportionate deductions and 60-month PED moratorium rules before admission.'],
-                                ['03', 'Export Claim Prep & GRO Appeal PDFs', 'Download structured checklists, Emergency Cards, and regulation-backed settlement dispute letters.'],
-                            ].map(([num, heading, body]) => (
-                                <div key={num} className="workflow-step-card">
-                                    <span className="workflow-step-num">{num}</span>
-                                    <div>
-                                        <h3>{heading}</h3>
-                                        <p>{body}</p>
-                                    </div>
-                                    <CheckCircle2 size={18} className="workflow-check" />
-                                </div>
+                                ['01', 'rose', 'Upload Policy PDF or E-Card (Up to 10 MB)', 'Personal IDs are masked automatically while tables extract room-rent caps, waiting periods, and clickable page citations.'],
+                                ['02', 'sky', 'Simulate Claim Payouts, Damage & Scam Links', 'Test hospital bill scenarios with the room-rent slider, analyze up to 6 accident photos, or check suspicious WhatsApp & Gmail URLs.'],
+                                ['03', 'emerald', 'Download Checklists, E-Cards & GRO Appeals', 'Export Claim Prep Guides, printable Family Emergency Wallet E-Cards, and formal IRDAI settlement appeal letters anytime.'],
+                            ].map(([num, tone, title, desc], idx) => (
+                                <Reveal key={num} delay={idx * 90}>
+                                    <SpotlightCard className={`workflow-step-card tone-${tone}`}>
+                                        <span className={`workflow-step-num tone-${tone}`}>{num}</span>
+                                        <div>
+                                            <h3>{title}</h3>
+                                            <p>{desc}</p>
+                                        </div>
+                                        <CheckCircle2 size={18} className="workflow-check" />
+                                    </SpotlightCard>
+                                </Reveal>
                             ))}
                         </div>
                     </div>
                 </div>
             </section>
 
-            {/* Final CTA & Footer */}
-            <section className="landing-cta-dark">
-                <div className="landing-cta-card-dark">
-                    <Shield size={28} style={{ color: '#fb7185', marginBottom: 12 }} />
-                    <h2>Take Control of Your Coverage Today</h2>
-                    <p>Open-source insurer intelligence powered by Supabase, IRDAI deterministic rules, and zero-cost open AI.</p>
-                    <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
-                        <button type="button" className="btn btn-primary btn-lg" onClick={() => navigate('/register')}>
-                            Create Free Account <ChevronRight size={18} />
-                        </button>
-                        <button type="button" className="btn-hero-outline" onClick={() => navigate('/login')}>
-                            Sign In
-                        </button>
+            {/* PRIVACY, SECURITY & FAQ BAND */}
+            <section id="security" className="landing-security-band">
+                <div className="landing-section-shell">
+                    <Reveal className="security-header-center">
+                        <span className="section-kicker">Privacy &amp; Accuracy</span>
+                        <h2 className="section-title-clean">Built to protect your identity, data &amp; claim rights</h2>
+                    </Reveal>
+
+                    <div className="security-pillars-grid">
+                        {SECURITY_PILLARS.map(({ icon: Icon, tone, title, desc, tag }, idx) => (
+                            <Reveal key={title} delay={idx * 70}>
+                                <SpotlightCard className="security-pillar-card">
+                                    <div className="security-pillar-top">
+                                        <span className={`security-pillar-icon tone-${tone}`}><Icon size={18} /></span>
+                                        <span className={`security-pillar-tag tone-${tone}`}>{tag}</span>
+                                    </div>
+                                    <h3>{title}</h3>
+                                    <p>{desc}</p>
+                                </SpotlightCard>
+                            </Reveal>
+                        ))}
                     </div>
+
+                    <Reveal delay={120} className="landing-faq-box">
+                        <h3 className="landing-faq-heading">Common Questions</h3>
+                        <div className="landing-faq-list">
+                            {ARCHITECTURE_FAQS.map((item, idx) => {
+                                const isOpen = openFaq === idx;
+                                return (
+                                    <div key={item.q} className={`landing-faq-item ${isOpen ? 'open' : ''}`}>
+                                        <button
+                                            type="button"
+                                            className="landing-faq-q"
+                                            aria-expanded={isOpen}
+                                            onClick={() => setOpenFaq(isOpen ? -1 : idx)}
+                                        >
+                                            <span>{item.q}</span>
+                                            <ChevronDown size={16} className="landing-faq-chevron" />
+                                        </button>
+                                        <AnimatePresence initial={false}>
+                                            {isOpen && (
+                                                <motion.div
+                                                    initial={{ height: 0, opacity: 0 }}
+                                                    animate={{ height: 'auto', opacity: 1 }}
+                                                    exit={{ height: 0, opacity: 0 }}
+                                                    transition={{ duration: 0.22 }}
+                                                    style={{ overflow: 'hidden' }}
+                                                >
+                                                    <p className="landing-faq-a">{item.a}</p>
+                                                </motion.div>
+                                            )}
+                                        </AnimatePresence>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </Reveal>
                 </div>
             </section>
 
+            {/* DARK OBSIDIAN FINAL CTA */}
+            <section className="landing-cta-dark">
+                <Reveal className="landing-section-shell">
+                    <SpotlightCard className="landing-cta-card-dark">
+                        <div className="cta-shield-medallion" aria-hidden="true">
+                            <Shield size={28} style={{ color: '#fb7185' }} />
+                        </div>
+                        <h2>Take Control of Your Coverage Today</h2>
+                        <p>Decode hidden limits, simulate fair payouts, and guard your family before an emergency strikes.</p>
+                        <div className="hero-cta" style={{ justifyContent: 'center', marginTop: 24 }}>
+                            <button type="button" className="btn btn-primary btn-lg" onClick={() => navigate('/register')}>
+                                Create Free Account <ChevronRight size={18} />
+                            </button>
+                            <button type="button" className="btn-hero-outline" onClick={() => navigate('/login')}>
+                                Sign In
+                            </button>
+                        </div>
+                    </SpotlightCard>
+                </Reveal>
+            </section>
+            </main>
+
             <footer className="landing-footer-dark">
-                <span>© 2026 PolicyGuard AI · IRDAI Policy &amp; Claims Intelligence</span>
-                <span>Built by Mohamed Fazil Pasha</span>
+                <div className="landing-footer-inner">
+                    <div>
+                        <div className="landing-footer-brand">
+                            <img src="/logo.png" alt="" width={24} height={24} style={{ borderRadius: 6 }} />
+                            <span>PolicyGuard AI</span>
+                        </div>
+                        <p className="landing-footer-note">
+                            Clear policy intelligence, transparent claim simulations, vehicle damage checks, and real-time scam defense.
+                        </p>
+                    </div>
+                    <div className="landing-footer-cols">
+                        <div>
+                            <h3>Platform</h3>
+                            <button type="button" onClick={() => scrollTo('capabilities')}>Six Core Tools</button>
+                            <button type="button" onClick={() => scrollTo('architecture')}>How It Works</button>
+                            <button type="button" onClick={() => scrollTo('workflow')}>Claim Math</button>
+                            <button type="button" onClick={() => scrollTo('security')}>Privacy &amp; FAQ</button>
+                        </div>
+                        <div>
+                            <h3>Access</h3>
+                            <button type="button" onClick={() => navigate('/login')}>Workspace Sign In</button>
+                            <button type="button" onClick={() => navigate('/register')}>Create Free Account</button>
+                        </div>
+                    </div>
+                </div>
+                <div className="landing-footer-bottom">
+                    <span>© {new Date().getFullYear()} PolicyGuard AI · Clear Policy &amp; Claim Intelligence</span>
+                    <span>Built by Mohamed Fazil Pasha</span>
+                </div>
             </footer>
         </div>
     );

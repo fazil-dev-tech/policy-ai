@@ -557,7 +557,9 @@ ${claimantName}`;
 };
 
 const computeReadinessChecklist = (scenarioType, evidenceList = [], policy = {}, incidentDate = new Date()) => {
-    const categories = new Set((evidenceList || []).map((e) => e.doc_category || e.docCategory));
+    const categories = new Set(
+        (evidenceList || []).flatMap((e) => [e.doc_category || e.docCategory, e.extracted_data?.subCategory].filter(Boolean))
+    );
     const parsedTime = new Date(incidentDate).getTime();
     const hoursElapsed = Number.isNaN(parsedTime) ? 999 : (Date.now() - parsedTime) / (1000 * 60 * 60);
 

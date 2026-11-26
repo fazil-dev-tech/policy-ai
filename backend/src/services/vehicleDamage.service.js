@@ -136,6 +136,7 @@ const analyzeMotorAccident = async ({
         }
     }
 
+    let mlCostMultiplier = null;
     // Tier 2: Local ml-service/ (FastAPI + YOLOv8 + scikit-learn) fallback
     if ((detectionSource === 'benchmark_manual' || damagedParts.length === 0) && onlyPhotos.length > 0) {
         const mlRes = await callLocalMlSidecar({ files: onlyPhotos, vehicleInfo });
@@ -146,6 +147,9 @@ const analyzeMotorAccident = async ({
                     error: NON_VEHICLE_MESSAGE,
                     imageQuality: mlRes.image_quality || imageQuality,
                 };
+            }
+            if (Number.isFinite(Number(mlRes.sklearnCostMultiplier))) {
+                mlCostMultiplier = Number(mlRes.sklearnCostMultiplier);
             }
             if (Array.isArray(mlRes.damaged_parts) && mlRes.damaged_parts.length > 0) {
                 damagedParts = mlRes.damaged_parts;
@@ -197,6 +201,7 @@ const analyzeMotorAccident = async ({
             summary: overallSummary,
             repairEstimate: estimate.repairEstimate,
             insurancePayout: estimate.insurancePayout,
+            sklearnCostMultiplier: mlCostMultiplier,
             oemReferences: (oemLookup?.results || []).slice(0, 3),
         },
         disclaimer,

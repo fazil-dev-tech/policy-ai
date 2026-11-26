@@ -9,13 +9,27 @@ const { mapPolicy, normalizeEnum, safeIsoDate } = require('../utils/mappers');
 const logger = require('../utils/logger');
 
 const VALID_SCENARIOS = [
-    'card_only', 'medical_hospitalization', 'medical_claim', 'motor_accident',
-    'life_claim', 'travel_claim', 'home_claim', 'settlement_audit', 'mis_selling', 'other',
+    'full_policy', 'card_only', 'medical_claim', 'motor_accident',
+    'settlement_audit', 'agent_mis_selling', 'renewal_diff', 'general',
 ];
+const SCENARIO_ALIASES = {
+    medical_hospitalization: 'medical_claim',
+    mis_selling: 'agent_mis_selling',
+    life_claim: 'general',
+    travel_claim: 'general',
+    home_claim: 'general',
+    other: 'general',
+};
 const VALID_EVIDENCE_CATEGORIES = [
     'policy_pdf', 'e_card', 'doctor_script', 'lab_xray', 'hospital_estimate',
     'discharge_summary', 'vehicle_photo', 'garage_quote', 'settlement_sheet', 'brochure', 'other',
 ];
+
+const normalizeScenario = (rawScenario = 'medical_claim') => {
+    const key = String(rawScenario || '').trim().toLowerCase();
+    const mapped = SCENARIO_ALIASES[key] || key;
+    return normalizeEnum(mapped, VALID_SCENARIOS, 'medical_claim');
+};
 
 const safeJsonParse = (val, fallback) => {
     if (val === undefined || val === null || val === '') return fallback;
@@ -51,7 +65,7 @@ const analyzeIncident = async (req, res, next) => {
             signedFiles = [],
         } = req.body;
 
-        const safeScenario = normalizeEnum(scenarioType, VALID_SCENARIOS, 'medical_claim');
+        const safeScenario = normalizeScenario(scenarioType);
         const safeIncidentDateIso = safeIsoDate(incidentDate, new Date());
         const parsedVehicleInfo = safeJsonParse(vehicleInfo, {});
         const parsedSignedFiles = safeJsonParse(signedFiles, []);
@@ -124,9 +138,10 @@ const analyzeIncident = async (req, res, next) => {
                 uploadedPathsToCleanup.push(storagePath);
             }
 
+            const rawHintCat = String(item.hintCategory || '').trim().toLowerCase();
             let docCategory = normalizeEnum(item.hintCategory, VALID_EVIDENCE_CATEGORIES, 'other');
             let ocrText = '';
-            let extractedData = {};
+            let extractedData = rawHintCat === 'dl_rc' ? { subCategory: 'dl_rc' } : {};
             let confidenceScore = 80;
 
             if (magic.detectedMime === 'application/pdf') {
@@ -328,7 +343,12 @@ const downloadClaimGuidePdf = async (req, res, next) => {
 
         let policy = {};
         if (incident.policy_id) {
-            const { data: pol } = await supabaseAdmin.from('policies').select('*').eq('id', incident.policy_id).maybeSingle();
+            const { data: pol } = await supabaseAdmin
+                .from('policies')
+                .select('*')
+                .eq('id', incident.policy_id)
+                .eq('user_id', req.user.id)
+                .maybeSingle();
             if (pol) policy = pol;
         }
 
@@ -351,6 +371,7 @@ const downloadClaimGuidePdf = async (req, res, next) => {
 };
 
 const analyzeVehicleDamageEndpoint = async (req, res, next) => {
+    const tempSignedPaths = [];
     try {
         const vehicleInfo = safeJsonParse(req.body?.vehicleInfo, {});
         const manualParts = safeJsonParse(req.body?.manualParts, []);
@@ -363,20 +384,30 @@ const analyzeVehicleDamageEndpoint = async (req, res, next) => {
         for (const sf of signedFiles) {
             if (!sf?.storagePath) continue;
             const safePath = storageService.assertSafeUserStoragePath(req.user.id, sf.storagePath);
+            tempSignedPaths.push(safePath);
             const buffer = await storageService.downloadBuffer(safePath);
             rawFiles.push({ buffer, mimetype: sf.mimeType || 'image/jpeg', originalname: sf.fileName || 'photo.jpg' });
         }
+
+        const cleanupTempSigned = async () => {
+            while (tempSignedPaths.length > 0) {
+                const p = tempSignedPaths.pop();
+                await storageService.deleteStorageFile(p).catch(() => {});
+            }
+        };
 
         const imageFiles = [];
         for (const f of rawFiles) {
             const magic = storageService.validateMagicBytes(f.buffer, f.mimetype);
             if (!magic.valid || !String(magic.detectedMime || '').startsWith('image/')) {
+                await cleanupTempSigned();
                 return res.status(400).json({ error: `${f.originalname}: Only valid JPG, PNG, or WEBP photos are allowed.` });
             }
             imageFiles.push({ ...f, mimetype: magic.detectedMime });
         }
 
         if (imageFiles.length === 0 && (!Array.isArray(manualParts) || manualParts.length === 0)) {
+            await cleanupTempSigned();
             return res.status(400).json({ error: 'Upload at least 1 accident photo or select damaged vehicle parts.' });
         }
 
@@ -389,6 +420,8 @@ const analyzeVehicleDamageEndpoint = async (req, res, next) => {
             garageQuoteTotal: Number(req.body.garageQuoteTotal || 0),
         });
 
+        await cleanupTempSigned();
+
         if (result.rejected) {
             return res.status(400).json(result);
         }
@@ -396,6 +429,10 @@ const analyzeVehicleDamageEndpoint = async (req, res, next) => {
         res.status(201).json(result);
     } catch (error) {
         next(error);
+    } finally {
+        for (const p of tempSignedPaths) {
+            await storageService.deleteStorageFile(p).catch(() => {});
+        }
     }
 };
 
@@ -443,7 +480,9 @@ const toggleChecklistItem = async (req, res, next) => {
 
 const generateSlaEscalation = async (req, res, next) => {
     try {
-        const { policyId = null, hospitalName = 'Hospital Billing Desk', elapsedMinutes = 180 } = req.body || {};
+        const { policyId = null, hospitalName = 'Hospital Billing Desk', elapsedMinutes = 0 } = req.body || {};
+        const mins = Math.max(0, Math.round(Number(elapsedMinutes) || 0));
+        const isBreached = mins >= 180;
         let policy = {};
         if (policyId) {
             const { data } = await supabaseAdmin
@@ -456,23 +495,37 @@ const generateSlaEscalation = async (req, res, next) => {
         }
         const insurer = policy.provider_name || 'Insurance Provider';
         const policyNum = policy.policy_number || 'N/A';
-        const draft = `Subject: URGENT – Breach of IRDAI 3-Hour Cashless Discharge SLA | Policy #${policyNum}
+        const subjectPrefix = isBreached
+            ? 'URGENT – Breach of IRDAI 3-Hour Cashless Discharge SLA'
+            : `SLA Monitoring Draft (${mins}m / 180m elapsed) – IRDAI 3-Hour Cashless Discharge SLA`;
+        const timingStatement = isBreached
+            ? `Final discharge documents for the cashless claim under Policy No. ${policyNum} (${req.user.name}) at ${hospitalName} were submitted ${mins} minutes ago, exceeding the mandatory 180-minute threshold.`
+            : `Final discharge documents for the cashless claim under Policy No. ${policyNum} (${req.user.name}) at ${hospitalName} were submitted ${mins} minutes ago. Note: The 180-minute IRDAI SLA window has not yet breached (${Math.max(0, 180 - mins)} minutes remaining); retain this draft for immediate dispatch if clearance stalls.`;
+        const closingLine = isBreached
+            ? 'Kindly issue the final approval immediately and treat this email as formal notice for Bima Bharosa SLA escalation.'
+            : 'Kindly expedite final discharge clearance before the 180-minute statutory window expires to avoid SLA escalation under Bima Bharosa.';
+        const draft = `Subject: ${subjectPrefix} | Policy #${policyNum}
 
 To: Cashless Claims & Grievance Redressal Officer (GRO), ${insurer}
 CC: IRDAI Bima Bharosa Portal (complaints@irdai.gov.in)
 
 Dear Sir/Madam,
 
-Final discharge documents for the cashless claim under Policy No. ${policyNum} (${req.user.name}) at ${hospitalName} were submitted over ${elapsedMinutes} minutes ago.
+${timingStatement}
 
 Under the IRDAI Master Circular on Health Insurance Business (May 2024), final authorization for cashless discharge must be granted within 3 hours of receiving discharge bills, failing which any additional hospital stay charges are to be borne by the insurer without impacting the policyholder's Sum Insured.
 
-Kindly issue the final approval immediately and treat this email as formal notice for Bima Bharosa SLA escalation.
+${closingLine}
 
 Sincerely,
 ${req.user.name}`;
 
-        res.json({ draft, helpline: policy.ai_summary?.helplineNumber || '155255 (IRDAI)' });
+        res.json({
+            draft,
+            elapsedMinutes: mins,
+            isBreached,
+            helpline: policy.ai_summary?.helplineNumber || '155255 (IRDAI)',
+        });
     } catch (error) {
         next(error);
     }
@@ -495,6 +548,7 @@ const getVehicleDamageReports = async (req, res, next) => {
 };
 
 const decodeSettlementShortfall = async (req, res, next) => {
+    let tempSignedPath = null;
     try {
         let { policyId = null, claimedAmount = 0, approvedAmount = 0, lineItems = [], preferOcr = false, storagePath = null } = req.body || {};
         if (typeof lineItems === 'string') {
@@ -505,6 +559,7 @@ const decodeSettlementShortfall = async (req, res, next) => {
         let fileMime = req.file?.mimetype || req.body?.mimeType || 'application/pdf';
         if (!fileBuffer && storagePath) {
             const safePath = storageService.assertSafeUserStoragePath(req.user.id, storagePath);
+            tempSignedPath = safePath;
             fileBuffer = await storageService.downloadBuffer(safePath);
         }
 
@@ -513,53 +568,64 @@ const decodeSettlementShortfall = async (req, res, next) => {
             const magic = storageService.validateMagicBytes(fileBuffer, fileMime);
             if (!magic.valid) return res.status(400).json({ error: magic.reason });
             let sheetText = '';
-            if (magic.detectedMime === 'application/pdf') {
-                const parsed = await pdfParser.parsePdfWithLayout(fileBuffer);
-                sheetText = parsed.fullText.slice(0, 8000);
-            } else {
-                const ocr = await pdfParser.extractImageOrScannedEvidence({
-                    buffer: fileBuffer,
-                    mimeType: magic.detectedMime,
-                    hintCategory: 'settlement_sheet',
-                });
-                sheetText = ocr.rawText || JSON.stringify(ocr.extractedFields || {});
+            try {
+                if (magic.detectedMime === 'application/pdf') {
+                    const parsed = await pdfParser.parsePdfWithLayout(fileBuffer);
+                    sheetText = parsed.fullText.slice(0, 8000);
+                } else {
+                    const ocr = await pdfParser.extractImageOrScannedEvidence({
+                        buffer: fileBuffer,
+                        mimeType: magic.detectedMime,
+                        hintCategory: 'settlement_sheet',
+                    });
+                    sheetText = ocr.rawText || JSON.stringify(ocr.extractedFields || {});
+                }
+            } catch (parseErr) {
+                logger.warn('Settlement document parse failed:', parseErr.message);
+                if (!(Number(claimedAmount) > 0)) {
+                    return res.status(400).json({
+                        error: 'Unable to read settlement document. Upload a valid PDF/image or enter Claimed & Approved amounts manually.',
+                    });
+                }
             }
 
-            try {
-                const aiRes = await aiService.generateJson(
-                    `Extract settlement figures and deduction line items from this Indian insurance settlement sheet or rejection letter. Respond ONLY with JSON:
+            if (sheetText) {
+                try {
+                    const aiRes = await aiService.generateJson(
+                        `Extract settlement figures and deduction line items from this Indian insurance settlement sheet or rejection letter. Respond ONLY with JSON:
 {
   "claimedAmount": 0,
   "approvedAmount": 0,
   "lineItems": [{"itemName": "", "claimed": 0, "approved": 0, "reason": ""}]
 }
 Document:\n${sheetText}`,
-                    { maxTokens: 2048 }
-                );
-                const useOcr = preferOcr === true || preferOcr === 'true';
-                if (Number(aiRes.data?.claimedAmount) > 0 && (useOcr || !Number(claimedAmount))) {
-                    claimedAmount = Number(aiRes.data.claimedAmount);
+                        { maxTokens: 2048 }
+                    );
+                    const useOcr = preferOcr === true || preferOcr === 'true';
+                    if (Number(aiRes.data?.claimedAmount) > 0 && (useOcr || !Number(claimedAmount))) {
+                        claimedAmount = Number(aiRes.data.claimedAmount);
+                    }
+                    const aiApp = aiRes.data?.approvedAmount;
+                    if (
+                        aiApp !== null &&
+                        aiApp !== undefined &&
+                        aiApp !== '' &&
+                        Number.isFinite(Number(aiApp)) &&
+                        Number(aiApp) >= 0 &&
+                        (useOcr || req.body.approvedAmount === undefined)
+                    ) {
+                        approvedAmount = Number(aiApp);
+                    }
+                    if (
+                        Array.isArray(aiRes.data?.lineItems) &&
+                        aiRes.data.lineItems.length > 0 &&
+                        (useOcr || !Array.isArray(lineItems) || lineItems.length === 0)
+                    ) {
+                        lineItems = aiRes.data.lineItems;
+                    }
+                } catch (err) {
+                    logger.warn('Settlement OCR AI extraction fallback to manual/submitted figures:', err.message);
                 }
-                const aiApp = aiRes.data?.approvedAmount;
-                if (
-                    aiApp !== null &&
-                    aiApp !== undefined &&
-                    aiApp !== '' &&
-                    Number.isFinite(Number(aiApp)) &&
-                    Number(aiApp) >= 0 &&
-                    (useOcr || req.body.approvedAmount === undefined)
-                ) {
-                    approvedAmount = Number(aiApp);
-                }
-                if (
-                    Array.isArray(aiRes.data?.lineItems) &&
-                    aiRes.data.lineItems.length > 0 &&
-                    (useOcr || !Array.isArray(lineItems) || lineItems.length === 0)
-                ) {
-                    lineItems = aiRes.data.lineItems;
-                }
-            } catch (err) {
-                logger.warn('Settlement OCR AI extraction fallback to manual/submitted figures:', err.message);
             }
         }
 
@@ -599,9 +665,17 @@ Document:\n${sheetText}`,
             .single();
 
         if (error) return next(error);
+        if (tempSignedPath) {
+            await storageService.deleteStorageFile(tempSignedPath).catch(() => {});
+            tempSignedPath = null;
+        }
         res.status(201).json({ settlement: saved, ...decoded });
     } catch (error) {
         next(error);
+    } finally {
+        if (tempSignedPath) {
+            await storageService.deleteStorageFile(tempSignedPath).catch(() => {});
+        }
     }
 };
 

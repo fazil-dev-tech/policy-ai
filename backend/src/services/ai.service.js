@@ -239,7 +239,7 @@ const extractMessageText = (completion) => {
     return '';
 };
 
-const callOpenAiCompatibleWithFallback = async ({ cfg, messages, temperature = 0.3, maxTokens = 2048, vision = false }) => {
+const callOpenAiCompatibleWithFallback = async ({ cfg, messages, temperature = 0.3, maxTokens = 2048, vision = false, model: optionsModel = '' }) => {
     const startTime = Date.now();
     const isOpenRouter = cfg.provider === 'openrouter';
     const defaultHeaders = isOpenRouter
@@ -261,14 +261,20 @@ const callOpenAiCompatibleWithFallback = async ({ cfg, messages, temperature = 0
         ? uniqueModels(
               vision
                   ? [
-                        ...(env.AI_MODEL && !OPENROUTER_TEXT_FALLBACKS.includes(env.AI_MODEL) && isFreeOpenRouterModel(env.AI_MODEL)
-                            ? [env.AI_MODEL]
-                            : []),
+                        ...(optionsModel && !OPENROUTER_TEXT_FALLBACKS.includes(optionsModel) && (!env.AI_ALLOW_PAID ? isFreeOpenRouterModel(optionsModel) : true)
+                            ? [optionsModel]
+                            : env.AI_MODEL && !OPENROUTER_TEXT_FALLBACKS.includes(env.AI_MODEL) && isFreeOpenRouterModel(env.AI_MODEL)
+                              ? [env.AI_MODEL]
+                              : []),
                         ...OPENROUTER_VISION_FALLBACKS,
                     ]
-                  : [cfg.model, ...OPENROUTER_TEXT_FALLBACKS]
+                  : [
+                        ...(optionsModel && (!env.AI_ALLOW_PAID ? isFreeOpenRouterModel(optionsModel) : true) ? [optionsModel] : []),
+                        cfg.model,
+                        ...OPENROUTER_TEXT_FALLBACKS,
+                    ]
           )
-        : [cfg.model];
+        : [optionsModel || cfg.model];
 
     // Enforce >= 4096 tokens so reasoning :free models never exhaust output budget before emitting content
     const safeMaxTokens = Math.max(4096, Number(maxTokens) || 4096);
@@ -334,13 +340,16 @@ const callOpenAiCompatibleWithFallback = async ({ cfg, messages, temperature = 0
     throw lastError || new Error('All configured AI models failed');
 };
 
-const runProviderText = async (cfg, prompt, { systemPrompt = '', temperature = 0.3, maxTokens = 2048 } = {}) => {
+const runProviderText = async (cfg, prompt, { systemPrompt = '', temperature = 0.3, maxTokens = 2048, model: requestedModel = '' } = {}) => {
     const startTime = Date.now();
+    const effectiveModel = requestedModel && (!env.AI_ALLOW_PAID && cfg.provider === 'openrouter' ? isFreeOpenRouterModel(requestedModel) : true)
+        ? requestedModel
+        : cfg.model;
 
     if (cfg.provider === 'gemini') {
         const genAI = new GoogleGenerativeAI(cfg.apiKey);
         const model = genAI.getGenerativeModel({
-            model: cfg.model,
+            model: effectiveModel,
             ...(systemPrompt ? { systemInstruction: systemPrompt } : {}),
         });
         const result = await withTimeoutPromise(
@@ -353,14 +362,14 @@ const runProviderText = async (cfg, prompt, { systemPrompt = '', temperature = 0
         );
         const text = String(result.response.text() || '').trim();
         if (!text) throw new Error('Gemini returned empty response');
-        return { text, tokensUsed: 0, model: cfg.model, provider: cfg.provider, responseTimeMs: Date.now() - startTime };
+        return { text, tokensUsed: 0, model: effectiveModel, provider: cfg.provider, responseTimeMs: Date.now() - startTime };
     }
 
     if (['openai', 'openrouter', 'groq', 'grok'].includes(cfg.provider)) {
         const messages = [];
         if (systemPrompt) messages.push({ role: 'system', content: systemPrompt });
         messages.push({ role: 'user', content: prompt });
-        return callOpenAiCompatibleWithFallback({ cfg, messages, temperature, maxTokens, vision: false });
+        return callOpenAiCompatibleWithFallback({ cfg, messages, temperature, maxTokens, vision: false, model: requestedModel });
     }
 
     const puter = await getPuterClient(cfg.token);

@@ -38,7 +38,7 @@ export default function MarketPage() {
 
     useEffect(() => {
         loadProviders();
-        loadInsights();
+        loadInsights(false);
     }, []);
 
     const loadProviders = async () => {
@@ -54,13 +54,14 @@ export default function MarketPage() {
         }
     };
 
-    const loadInsights = async () => {
+    const loadInsights = async (forceRefresh = false) => {
         setInsightsLoading(true);
         try {
-            const { data } = await api.get(`/market/insights?_t=${Date.now()}`);
+            const suffix = forceRefresh ? `?refresh=1&_t=${Date.now()}` : '';
+            const { data } = await api.get(`/market/insights${suffix}`);
             setInsights(data);
             setLastUpdated(new Date());
-        } catch (err) {
+        } catch {
             toast.error('Failed to load market insights');
         } finally {
             setInsightsLoading(false);
@@ -83,15 +84,15 @@ export default function MarketPage() {
                     <h1>Market Analysis</h1>
                     <p>Compare Indian insurers, verify official portals & explore IRDAI policyholder rights</p>
                 </div>
-                <button className="btn btn-primary" onClick={loadInsights} disabled={insightsLoading}>
+                <button className="btn btn-primary" onClick={() => loadInsights(true)} disabled={insightsLoading}>
                     {insightsLoading ? <div className="spinner" style={{ width: 16, height: 16, borderWidth: 2 }} /> : <><BarChart3 size={16} /> Generate Insights</>}
                 </button>
             </div>
 
             {/* AI LIVE Market Insights */}
             {insights && (
-                <div className="card" style={{ border: '2px solid var(--accent-primary)', boxShadow: '0 12px 40px rgba(139, 92, 246, 0.2)', marginBottom: 32, overflow: 'hidden' }}>
-                    <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(139, 92, 246, 0.05)', borderBottom: '1px solid rgba(139, 92, 246, 0.1)' }}>
+                <div className="card" style={{ border: '2px solid var(--accent-primary)', boxShadow: '0 12px 40px rgba(225, 29, 72, 0.14)', marginBottom: 32, overflow: 'hidden' }}>
+                    <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(225, 29, 72, 0.05)', borderBottom: '1px solid rgba(225, 29, 72, 0.12)' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                             <div style={{ width: 12, height: 12, borderRadius: '50%', background: 'var(--danger)', boxShadow: '0 0 12px var(--danger)', animation: 'pulse 1.5s infinite' }} />
                             <h3 style={{ margin: 0, color: 'var(--accent-primary)', fontSize: 20, fontWeight: 800, letterSpacing: '-0.02em' }}>Global Market Live Feed</h3>
@@ -102,8 +103,8 @@ export default function MarketPage() {
                         </span>
                     </div>
                     <div style={{ padding: '32px 24px' }}>
-                        <div style={{ background: 'var(--bg-glass)', padding: 32, borderRadius: 16, border: '1px solid rgba(139, 92, 246, 0.2)', position: 'relative' }}>
-                            <div style={{ position: 'absolute', top: -14, left: 32, background: 'var(--bg-primary)', padding: '0 12px', fontWeight: 800, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 8, border: '1px solid rgba(139, 92, 246, 0.3)', borderRadius: 20 }}>
+                        <div style={{ background: 'var(--bg-glass)', padding: 32, borderRadius: 16, border: '1px solid rgba(225, 29, 72, 0.18)', position: 'relative' }}>
+                            <div style={{ position: 'absolute', top: -14, left: 32, background: 'var(--bg-primary)', padding: '0 12px', fontWeight: 800, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 8, border: '1px solid rgba(225, 29, 72, 0.25)', borderRadius: 20 }}>
                                 <Globe size={16} style={{ color: 'var(--accent-primary)' }} /> AI Quantitative Assessment
                             </div>
                             <div style={{ fontSize: 16, lineHeight: 1.8, whiteSpace: 'pre-wrap', color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)', letterSpacing: '-0.01em' }}>
@@ -121,7 +122,7 @@ export default function MarketPage() {
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 16 }}>
                     {[
                         { icon: Heart, name: 'Health Insurance', color: '#ec4899', desc: 'Medical expenses, hospitalization, surgeries, and preventive care coverage.', link: 'https://www.policybazaar.com/health-insurance/' },
-                        { icon: Shield, name: 'Life Insurance', color: '#8b5cf6', desc: 'Financial protection for your family with term, endowment, and ULIP plans.', link: 'https://www.policybazaar.com/life-insurance/' },
+                        { icon: Shield, name: 'Life Insurance', color: '#e11d48', desc: 'Financial protection for your family with term, endowment, and ULIP plans.', link: 'https://www.policybazaar.com/life-insurance/' },
                         { icon: Car, name: 'Motor Insurance', color: '#3b82f6', desc: 'Comprehensive and third-party coverage for cars, bikes, and commercial vehicles.', link: 'https://www.policybazaar.com/motor-insurance/' },
                         { icon: Plane, name: 'Travel Insurance', color: '#f59e0b', desc: 'Trip cancellation, medical emergencies, lost baggage, and flight delay cover.', link: 'https://www.policybazaar.com/travel-insurance/' },
                         { icon: Home, name: 'Home Insurance', color: '#10b981', desc: 'Property damage from fire, theft, natural disasters, and liability protection.', link: 'https://www.policybazaar.com/home-insurance/' },
@@ -328,9 +329,12 @@ export default function MarketPage() {
                         <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 6 }}>
                             <strong>Web Search Engine ({verifyResult.webVerification?.engine || 'registry'}):</strong> {verifyResult.webVerification?.answer || ''}
                             <ul style={{ margin: '6px 0 0 18px' }}>
-                                {(verifyResult.webVerification?.results || []).slice(0, 3).map((r, i) => (
-                                    <li key={i}><a href={r.url} target="_blank" rel="noreferrer" style={{ color: 'var(--accent-primary)' }}>{r.title}</a></li>
-                                ))}
+                                {(verifyResult.webVerification?.results || []).slice(0, 3).map((r, i) => {
+                                    const safeHref = /^https?:\/\//i.test(String(r.url || '')) ? r.url : null;
+                                    return (
+                                        <li key={i}>{safeHref ? <a href={safeHref} target="_blank" rel="noreferrer" style={{ color: 'var(--accent-primary)' }}>{r.title}</a> : <span>{r.title}</span>}</li>
+                                    );
+                                })}
                             </ul>
                         </div>
                     </div>

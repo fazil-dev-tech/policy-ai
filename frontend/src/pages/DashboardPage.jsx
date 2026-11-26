@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
 import { FileText, Shield, TrendingUp, Upload, ArrowRight, ShieldAlert, Users, Sparkles } from 'lucide-react';
+import { AnimatedCounter, Reveal, SpotlightCard } from '../components/shared/MotionPrimitives';
 
 export default function DashboardPage() {
     const { user } = useAuth();
@@ -51,48 +52,82 @@ export default function DashboardPage() {
         return d >= 0 && d <= 45;
     });
 
+    const totalSumInsured = policies.reduce((sum, p) => sum + Number(p.coverageAmount || 0), 0);
+    const avgHealthScore = policies.length > 0
+        ? Math.round(policies.reduce((sum, p) => sum + Number(p.verificationScore || 0), 0) / policies.length)
+        : 0;
+
     return (
         <div>
-            <div className="page-header">
-                <h1>Welcome back, {user?.name?.split(' ')[0] || 'User'} 👋</h1>
-                <p>Live insurance portfolio, deterministic claims readiness, Parinidhi AI, and threat defense</p>
-            </div>
+            <Reveal className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: 12 }}>
+                <div>
+                    <span className="workspace-eyebrow">
+                        <span className="dot active-dot" aria-hidden="true" />
+                        POLICYGUARD WORKSPACE · PROTECTED
+                    </span>
+                    <h1>Welcome back, {user?.name?.split(' ')[0] || 'User'}</h1>
+                    <p>Live insurance portfolio, deterministic claims readiness, Parinidhi AI, and threat defense</p>
+                </div>
+                {policies.length > 0 && (
+                    <SpotlightCard className="portfolio-glass-strip">
+                        <div>
+                            <span className="meta-label">Total Sum Insured</span>
+                            <strong>₹<AnimatedCounter value={totalSumInsured} locale /></strong>
+                        </div>
+                        <div className="portfolio-divider" aria-hidden="true" />
+                        <div>
+                            <span className="meta-label">Avg Policy Score</span>
+                            <strong style={{ color: avgHealthScore >= 75 ? 'var(--success)' : 'var(--accent-primary)' }}>
+                                <AnimatedCounter value={avgHealthScore} suffix="/100" />
+                            </strong>
+                        </div>
+                    </SpotlightCard>
+                )}
+            </Reveal>
 
             {loadError && (
-                <div className="card" style={{ padding: 14, marginBottom: 20, border: '1px solid rgba(220,38,38,0.3)', background: 'rgba(254,242,242,0.7)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+                <div className="card" style={{ padding: 14, marginBottom: 20, border: '1px solid rgba(220,38,38,0.3)', background: 'rgba(254,242,242,0.75)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
                     <span style={{ color: 'var(--danger)', fontSize: 13 }}>{loadError}</span>
                     <button className="btn btn-secondary btn-sm" onClick={loadDashboard}>Retry</button>
                 </div>
             )}
 
             {expiringSoon.length > 0 && (
-                <div className="card" style={{ padding: 14, marginBottom: 20, border: '1px solid rgba(217,119,6,0.35)', background: 'rgba(254,243,199,0.55)' }}>
+                <div className="card" style={{ padding: 14, marginBottom: 20, border: '1px solid rgba(217,119,6,0.35)', background: 'rgba(254,243,199,0.68)' }}>
                     <strong>Upcoming Policy Renewals ({expiringSoon.length}):</strong>{' '}
                     {expiringSoon.map((p) => `${p.providerName} (#${p.policyNumber})`).join(' · ')}
                 </div>
             )}
 
             <div className="stats-grid">
-                <div className="stat-card" role="button" tabIndex={0} onClick={() => navigate('/policies')} onKeyDown={(e) => e.key === 'Enter' && navigate('/policies')} style={{ cursor: 'pointer' }}>
-                    <div className="stat-icon purple"><FileText size={24} /></div>
-                    <div className="stat-value">{stats.policies}</div>
-                    <div className="stat-label">Active Policies</div>
-                </div>
-                <div className="stat-card" role="button" tabIndex={0} onClick={() => navigate('/claims')} onKeyDown={(e) => e.key === 'Enter' && navigate('/claims')} style={{ cursor: 'pointer' }}>
-                    <div className="stat-icon green"><Shield size={24} /></div>
-                    <div className="stat-value">{stats.incidents}</div>
-                    <div className="stat-label">Claim Analyses Saved</div>
-                </div>
-                <div className="stat-card" role="button" tabIndex={0} onClick={() => navigate('/family')} onKeyDown={(e) => e.key === 'Enter' && navigate('/family')} style={{ cursor: 'pointer' }}>
-                    <div className="stat-icon blue"><Users size={24} /></div>
-                    <div className="stat-value">{stats.familyMembers}</div>
-                    <div className="stat-label">Family Vault Members</div>
-                </div>
-                <div className="stat-card" role="button" tabIndex={0} onClick={() => navigate('/shield')} onKeyDown={(e) => e.key === 'Enter' && navigate('/shield')} style={{ cursor: 'pointer' }}>
-                    <div className="stat-icon amber"><ShieldAlert size={24} /></div>
-                    <div className="stat-value">{stats.threatCount}</div>
-                    <div className="stat-label">Shield Warnings Cached</div>
-                </div>
+                <Reveal delay={0}>
+                    <SpotlightCard className="stat-card" role="button" tabIndex={0} onClick={() => navigate('/policies')} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate('/policies'); } }} style={{ cursor: 'pointer' }}>
+                        <div className="stat-icon purple"><FileText size={24} /></div>
+                        <div className="stat-value"><AnimatedCounter value={stats.policies} /></div>
+                        <div className="stat-label">Active Policies</div>
+                    </SpotlightCard>
+                </Reveal>
+                <Reveal delay={60}>
+                    <SpotlightCard className="stat-card" role="button" tabIndex={0} onClick={() => navigate('/claims')} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate('/claims'); } }} style={{ cursor: 'pointer' }}>
+                        <div className="stat-icon green"><Shield size={24} /></div>
+                        <div className="stat-value"><AnimatedCounter value={stats.incidents} /></div>
+                        <div className="stat-label">Claim Analyses Saved</div>
+                    </SpotlightCard>
+                </Reveal>
+                <Reveal delay={120}>
+                    <SpotlightCard className="stat-card" role="button" tabIndex={0} onClick={() => navigate('/family')} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate('/family'); } }} style={{ cursor: 'pointer' }}>
+                        <div className="stat-icon blue"><Users size={24} /></div>
+                        <div className="stat-value"><AnimatedCounter value={stats.familyMembers} /></div>
+                        <div className="stat-label">Family Vault Members</div>
+                    </SpotlightCard>
+                </Reveal>
+                <Reveal delay={180}>
+                    <SpotlightCard className="stat-card" role="button" tabIndex={0} onClick={() => navigate('/shield')} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate('/shield'); } }} style={{ cursor: 'pointer' }}>
+                        <div className="stat-icon amber"><ShieldAlert size={24} /></div>
+                        <div className="stat-value"><AnimatedCounter value={stats.threatCount} /></div>
+                        <div className="stat-label">Shield Warnings Cached</div>
+                    </SpotlightCard>
+                </Reveal>
             </div>
 
             <div className="grid-2">
@@ -106,8 +141,9 @@ export default function DashboardPage() {
                     {policies.length > 0 ? (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                             {policies.slice(0, 5).map((p) => (
-                                <div key={p._id} className="policy-card" style={{ cursor: 'pointer' }}
-                                    onClick={() => navigate(`/policies?policyId=${p._id}`)}>
+                                <div key={p._id} className="policy-card" role="button" tabIndex={0} style={{ cursor: 'pointer' }}
+                                    onClick={() => navigate(`/policies?policyId=${p._id}`)}
+                                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate(`/policies?policyId=${p._id}`); } }}>
                                     <div className="policy-type">{p.policyType}</div>
                                     <h3>{p.providerName}</h3>
                                     <div className="policy-info">
@@ -147,16 +183,19 @@ export default function DashboardPage() {
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                         {[
-                            { icon: Upload, label: 'Upload & Score Policy PDF', desc: 'Table-aware CIS card, 60m Moratorium & Gap Radar', path: '/policies', color: 'purple' },
-                            { icon: Sparkles, label: 'Talk with Parinidhi AI (3D Voice)', desc: 'Voice/text policy advisor & live market comparisons', path: '/terminal', color: 'blue' },
-                            { icon: Shield, label: 'Claim Estimator & Vehicle Damage AI', desc: 'What-If Room Rent slider, Motor repair split & GRO letters', path: '/claims', color: 'green' },
-                            { icon: ShieldAlert, label: 'Download Browser Shield Extension', desc: 'Protect Chrome, WhatsApp Web & Gmail from .apk/UPI scams', path: '/shield', color: 'amber' },
+                            { icon: Upload, label: 'Upload & Score Policy PDF', desc: 'Plain-English coverage card, waiting periods & page links', path: '/policies', color: 'purple' },
+                            { icon: Sparkles, label: 'Talk with Parinidhi AI (3D Voice)', desc: 'Voice & text policy advisor with live insurer checks', path: '/terminal', color: 'blue' },
+                            { icon: Shield, label: 'Claim Estimator & Vehicle Damage AI', desc: 'Room-rent slider, car damage photo check & appeal letters', path: '/claims', color: 'green' },
+                            { icon: ShieldAlert, label: 'Download Browser Shield Extension', desc: 'Protect Chrome, WhatsApp Web & Gmail from scam links', path: '/shield', color: 'amber' },
                             { icon: TrendingUp, label: 'Market & IRDAI Rights', desc: 'Verify official insurers and compare live coverage terms', path: '/market', color: 'purple' },
                         ].map(({ icon: Icon, label, desc, path, color }) => (
                             <div
                                 key={path}
                                 className="policy-card"
+                                role="button"
+                                tabIndex={0}
                                 onClick={() => navigate(path)}
+                                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate(path); } }}
                                 style={{ display: 'flex', alignItems: 'center', gap: 16 }}
                             >
                                 <div className={`stat-icon ${color}`} style={{ flexShrink: 0 }}>

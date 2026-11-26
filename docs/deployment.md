@@ -1,110 +1,78 @@
-# PolicyAI — Deployment Guide
+# PolicyGuard AI — Deployment Guide
 
-## Local Development
+## 1. Local Development
 
 ### Prerequisites
-- Node.js 18+
-- MongoDB 7+ (local or Atlas)
-- Redis 7+ (optional, for chat caching)
-- Git
+- Node.js 20+
+- Python 3.10+ (optional locally, recommended for `ml-service/`)
+- A Supabase project with migrations applied from `supabase/migrations/` and a private storage bucket (`policy-files`)
 
-### 1. Clone & Install
+### Backend Setup
 
 ```bash
-# Backend
 cd backend
 cp .env.example .env
-# Edit .env with your API keys:
-#   GEMINI_API_KEY=your_key
-#   GROK_API_KEY=your_key  (optional)
-npm install
-
-# Frontend
-cd ../frontend
-npm install
+# Populate SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY,
+# and free OpenRouter / Groq / Tavily / VirusTotal keys as needed.
+npm ci
+npm run lint
+npm test
+npm run dev
 ```
 
-### 2. Start Development Servers
+### ML Sidecar Setup (Optional for Motor Vision Scoring)
 
 ```bash
-# Terminal 1: Backend
-cd backend
-npm run dev
+cd ml-service
+python -m venv .venv
+.venv/Scripts/activate   # Windows (or source .venv/bin/activate on Linux/macOS)
+pip install -r requirements.txt
+uvicorn main:app --host 127.0.0.1 --port 8000
+```
 
-# Terminal 2: Frontend
+### Frontend Setup
+
+```bash
 cd frontend
+cp .env.example .env
+# Configure VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY, VITE_API_URL
+npm ci --legacy-peer-deps
 npm run dev
 ```
 
-Backend runs at `http://localhost:5000`, frontend at `http://localhost:5173`.
-Swagger docs at `http://localhost:5000/api-docs`.
+Default local ports:
+- Backend API + Swagger (`/api-docs`): `http://localhost:5000`
+- Frontend Vite SPA: `http://localhost:5173`
+- ML Sidecar: `http://127.0.0.1:8000`
 
 ---
 
-## Docker Deployment
+## 2. Chrome Extension Setup
 
-### Prerequisites
-- Docker & Docker Compose
-
-### 1. Configure Environment
-
-```bash
-# Create .env in project root
-GEMINI_API_KEY=your_gemini_key
-GROK_API_KEY=your_grok_key
-JWT_SECRET=your_production_secret_min_32_chars
-JWT_REFRESH_SECRET=your_refresh_secret_min_32_chars
-```
-
-### 2. Build & Run
-
-```bash
-docker-compose up -d --build
-```
-
-Frontend: `http://localhost:80` | Backend: `http://localhost:5000`
+1. Keep `extension/popup.html`, `extension/shared/localRules.js`, and `frontend/public/policyguard-extension.zip` synchronized.
+2. In Chrome, open `chrome://extensions`, enable **Developer mode**, and load the `extension/` folder (or extract `/policyguard-extension.zip`).
 
 ---
 
-## Kubernetes Deployment
+## 3. Docker Compose Deployment
 
-### 1. Create Secrets
-
-```bash
-kubectl create secret generic policyai-secrets \
-  --from-literal=MONGODB_URI=mongodb+srv://... \
-  --from-literal=REDIS_URL=redis://... \
-  --from-literal=JWT_SECRET=your_secret \
-  --from-literal=JWT_REFRESH_SECRET=your_secret \
-  --from-literal=GEMINI_API_KEY=your_key \
-  --from-literal=GROK_API_KEY=your_key
-```
-
-### 2. Deploy
+Configure root environment variables referenced in `docker-compose.yml` (`SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `OPENROUTER_API_KEY`, `AI_ALLOW_PAID=false`, etc.), then start all three services (`backend`, `ml-service`, `frontend`):
 
 ```bash
-kubectl apply -f k8s/deployment.yaml
-```
-
-### 3. Verify
-
-```bash
-kubectl get pods
-kubectl get services
-kubectl get hpa
+docker compose up -d --build
 ```
 
 ---
 
-## Production Checklist
+## 4. Vercel + Supabase Deployment
 
-- [ ] Set strong JWT secrets (min 32 characters)
-- [ ] Configure MongoDB Atlas with replica set
-- [ ] Set up Redis Cluster or Elasticache
-- [ ] Enable MongoDB indexing (auto-created on first connection)
-- [ ] Configure CDN for static assets
-- [ ] Set up SSL/TLS certificates
-- [ ] Configure monitoring (Prometheus + Grafana)
-- [ ] Set up log aggregation (ELK or CloudWatch)
-- [ ] Configure backup strategy for MongoDB
-- [ ] Set CORS_ORIGIN to your production domain
+`vercel.json` routes `/api/(.*)` directly to `api/index.js` and builds the static bundle from `frontend/dist`. Set `SUPABASE_*`, `AI_PROVIDER=openrouter`, `AI_MODEL=nvidia/nemotron-3.5-lightning:free`, `AI_ALLOW_PAID=false`, and `CORS_ORIGIN` in Vercel project environment variables. Files exceeding 3.8 MB bypass serverless body limits automatically via `POST /api/storage/signed-upload`.
+
+---
+
+## 5. Production Readiness Checklist
+
+- [ ] All migrations (`20261126000001` through `20261126000005`) applied in Supabase
+- [ ] `AI_ALLOW_PAID=false` verified when only `:free` models should run
+- [ ] `CORS_ORIGIN` matches your deployed Vercel/custom domains
+- [ ] Backend Jest unit tests and frontend `vite build` pass in GitHub Actions CI

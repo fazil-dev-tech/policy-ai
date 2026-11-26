@@ -76,20 +76,26 @@ export const AuthProvider = ({ children }) => {
 
         initAuth();
 
+        const inFlightProfileRef = { active: false };
         const authSub = supabase?.auth.onAuthStateChange(async (event, session) => {
             if (event === 'SIGNED_OUT') {
                 clearStoredAuth();
                 if (mounted) setUser(null);
             } else if (session?.access_token) {
                 persistSession(session, null);
-                if (event === 'SIGNED_IN') {
+                if (event === 'SIGNED_IN' && !localStorage.getItem('user') && !inFlightProfileRef.active) {
+                    inFlightProfileRef.active = true;
                     try {
                         const profile = await fetchBackendProfile(session.access_token);
                         if (mounted) {
                             persistSession(session, profile);
                             setUser(profile);
                         }
-                    } catch {}
+                    } catch {
+                        // Explicit login/verifyOtp handles surfaced errors directly
+                    } finally {
+                        inFlightProfileRef.active = false;
+                    }
                 }
             }
         });

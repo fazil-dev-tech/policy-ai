@@ -1,4 +1,5 @@
 const express = require('express');
+const { z } = require('zod');
 const {
     getStats,
     getUsers,
@@ -9,8 +10,27 @@ const {
     deleteVerifiedDomain,
 } = require('../controllers/admin.controller');
 const { authenticate, authorize } = require('../middleware/auth');
+const validate = require('../middleware/validate');
 
 const router = express.Router();
+
+const moderateScamSchema = z.object({
+    body: z.object({
+        moderationStatus: z.enum(['verified', 'rejected', 'pending']),
+        moderatorNotes: z.string().max(1000).optional(),
+    }),
+});
+
+const upsertDomainSchema = z.object({
+    body: z.object({
+        domain: z.string().trim().min(2).max(255),
+        providerName: z.string().trim().min(1).max(150),
+        category: z.string().optional(),
+        officialHelpline: z.string().max(80).optional().nullable(),
+        grievanceEmail: z.string().max(150).optional().nullable(),
+        isActive: z.boolean().optional(),
+    }),
+});
 
 // All admin routes require authentication and admin role
 router.use(authenticate, authorize('admin'));
@@ -50,9 +70,9 @@ router.get('/stats', getStats);
  */
 router.get('/users', getUsers);
 router.get('/scam-reports', getScamReportsAdmin);
-router.patch('/scam-reports/:id', moderateScamReport);
+router.patch('/scam-reports/:id', validate(moderateScamSchema), moderateScamReport);
 router.get('/verified-domains', getVerifiedDomainsAdmin);
-router.post('/verified-domains', upsertVerifiedDomain);
+router.post('/verified-domains', validate(upsertDomainSchema), upsertVerifiedDomain);
 router.delete('/verified-domains/:id', deleteVerifiedDomain);
 
 module.exports = router;

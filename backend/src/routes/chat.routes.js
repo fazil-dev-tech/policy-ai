@@ -1,9 +1,20 @@
 const express = require('express');
+const { z } = require('zod');
 const { sendMessage, getHistory, getSessions } = require('../controllers/chat.controller');
 const { authenticate } = require('../middleware/auth');
 const { chatLimiter } = require('../middleware/rateLimiter');
+const validate = require('../middleware/validate');
 
 const router = express.Router();
+
+const sendMessageSchema = z.object({
+    body: z.object({
+        message: z.string().trim().min(1, 'Message is required').max(4000),
+        policyId: z.string().optional().nullable(),
+        sessionId: z.string().optional().nullable(),
+        aiModel: z.string().optional().nullable(),
+    }),
+});
 
 /**
  * @swagger
@@ -27,7 +38,7 @@ const router = express.Router();
  *     responses:
  *       200: { description: AI response }
  */
-router.post('/message', authenticate, chatLimiter, sendMessage);
+router.post('/message', authenticate, chatLimiter, validate(sendMessageSchema), sendMessage);
 
 /**
  * @swagger

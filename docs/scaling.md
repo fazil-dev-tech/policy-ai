@@ -1,61 +1,21 @@
-# PolicyAI — Scaling Strategy for 100K Users
+# PolicyGuard AI — Scaling Strategy
 
-## Architecture for Scale
+## Component Scaling Profile
 
-### Horizontal Scaling
-- **Backend**: 3-20 pods via Kubernetes HPA, auto-scales on CPU (70%) and memory (80%)
-- **Frontend**: 2+ Nginx pods serving static build
-- **MongoDB**: Atlas M30+ with replica set (1 primary, 2 secondaries)
-- **Redis**: Cluster mode with 3+ nodes
+- **Frontend (`frontend/`)**: Static Vite build served behind Vercel CDN or Nginx (`frontend/nginx.conf`); scales horizontally with zero origin state.
+- **API Tier (`backend/`)**: Stateless Express server (or Kubernetes HPA pods / serverless functions). Rate limiting can be backed by Redis when `REDIS_URL` is configured, falling back to per-instance memory buckets locally.
+- **Database & Object Storage (`Supabase`)**:
+  - Postgres tables (`profiles`, `policies`, `policy_clauses`, `incidents`, `evidence_files`, `damage_reports`, `settlements`, `site_scans`, `scam_reports`, `research_cache`) use B-tree and GIN indexes (`idx_policy_clauses_search`).
+  - Large files (`>3.8 MB`, up to `10 MB`) upload directly from browser to Supabase Storage via short-lived signed URLs (`POST /api/storage/signed-upload`), keeping API memory and Vercel payload limits unconstrained.
+- **Python ML Sidecar (`ml-service/`)**: Stateless FastAPI inference worker (`uvicorn`) scaled independently behind `ML_SERVICE_URL` for motor accident image quality & scikit-learn repair multiplier estimation.
 
-### Estimated Server Requirements (100K Users)
+## Caching Strategy
 
-| Component        | Specs                          | Count | Monthly Cost Est. |
-|------------------|--------------------------------|-------|--------------------|
-| Backend Pods     | 2 vCPU, 4GB RAM               | 5-10  | $400-$800          |
-| Frontend Pods    | 0.5 vCPU, 512MB RAM           | 2-3   | $50-$100           |
-| MongoDB Atlas    | M30 (8GB RAM, 40GB SSD)       | 3     | $500               |
-| Redis Cluster    | 3GB cache                     | 3     | $150               |
-| Load Balancer    | Cloud LB                      | 1     | $20                |
-| CDN              | ~500GB/month                   | 1     | $50                |
-| Object Storage   | PDFs, ~1TB                     | 1     | $25                |
-| **Total**        |                                |       | **$1,200-$1,650/mo** |
+- **Market Insights (`research_cache`)**: Global market insights (`market_insights_global_v1`) cache for 1 hour unless `?refresh=1` is requested.
+- **URL Intelligence (`site_scans` & `research_cache`)**: RDAP domain age and VirusTotal scan verdicts persist in Supabase with TTL expiration so repeated Chrome extension tab checks avoid redundant external API calls.
+- **In-Memory / Redis Cache (`cache.service.js`)**: Chat context and frequent lookups cache locally with optional Redis sharing across replicas.
 
-### API Throughput
+## Cost-Control Guardrails
 
-| Endpoint Type     | Expected RPS | P99 Latency Target |
-|-------------------|--------------|--------------------|
-| Auth (login)      | 50           | 200ms              |
-| Policy CRUD       | 100          | 300ms              |
-| Policy Upload     | 10           | 5s (AI processing) |
-| Chat Message      | 200          | 3s (AI response)   |
-| Admin Stats       | 5            | 500ms              |
-
-### Database Optimization
-- **Compound indexes** on all query-heavy fields (pre-configured in schemas)
-- **Aggregation pipeline** for admin stats (pre-computed)
-- **Read preference**: secondary for analytics queries
-- **Connection pooling**: 50 connections per backend instance
-
-### Caching Strategy
-- **Redis**: Chat conversation cache (1hr TTL), session store
-- **CDN**: Frontend static assets, uploaded PDFs
-- **API response cache**: Market data (5min TTL)
-
-### Queue Processing (BullMQ)
-- **PDF Analysis**: Offload AI extraction to background workers
-- **Email Notifications**: Async email delivery
-- **Fraud Analysis**: Non-blocking fraud scoring
-
-### Memory Allocation
-- Backend: ~300MB per pod at steady state, ~500MB peak
-- Redis: ~1GB for 100K user conversation cache
-- MongoDB: Working set ~4GB, total storage ~40GB
-
-### Monitoring Metrics
-- Response time P50/P95/P99
-- Error rate per endpoint
-- CPU/Memory utilization
-- MongoDB query performance
-- Redis hit/miss ratio
-- AI API latency and error rates
+- Free-first OpenRouter routing (`AI_ALLOW_PAID=false`) prevents unintended paid model fallback unless explicitly enabled.
+- Deterministic calculators (`claimEngine.service.js`) handle all financial arithmetic, moratorium dates, and readiness checklists without consuming LLM tokens.

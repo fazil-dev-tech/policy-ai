@@ -36,6 +36,7 @@ app.use(
 const allowedOrigins = [
     process.env.CORS_ORIGIN || 'http://localhost:5173',
     process.env.FRONTEND_URL,
+    'https://policyguard-ai-ecru.vercel.app',
     'http://localhost:5173',
     'http://localhost:5174',
     'http://localhost:3000',
@@ -46,8 +47,8 @@ const allowedOrigins = [
 const isAllowedCorsOrigin = (origin) => {
     if (!origin) return true;
     if (allowedOrigins.includes(origin)) return true;
-    if (origin.startsWith('chrome-extension://')) return true;
-    if (/^https:\/\/[a-z0-9-]+\.vercel\.app$/i.test(origin)) return true;
+    if (/^chrome-extension:\/\/[a-p]{32}$/i.test(origin)) return true;
+    if (/^https:\/\/policy(?:ai|guard)[a-z0-9-]*\.vercel\.app$/i.test(origin)) return true;
     return false;
 };
 
@@ -160,6 +161,15 @@ if (isProd && fs.existsSync(FRONTEND_DIST)) {
     });
     logger.info(`✅ Serving frontend from: ${FRONTEND_DIST}`);
 } else {
+    app.get('/', (req, res) => {
+        res.json({
+            service: 'PolicyGuard AI Backend API',
+            status: 'running',
+            frontendApp: process.env.FRONTEND_URL || 'http://localhost:5173',
+            healthCheck: '/api/health',
+            apiDocs: '/api-docs',
+        });
+    });
     app.use((req, res) => {
         res.status(404).json({ error: `Route ${req.originalUrl} not found` });
     });

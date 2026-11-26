@@ -1,5 +1,7 @@
 # Backend
 backend/node_modules/
+backend/coverage/
+coverage/
 backend/.env
 backend/.env.production
 node_modules/

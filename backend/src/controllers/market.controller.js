@@ -33,18 +33,48 @@ const getProviders = async (req, res, next) => {
 
 const getInsights = async (req, res, next) => {
     try {
+        const forceRefresh = req.query.refresh === '1' || req.query.refresh === 'true';
         const { data: rows, error } = await supabaseAdmin.from('market_data').select('*');
         if (error) return next(error);
 
         const providers = (rows || []).map(mapMarketProvider);
-        const aiResult = await geminiService.generateMarketInsights(providers);
+        const cacheKey = 'market_insights_global_v1';
+        let insightsPayload = null;
 
-        const insightsPayload = {
-            summary: aiResult.text,
-            provider: aiResult.provider,
-            model: aiResult.model,
-            puter: aiResult.text,
-        };
+        if (!forceRefresh) {
+            const { data: cached } = await supabaseAdmin
+                .from('research_cache')
+                .select('result_json')
+                .eq('cache_key', cacheKey)
+                .gt('expires_at', new Date().toISOString())
+                .maybeSingle();
+            if (cached?.result_json?.summary) {
+                insightsPayload = { ...cached.result_json, cached: true };
+            }
+        }
+
+        if (!insightsPayload) {
+            const aiResult = await geminiService.generateMarketInsights(providers);
+            insightsPayload = {
+                summary: aiResult.text,
+                provider: aiResult.provider,
+                model: aiResult.model,
+                puter: aiResult.text,
+                cached: false,
+            };
+            if (aiResult.provider !== 'unavailable') {
+                await supabaseAdmin.from('research_cache').upsert(
+                    {
+                        cache_key: cacheKey,
+                        source: aiResult.provider || 'ai',
+                        query: 'market_insights',
+                        result_json: insightsPayload,
+                        expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+                    },
+                    { onConflict: 'cache_key' }
+                );
+            }
+        }
 
         if (providers.length === 0) {
             return res.json({

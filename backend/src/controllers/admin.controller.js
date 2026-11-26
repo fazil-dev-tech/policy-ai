@@ -3,6 +3,10 @@ const fraudService = require('../services/fraud.service');
 const { mapProfile, normalizeEnum } = require('../utils/mappers');
 
 const VALID_DOMAIN_CATEGORIES = ['insurer', 'regulator', 'payment_gateway', 'tpa', 'aggregator'];
+const DOMAIN_CATEGORY_ALIASES = {
+    govt_portal: 'regulator',
+    ombudsman: 'regulator',
+};
 
 const getStats = async (req, res, next) => {
     try {
@@ -13,8 +17,14 @@ const getStats = async (req, res, next) => {
         const [
             usersRes,
             activeUsersRes,
-            policiesRes,
-            claimsRes,
+            totalPoliciesRes,
+            activePoliciesRes,
+            totalClaimsRes,
+            pendingClaimsRes,
+            approvedClaimsRes,
+            rejectedClaimsRes,
+            policiesDistRes,
+            claimsSampleRes,
             totalChatsRes,
             recentChatsRes,
             growthUsersRes,
@@ -25,8 +35,14 @@ const getStats = async (req, res, next) => {
                 .from('profiles')
                 .select('id', { count: 'exact', head: true })
                 .gte('last_login', thirtyDaysAgoIso),
-            supabaseAdmin.from('policies').select('policy_type, status'),
-            supabaseAdmin.from('claims').select('claim_status, claim_amount'),
+            supabaseAdmin.from('policies').select('id', { count: 'exact', head: true }),
+            supabaseAdmin.from('policies').select('id', { count: 'exact', head: true }).eq('status', 'active'),
+            supabaseAdmin.from('claims').select('id', { count: 'exact', head: true }),
+            supabaseAdmin.from('claims').select('id', { count: 'exact', head: true }).eq('claim_status', 'pending'),
+            supabaseAdmin.from('claims').select('id', { count: 'exact', head: true }).eq('claim_status', 'approved'),
+            supabaseAdmin.from('claims').select('id', { count: 'exact', head: true }).eq('claim_status', 'rejected'),
+            supabaseAdmin.from('policies').select('policy_type').limit(2000),
+            supabaseAdmin.from('claims').select('claim_amount').limit(2000),
             supabaseAdmin.from('chat_history').select('id', { count: 'exact', head: true }),
             supabaseAdmin
                 .from('chat_history')
@@ -40,16 +56,16 @@ const getStats = async (req, res, next) => {
             fraudService.getFraudAlerts(10),
         ]);
 
-        const policies = policiesRes.data || [];
-        const claims = claimsRes.data || [];
+        const policies = policiesDistRes.data || [];
+        const claims = claimsSampleRes.data || [];
         const totalUsers = usersRes.count || 0;
         const activeUsers = activeUsersRes.count || 0;
-        const totalPolicies = policies.length;
-        const activePolicies = policies.filter((p) => p.status === 'active').length;
-        const totalClaims = claims.length;
-        const pendingClaims = claims.filter((c) => c.claim_status === 'pending').length;
-        const approvedClaims = claims.filter((c) => c.claim_status === 'approved').length;
-        const rejectedClaims = claims.filter((c) => c.claim_status === 'rejected').length;
+        const totalPolicies = totalPoliciesRes.count || 0;
+        const activePolicies = activePoliciesRes.count || 0;
+        const totalClaims = totalClaimsRes.count || 0;
+        const pendingClaims = pendingClaimsRes.count || 0;
+        const approvedClaims = approvedClaimsRes.count || 0;
+        const rejectedClaims = rejectedClaimsRes.count || 0;
         const totalChats = totalChatsRes.count || 0;
         const recentChats = recentChatsRes.count || 0;
 
@@ -133,25 +149,29 @@ const getUsers = async (req, res, next) => {
 
         if (error) return next(error);
 
-        const enriched = await Promise.all(
-            (users || []).map(async (user) => {
-                const [{ count: policyCount }, { count: claimCount }] = await Promise.all([
-                    supabaseAdmin
-                        .from('policies')
-                        .select('id', { count: 'exact', head: true })
-                        .eq('user_id', user.id),
-                    supabaseAdmin
-                        .from('claims')
-                        .select('id', { count: 'exact', head: true })
-                        .eq('user_id', user.id),
-                ]);
-                return {
-                    ...mapProfile(user),
-                    policyCount: policyCount || 0,
-                    claimCount: claimCount || 0,
-                };
-            })
-        );
+        const userList = users || [];
+        const userIds = userList.map((u) => u.id);
+        const policyCountMap = new Map();
+        const claimCountMap = new Map();
+
+        if (userIds.length > 0) {
+            const [{ data: policyRows }, { data: claimRows }] = await Promise.all([
+                supabaseAdmin.from('policies').select('user_id').in('user_id', userIds),
+                supabaseAdmin.from('claims').select('user_id').in('user_id', userIds),
+            ]);
+            for (const row of policyRows || []) {
+                policyCountMap.set(row.user_id, (policyCountMap.get(row.user_id) || 0) + 1);
+            }
+            for (const row of claimRows || []) {
+                claimCountMap.set(row.user_id, (claimCountMap.get(row.user_id) || 0) + 1);
+            }
+        }
+
+        const enriched = userList.map((user) => ({
+            ...mapProfile(user),
+            policyCount: policyCountMap.get(user.id) || 0,
+            claimCount: claimCountMap.get(user.id) || 0,
+        }));
 
         const total = count || 0;
         res.json({
@@ -245,7 +265,8 @@ const upsertVerifiedDomain = async (req, res, next) => {
             return res.status(400).json({ error: 'domain and providerName are required' });
         }
         const cleanDomain = String(domain).toLowerCase().trim().replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0];
-        const safeCategory = normalizeEnum(category, VALID_DOMAIN_CATEGORIES, 'insurer');
+        const rawCat = String(category || '').trim().toLowerCase();
+        const safeCategory = normalizeEnum(DOMAIN_CATEGORY_ALIASES[rawCat] || rawCat, VALID_DOMAIN_CATEGORIES, 'insurer');
         const { data, error } = await supabaseAdmin
             .from('verified_domains')
             .upsert(

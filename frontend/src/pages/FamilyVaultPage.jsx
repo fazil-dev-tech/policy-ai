@@ -77,11 +77,14 @@ export default function FamilyVaultPage() {
         }
     };
 
-    const handleDeleteMember = async (id, name) => {
-        if (!window.confirm(`Remove ${name || 'this family member'} from your Family Vault?`)) return;
+    const [memberToDelete, setMemberToDelete] = useState(null);
+
+    const confirmDeleteMember = async () => {
+        if (!memberToDelete) return;
         try {
-            await api.delete(`/family/${id}`);
+            await api.delete(`/family/${memberToDelete.id}`);
             toast.success('Member removed');
+            setMemberToDelete(null);
             loadVault();
         } catch {
             toast.error('Delete failed');
@@ -196,7 +199,7 @@ export default function FamilyVaultPage() {
                                             <strong>{m.full_name}</strong> <span className="badge badge-purple">{m.relationship}</span>
                                             {m.blood_group && <span className="badge badge-danger" style={{ marginLeft: 6 }}>{m.blood_group}</span>}
                                         </div>
-                                        <button className="btn btn-danger btn-sm" aria-label={`Remove ${m.full_name}`} onClick={() => handleDeleteMember(m.id, m.full_name)}><Trash2 size={13} /></button>
+                                        <button type="button" className="btn btn-danger btn-sm" aria-label={`Remove ${m.full_name}`} onClick={() => setMemberToDelete({ id: m.id, name: m.full_name })}><Trash2 size={13} /></button>
                                     </div>
                                     <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 4 }}>
                                         Emergency: {m.emergency_contact || '—'} · PEDs: {(m.chronic_conditions || []).join(', ') || 'None recorded'}
@@ -231,6 +234,23 @@ export default function FamilyVaultPage() {
                     )}
                 </div>
             </div>
+
+            {memberToDelete && (
+                <div className="modal-overlay" role="dialog" aria-modal="true" onClick={() => setMemberToDelete(null)}>
+                    <div className="modal" style={{ maxWidth: 420 }} onClick={(e) => e.stopPropagation()}>
+                        <div className="modal-header">
+                            <h2>Remove Family Member?</h2>
+                        </div>
+                        <p style={{ color: 'var(--text-secondary)', fontSize: 14, marginBottom: 20 }}>
+                            Are you sure you want to remove <strong>{memberToDelete.name || 'this family member'}</strong> from your Family Vault? Linked policies will remain safely in your account.
+                        </p>
+                        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+                            <button type="button" className="btn btn-secondary" onClick={() => setMemberToDelete(null)}>Cancel</button>
+                            <button type="button" className="btn btn-danger" onClick={confirmDeleteMember}>Remove Member</button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

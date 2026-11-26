@@ -1,99 +1,52 @@
-# PolicyAI — System Architecture
+# PolicyGuard AI — System Architecture
 
 ## High-Level Architecture
 
 ```
-┌──────────────────────────────────────────────────────────────────┐
-│                         CDN (CloudFlare)                         │
-│                    Static assets, SSL termination                │
-└──────────────────────────┬───────────────────────────────────────┘
-                           │
-┌──────────────────────────┴───────────────────────────────────────┐
-│                    Load Balancer (Nginx/K8s Ingress)             │
-│                    Rate limiting, request routing                 │
-└──────────┬───────────────────────────────────────┬───────────────┘
-           │                                       │
-┌──────────┴──────────┐               ┌────────────┴──────────────┐
-│  Frontend (React)    │               │  Backend API (Express)    │
-│  Vite + React 18     │               │  3-20 replicas (HPA)     │
-│  Nginx serving       │               │                          │
-│  SPA routing         │               │  ┌────────────────────┐  │
-│                      │               │  │ Auth Module        │  │
-│  Pages:              │               │  │ JWT + Refresh      │  │
-│  • Dashboard         │  ───────────► │  │ bcrypt, RBAC       │  │
-│  • Policies          │    REST API   │  ├────────────────────┤  │
-│  • AI Chat           │               │  │ Policy Module      │  │
-│  • Claims            │               │  │ PDF parse, upload  │  │
-│  • Market Analysis   │               │  ├────────────────────┤  │
-│  • Admin Panel       │               │  │ Chat Module        │  │
-│                      │               │  │ Streaming, sessions│  │
-└──────────────────────┘               │  ├────────────────────┤  │
-                                       │  │ Claims Module      │  │
-                                       │  ├────────────────────┤  │
-                                       │  │ Admin Module       │  │
-                                       │  ├────────────────────┤  │
-                                       │  │ Market Module      │  │
-                                       │  └────────────────────┘  │
-                                       └────┬──────┬──────┬───────┘
-                                            │      │      │
-                    ┌───────────────────────┘      │      └──────────────────┐
-                    │                              │                         │
-          ┌─────────┴─────────┐      ┌─────────────┴──────────┐   ┌─────────┴─────────┐
-          │   MongoDB          │      │   Redis                │   │   AI Services     │
-          │   Primary + Replica│      │   Conversation cache   │   │                   │
-          │                    │      │   Session store         │   │   Google Gemini   │
-          │   Collections:     │      │   Rate limiting         │   │   xAI Grok        │
-          │   • Users          │      │                         │   │                   │
-          │   • Policies       │      └─────────────────────────┘   │   Functions:      │
-          │   • Claims         │                                    │   • Policy extract│
-          │   • ChatHistory    │                                    │   • Chatbot       │
-          │   • MarketData     │                                    │   • Fraud scoring │
-          │                    │                                    │   • Market insight│
-          └────────────────────┘                                    └───────────────────┘
++------------------------------------------------------------------------+
+|                Clients: React 18 SPA (Vite) & Chrome MV3 Ext            |
+|        Web / Mobile / WhatsApp & Gmail DOM Shield / Voice UI           |
++-----------------------------------+------------------------------------+
+                                    | HTTPS (Bearer Supabase JWT / Signed Storage URLs)
++-----------------------------------v------------------------------------+
+|                     Express API Server (backend/)                       |
+|  - Auth & RBAC (Supabase Auth JWT verification + profiles roles)        |
+|  - Zod Input Validation, Helmet CSP, Cors Allowlist, Rate Limiters      |
+|  - Policy Vault & Table-Aware PDF Parser (pdfjs-dist + DPDP PII mask)   |
+|  - Deterministic IRDAI Engine (claimEngine.service.js)                  |
+|  - Parinidhi RAG + Standard Chat (free-first OpenRouter / Groq / Gemini)|
+|  - Browser Shield Inspector (localRules + RDAP + VirusTotal + cache)    |
+|  - Storage Bridge (10MB signed URLs + magic-byte validation)            |
++---------+-------------------------+--------------------------+----------+
+          |                         |                          |
+          v                         v                          v
++------------------+   +-------------------------+   +-------------------+
+| Supabase Stack   |   | Free-First AI & Search  |   | Python ML Sidecar |
+| - PostgreSQL+RLS |   | - OpenRouter (:free)    |   | - FastAPI (:8000) |
+| - Supabase Auth  |   | - Groq / Gemini / Puter |   | - OpenCV/Pillow + |
+| - Storage Bucket |   | - Tavily & Serper Live  |   |   sklearn scoring |
+|   (policy-files) |   | - VirusTotal + RDAP     |   |   (motor damage)  |
++------------------+   +-------------------------+   +-------------------+
 ```
 
-## API Endpoints
+## Core API Modules
 
-| Method | Endpoint               | Auth | Description                    |
-|--------|------------------------|------|--------------------------------|
-| POST   | /api/auth/register     | No   | Register new user              |
-| POST   | /api/auth/login        | No   | Login                          |
-| POST   | /api/auth/refresh      | No   | Refresh access token           |
-| GET    | /api/auth/me           | Yes  | Get current user               |
-| POST   | /api/policy/upload     | Yes  | Upload PDF for AI analysis     |
-| GET    | /api/policy            | Yes  | List user's policies           |
-| GET    | /api/policy/:id        | Yes  | Get policy details             |
-| DELETE | /api/policy/:id        | Yes  | Delete policy                  |
-| POST   | /api/chat/message      | Yes  | Send chat message              |
-| GET    | /api/chat/history      | Yes  | Get chat history               |
-| GET    | /api/chat/sessions     | Yes  | List chat sessions             |
-| POST   | /api/claims            | Yes  | File a claim                   |
-| GET    | /api/claims            | Yes  | List user's claims             |
-| GET    | /api/claims/:policyId  | Yes  | Claims for a policy            |
-| GET    | /api/admin/stats       | Admin| Dashboard statistics           |
-| GET    | /api/admin/users       | Admin| User management                |
-| GET    | /api/market/providers  | Yes  | List providers                 |
-| GET    | /api/market/insights   | Yes  | AI market insights             |
-| POST   | /api/market/providers  | Admin| Add provider data              |
+| Prefix | Router | Auth | Purpose |
+|---|---|---|---|
+| `/api/auth` | `auth.routes.js` | Mixed | Register, login, OTP passwordless sign-in, token refresh, profile |
+| `/api/policy` | `policy.routes.js` | Bearer | Upload/OCR PDF or E-Card, CIS & insights, renewal diff, agent mis-selling audit, emergency card PDF |
+| `/api/claims` | `claim.routes.js` | Bearer | Traditional claims CRUD with AI guidance |
+| `/api/incidents` & `/api/damage` & `/api/settlements` | `incidents.routes.js` | Bearer | 7-scenario multi-evidence estimator, What-If simulator, 3h SLA notice, motor damage AI, settlement decoder & GRO PDF |
+| `/api/documents` | `document.routes.js` | Bearer | General PDF analyzer & Q&A |
+| `/api/chat` | `chat.routes.js` | Bearer | Standard policy AI chat + session history |
+| `/api/parinidhi`, `/api/family`, `/api/research`, `/api/storage` | `platform.routes.js` | Bearer | Parinidhi counselor, Family Vault, live search/benchmarks, direct signed upload URLs |
+| `/api/security` | `platform.routes.js` | Public / Optional Bearer | URL threat checks, batch checks, verified domains, scam reports, extension zip |
+| `/api/market` | `market.routes.js` | Bearer / Admin | Insurer benchmarks & cached global AI insights (`research_cache`) |
+| `/api/admin` | `admin.routes.js` | Admin | Aggregate telemetry, user directory, scam report moderation, verified domains CRUD |
 
-## Security Model
+## Security & Determinism Model
 
-- **JWT** access tokens (15min) + refresh tokens (7d)
-- **bcrypt** password hashing (12 salt rounds)
-- **Helmet.js** security headers
-- **CORS** with allowed origins
-- **Rate limiting** per endpoint type
-- **Zod** input validation
-- **File validation** (PDF only, 10MB max)
-- **Prompt injection** protection in AI service
-- **RBAC** admin vs user roles
-
-## Database Indexes
-
-| Collection   | Indexes                                                |
-|-------------|--------------------------------------------------------|
-| Users       | email (unique), role, createdAt                        |
-| Policies    | userId+status, userId+type, providerName, policyNumber |
-| Claims      | policyId+status, userId+claimDate, createdAt           |
-| ChatHistory | userId+sessionId+timestamp, userId+policyId            |
-| MarketData  | providerName (unique), claimSettlementRatio, rating    |
+- **Zero-LLM Math Policy**: Coverage scores, moratorium checks, room-rent deductions, motor depreciation, and grievance calculations execute deterministically in `backend/src/services/claimEngine.service.js`.
+- **Supabase RLS & Ownership Scoping**: Every user query explicitly filters by `req.user.id` and validates storage object paths with `assertSafeUserStoragePath`.
+- **Magic-Byte Inspection & Temp Cleanup**: Uploads are verified by binary header (`PDF`, `JPG`, `PNG`, `WEBP`) and temporary signed-storage uploads are deleted on error or completion.
+- **Cost-Safe AI Routing**: `AI_ALLOW_PAID=false` enforces `:free` OpenRouter models (`nvidia/nemotron-3.5-lightning:free` primary) and free fallback tiers unless explicitly enabled.
