@@ -1,9 +1,5 @@
 const chatbotService = require('../services/chatbot.service');
-const logger = require('../utils/logger');
 
-/**
- * POST /api/chat/message
- */
 const sendMessage = async (req, res, next) => {
     try {
         const { message, policyId, sessionId, aiModel } = req.body;
@@ -13,11 +9,11 @@ const sendMessage = async (req, res, next) => {
         }
 
         const result = await chatbotService.processMessage({
-            userId: req.user._id,
+            userId: req.user.id,
             policyId,
             message,
             sessionId,
-            aiModel: aiModel || 'puter',
+            aiModel,
         });
 
         res.json(result);
@@ -26,18 +22,15 @@ const sendMessage = async (req, res, next) => {
     }
 };
 
-/**
- * GET /api/chat/history
- */
 const getHistory = async (req, res, next) => {
     try {
         const { sessionId, page = 1, limit = 50 } = req.query;
 
         const history = await chatbotService.getHistory(
-            req.user._id,
+            req.user.id,
             sessionId,
-            parseInt(page),
-            parseInt(limit)
+            parseInt(page, 10) || 1,
+            parseInt(limit, 10) || 50
         );
 
         res.json(history);
@@ -46,12 +39,9 @@ const getHistory = async (req, res, next) => {
     }
 };
 
-/**
- * GET /api/chat/sessions
- */
 const getSessions = async (req, res, next) => {
     try {
-        const sessions = await chatbotService.getUserSessions(req.user._id.toString());
+        const sessions = await chatbotService.getUserSessions(req.user.id);
         res.json({ sessions });
     } catch (error) {
         next(error);

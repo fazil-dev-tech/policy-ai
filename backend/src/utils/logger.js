@@ -23,20 +23,18 @@ const logger = winston.createLogger({
             maxsize: 5242880,
             maxFiles: 5,
         }),
+        new winston.transports.Console({
+            format:
+                process.env.NODE_ENV === 'production'
+                    ? winston.format.json()
+                    : winston.format.combine(
+                          winston.format.colorize(),
+                          winston.format.printf(({ level, message, timestamp, stack }) => {
+                              return `${timestamp} [${level}]: ${stack || message}`;
+                          })
+                      ),
+        }),
     ],
 });
-
-if (process.env.NODE_ENV !== 'production') {
-    logger.add(
-        new winston.transports.Console({
-            format: winston.format.combine(
-                winston.format.colorize(),
-                winston.format.printf(({ level, message, timestamp, stack }) => {
-                    return `${timestamp} [${level}]: ${stack || message}`;
-                })
-            ),
-        })
-    );
-}
 
 module.exports = logger;

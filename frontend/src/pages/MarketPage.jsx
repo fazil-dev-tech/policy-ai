@@ -14,6 +14,23 @@ export default function MarketPage() {
     const [loading, setLoading] = useState(true);
     const [insightsLoading, setInsightsLoading] = useState(false);
     const [lastUpdated, setLastUpdated] = useState(null);
+    const [verifyInput, setVerifyInput] = useState('');
+    const [verifying, setVerifying] = useState(false);
+    const [verifyResult, setVerifyResult] = useState(null);
+
+    const handleVerifyInsurer = async (e) => {
+        e.preventDefault();
+        if (!verifyInput.trim()) return;
+        setVerifying(true);
+        try {
+            const { data } = await api.post('/research/verify-insurer', { providerName: verifyInput.trim() });
+            setVerifyResult(data);
+        } catch {
+            toast.error('Insurer live verification failed');
+        } finally {
+            setVerifying(false);
+        }
+    };
 
     useEffect(() => {
         loadProviders();
@@ -84,7 +101,7 @@ export default function MarketPage() {
                                 <Globe size={16} style={{ color: 'var(--accent-primary)' }} /> AI Quantitative Assessment
                             </div>
                             <div style={{ fontSize: 16, lineHeight: 1.8, whiteSpace: 'pre-wrap', color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)', letterSpacing: '-0.01em' }}>
-                                {insights.insights?.puter || 'Establishing connection to Global Market Data...'}
+                                {insights.insights?.summary || insights.insights?.puter || 'Establishing connection to Global Market Data...'}
                             </div>
                         </div>
                     </div>
@@ -207,11 +224,11 @@ export default function MarketPage() {
                             <div className="card-header"><h3>Settlement Ratio Comparison</h3></div>
                             <ResponsiveContainer width="100%" height={300}>
                                 <BarChart data={chartData}>
-                                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(139,92,246,0.1)" />
-                                    <XAxis dataKey="name" tick={{ fill: '#94a3b8', fontSize: 11 }} />
-                                    <YAxis tick={{ fill: '#94a3b8', fontSize: 12 }} />
-                                    <Tooltip contentStyle={{ background: '#1e293b', border: '1px solid rgba(139,92,246,0.3)', borderRadius: 8, color: '#e2e8f0' }} />
-                                    <Bar dataKey="settlement" fill="#8b5cf6" radius={[4, 4, 0, 0]} />
+                                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(236,72,153,0.12)" />
+                                    <XAxis dataKey="name" tick={{ fill: '#334155', fontSize: 11 }} />
+                                    <YAxis tick={{ fill: '#334155', fontSize: 12 }} />
+                                    <Tooltip contentStyle={{ background: '#ffffff', border: '1px solid #f472b6', borderRadius: 10, color: '#0f172a' }} />
+                                    <Bar dataKey="settlement" fill="#ec4899" radius={[4, 4, 0, 0]} />
                                 </BarChart>
                             </ResponsiveContainer>
                         </div>
@@ -220,12 +237,12 @@ export default function MarketPage() {
                             <div className="card-header"><h3>Provider Comparison</h3></div>
                             <ResponsiveContainer width="100%" height={300}>
                                 <RadarChart data={chartData}>
-                                    <PolarGrid stroke="rgba(139,92,246,0.1)" />
-                                    <PolarAngleAxis dataKey="name" tick={{ fill: '#94a3b8', fontSize: 11 }} />
-                                    <PolarRadiusAxis tick={{ fill: '#94a3b8', fontSize: 10 }} />
-                                    <Radar name="Settlement" dataKey="settlement" stroke="#8b5cf6" fill="#8b5cf6" fillOpacity={0.2} />
-                                    <Radar name="Rating" dataKey="rating" stroke="#3b82f6" fill="#3b82f6" fillOpacity={0.2} />
-                                    <Tooltip contentStyle={{ background: '#1e293b', border: '1px solid rgba(139,92,246,0.3)', borderRadius: 8, color: '#e2e8f0' }} />
+                                    <PolarGrid stroke="rgba(236,72,153,0.15)" />
+                                    <PolarAngleAxis dataKey="name" tick={{ fill: '#334155', fontSize: 11 }} />
+                                    <PolarRadiusAxis tick={{ fill: '#64748b', fontSize: 10 }} />
+                                    <Radar name="Settlement" dataKey="settlement" stroke="#ec4899" fill="#ec4899" fillOpacity={0.22} />
+                                    <Radar name="Rating" dataKey="rating" stroke="#8b5cf6" fill="#8b5cf6" fillOpacity={0.2} />
+                                    <Tooltip contentStyle={{ background: '#ffffff', border: '1px solid #f472b6', borderRadius: 10, color: '#0f172a' }} />
                                 </RadarChart>
                             </ResponsiveContainer>
                         </div>
@@ -266,6 +283,61 @@ export default function MarketPage() {
                                     ))}
                                 </tbody>
                             </table>
+                        </div>
+                    </div>
+                    {/* Live Insurer Verification (Serper + Tavily + Official Domain Registry) */}
+                    <div className="card" style={{ padding: 24, marginTop: 24 }}>
+                        <h3 style={{ marginBottom: 10 }}>Verify Insurer Official Portal & Live Brochure Claims</h3>
+                        <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 12 }}>
+                            Cross-check any insurer against our Supabase Verified Domain Registry and live web search before buying or renewing.
+                        </p>
+                        <form onSubmit={handleVerifyInsurer} style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
+                            <input className="form-input" style={{ flex: '1 1 260px' }} placeholder="Enter insurer name (e.g. Star Health, HDFC ERGO, Acko)"
+                                value={verifyInput} onChange={(e) => setVerifyInput(e.target.value)} />
+                            <button className="btn btn-primary" type="submit" disabled={verifying}>
+                                {verifying ? 'Verifying...' : 'Verify Official Domain & Presence'}
+                            </button>
+                        </form>
+                        {verifyResult && (
+                            <div style={{ padding: 14, borderRadius: 12, background: 'var(--bg-secondary)', border: '1px solid var(--border-color)' }}>
+                                {(verifyResult.verifiedRegistry || []).length > 0 ? (
+                                    <div style={{ marginBottom: 10 }}>
+                                        {verifyResult.verifiedRegistry.map((v) => (
+                                            <div key={v.id} style={{ fontSize: 13 }}>
+                                                <span className="badge badge-success">Verified Registry Match</span> <strong>{v.provider_name}</strong> — <code>{v.domain}</code> · Helpline: {v.official_helpline || '—'} · Grievance: {v.grievance_email || '—'}
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <span className="badge badge-warning" style={{ marginBottom: 8 }}>Not in Baseline Registry — Inspect Live Results Carefully</span>
+                                )}
+                                <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 6 }}>
+                                    <strong>Web Search Engine ({verifyResult.webVerification?.engine}):</strong> {verifyResult.webVerification?.answer || ''}
+                                    <ul style={{ margin: '6px 0 0 18px' }}>
+                                        {(verifyResult.webVerification?.results || []).slice(0, 3).map((r, i) => (
+                                            <li key={i}><a href={r.url} target="_blank" rel="noreferrer" style={{ color: 'var(--accent-primary)' }}>{r.title}</a></li>
+                                        ))}
+                                    </ul>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Insurance Education Centre (IRDAI Know Your Rights) */}
+                    <div className="card" style={{ padding: 24, marginTop: 24 }}>
+                        <h3 style={{ marginBottom: 14 }}>IRDAI Insurance Education & Policyholder Rights</h3>
+                        <div className="grid-2">
+                            {[
+                                ['60-Month PED Moratorium (May 2024)', 'After 60 continuous months of health coverage, insurers cannot reject claims on non-disclosure or pre-existing disease grounds (except proven fraud).'],
+                                ['3-Hour Cashless Discharge SLA', 'Insurers must decide pre-auth within 1 hour and approve final cashless discharge bills within 3 hours or bear additional hospital stay costs.'],
+                                ['Proportionate Room-Rent Deduction Trap', 'Selecting a hospital room costlier than your 1%/2% policy limit reduces surgeon fees, OT & diagnostics proportionally — always check single room caps.'],
+                                ['30-Day Free-Look & Bima Bharosa', 'Every digital/retail policy includes a 30-day review window to cancel if mis-sold. Unresolved grievances escalate freely via bimabharosa.irdai.gov.in.'],
+                            ].map(([title, body]) => (
+                                <div key={title} style={{ padding: 14, borderRadius: 12, background: 'var(--bg-secondary)', border: '1px solid var(--border-color)' }}>
+                                    <strong style={{ color: 'var(--accent-primary)', fontSize: 14 }}>{title}</strong>
+                                    <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginTop: 6, marginBottom: 0 }}>{body}</p>
+                                </div>
+                            ))}
                         </div>
                     </div>
                 </>

@@ -197,7 +197,7 @@ export default function LoginPage() {
             toast.success('Welcome back!');
             navigate('/dashboard');
         } catch (err) {
-            toast.error(err.response?.data?.error || 'Login failed');
+            toast.error(err.response?.data?.error || err.message || 'Login failed');
         } finally {
             setLoading(false);
         }
@@ -212,7 +212,7 @@ export default function LoginPage() {
             setOtpSent(true);
             toast.success('Login code sent to your email!');
         } catch (err) {
-            toast.error(err.response?.data?.error || 'Failed to send OTP');
+            toast.error(err.response?.data?.error || err.message || 'Failed to send OTP');
         } finally {
             setLoading(false);
         }
@@ -227,7 +227,7 @@ export default function LoginPage() {
             toast.success('Welcome back!');
             navigate('/dashboard');
         } catch (err) {
-            toast.error(err.response?.data?.error || 'Invalid OTP');
+            toast.error(err.response?.data?.error || err.message || 'Invalid OTP');
         } finally {
             setLoading(false);
         }
@@ -303,7 +303,7 @@ export default function LoginPage() {
                         </button>
                         <button
                             type="button"
-                            onClick={() => { setLoginMethod('otp'); form.password = ''; }}
+                            onClick={() => { setLoginMethod('otp'); setForm((prev) => ({ ...prev, password: '' })); }}
                             style={{
                                 flex: 1, padding: '10px', borderRadius: 8, fontSize: 13, fontWeight: 600,
                                 background: loginMethod === 'otp' ? '#ffffff' : 'transparent',

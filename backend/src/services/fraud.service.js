@@ -1,49 +1,39 @@
-const Policy = require('../models/Policy');
-const Claim = require('../models/Claim');
+const { supabaseAdmin } = require('../config/supabase');
 const grokService = require('./grok.service');
 const logger = require('../utils/logger');
 
-/**
- * Analyze policy for fraud indicators
- */
 const analyzePolicyFraud = async (policyData) => {
     try {
-        // Rule-based checks first
         const ruleBasedFlags = [];
         let ruleBasedScore = 0;
 
-        // Check coverage amount vs premium (suspicious if extremely high coverage)
-        if (policyData.coverageAmount > 10000000) {
+        if (Number(policyData.coverageAmount) > 10000000) {
             ruleBasedFlags.push('Unusually high coverage amount');
             ruleBasedScore += 15;
         }
 
-        // Check policy dates
         const startDate = new Date(policyData.startDate);
         const endDate = new Date(policyData.endDate);
         const durationDays = (endDate - startDate) / (1000 * 60 * 60 * 24);
 
-        if (durationDays < 30) {
-            ruleBasedFlags.push('Very short policy duration');
-            ruleBasedScore += 10;
+        if (!Number.isNaN(durationDays)) {
+            if (durationDays < 30) {
+                ruleBasedFlags.push('Very short policy duration');
+                ruleBasedScore += 10;
+            }
+            if (durationDays > 365 * 10) {
+                ruleBasedFlags.push('Unusually long policy duration');
+                ruleBasedScore += 5;
+            }
         }
 
-        if (durationDays > 365 * 10) {
-            ruleBasedFlags.push('Unusually long policy duration');
-            ruleBasedScore += 5;
-        }
-
-        // Check for missing information
         if (!policyData.policyNumber || policyData.policyNumber.length < 3) {
             ruleBasedFlags.push('Missing or invalid policy number');
             ruleBasedScore += 20;
         }
 
-        // AI-based analysis using Grok
         const aiAnalysis = await grokService.analyzeFraud(policyData);
-
-        // Combine scores
-        const combinedScore = Math.min(100, Math.round((ruleBasedScore + aiAnalysis.fraudScore) / 2));
+        const combinedScore = Math.min(100, Math.round((ruleBasedScore + (Number(aiAnalysis.fraudScore) || 0)) / 2));
 
         return {
             overallScore: combinedScore,
@@ -68,46 +58,48 @@ const analyzePolicyFraud = async (policyData) => {
     }
 };
 
-/**
- * Get fraud alerts for admin dashboard
- */
 const getFraudAlerts = async (limit = 20) => {
     try {
-        const suspiciousPolicies = await Policy.find({
-            verificationScore: { $lt: 50 },
-        })
-            .populate('userId', 'name email')
-            .sort({ verificationScore: 1 })
-            .limit(limit)
-            .lean();
+        const [{ data: suspiciousPolicies, error: polErr }, { data: recentClaims, error: clmErr }] = await Promise.all([
+            supabaseAdmin
+                .from('policies')
+                .select('id, policy_number, verification_score, provider_name, created_at, profiles(name, email)')
+                .lt('verification_score', 50)
+                .order('verification_score', { ascending: true })
+                .limit(limit),
+            supabaseAdmin
+                .from('claims')
+                .select('id, claim_amount, claim_date, ai_guidance, policies(policy_number), profiles(name)')
+                .order('created_at', { ascending: false })
+                .limit(100),
+        ]);
 
-        const suspiciousClaims = await Claim.find({
-            'aiGuidance.fraudRisk.score': { $gt: 50 },
-        })
-            .populate('policyId', 'policyNumber providerName')
-            .populate('userId', 'name email')
-            .sort({ 'aiGuidance.fraudRisk.score': -1 })
-            .limit(limit)
-            .lean();
+        if (polErr) logger.warn('Failed to fetch suspicious policies:', polErr.message);
+        if (clmErr) logger.warn('Failed to fetch claims for fraud alerts:', clmErr.message);
+
+        const suspiciousClaims = (recentClaims || [])
+            .filter((c) => Number(c.ai_guidance?.fraudRisk?.score || 0) > 50)
+            .sort((a, b) => Number(b.ai_guidance?.fraudRisk?.score || 0) - Number(a.ai_guidance?.fraudRisk?.score || 0))
+            .slice(0, limit);
 
         return {
-            policies: suspiciousPolicies.map((p) => ({
-                id: p._id,
-                policyNumber: p.policyNumber,
-                user: p.userId?.name || 'Unknown',
-                email: p.userId?.email || '',
-                verificationScore: p.verificationScore,
-                providerName: p.providerName,
-                createdAt: p.createdAt,
+            policies: (suspiciousPolicies || []).map((p) => ({
+                id: p.id,
+                policyNumber: p.policy_number,
+                user: p.profiles?.name || 'Unknown',
+                email: p.profiles?.email || '',
+                verificationScore: p.verification_score,
+                providerName: p.provider_name,
+                createdAt: p.created_at,
             })),
             claims: suspiciousClaims.map((c) => ({
-                id: c._id,
-                policyNumber: c.policyId?.policyNumber || 'Unknown',
-                user: c.userId?.name || 'Unknown',
-                claimAmount: c.claimAmount,
-                fraudScore: c.aiGuidance?.fraudRisk?.score || 0,
-                flags: c.aiGuidance?.fraudRisk?.flags || [],
-                claimDate: c.claimDate,
+                id: c.id,
+                policyNumber: c.policies?.policy_number || 'Unknown',
+                user: c.profiles?.name || 'Unknown',
+                claimAmount: Number(c.claim_amount),
+                fraudScore: Number(c.ai_guidance?.fraudRisk?.score || 0),
+                flags: c.ai_guidance?.fraudRisk?.flags || [],
+                claimDate: c.claim_date,
             })),
         };
     } catch (error) {

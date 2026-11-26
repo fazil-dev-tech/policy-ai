@@ -2,7 +2,7 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import {
     LayoutDashboard, FileText, MessageSquare, Shield,
-    BarChart3, Settings, LogOut, TrendingUp, Terminal
+    Settings, LogOut, TrendingUp, Sparkles, ShieldAlert, Users
 } from 'lucide-react';
 
 const navItems = [
@@ -10,8 +10,10 @@ const navItems = [
     { path: '/policies', label: 'Policies', icon: FileText },
     { path: '/analyzer', label: 'Content AI', icon: FileText },
     { path: '/chat', label: 'Policy Chat', icon: MessageSquare },
-    { path: '/terminal', label: 'AI Terminal', icon: Terminal },
+    { path: '/terminal', label: 'Parinidhi AI', icon: Sparkles },
     { path: '/claims', label: 'Claims', icon: Shield },
+    { path: '/shield', label: 'Browser Shield', icon: ShieldAlert },
+    { path: '/family', label: 'Family & SOS', icon: Users },
     { path: '/market', label: 'Market', icon: TrendingUp },
 ];
 

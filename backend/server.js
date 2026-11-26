@@ -1,16 +1,14 @@
-// ⚠️ Load env FIRST — before any other module that reads process.env
 require('dotenv').config({ path: require('path').join(__dirname, '.env') });
 
-const app = require('./src/app');
-const { connectDB } = require('./src/config/db');
-const logger = require('./src/utils/logger');
 const fs = require('fs');
 const path = require('path');
+const app = require('./src/app');
+const { checkSupabaseHealth } = require('./src/config/supabase');
+const logger = require('./src/utils/logger');
 
 const PORT = process.env.PORT || 5000;
 
-// Create required directories
-const dirs = ['uploads', 'logs'];
+const dirs = ['logs'];
 dirs.forEach((dir) => {
     const dirPath = path.join(__dirname, dir);
     if (!fs.existsSync(dirPath)) {
@@ -18,13 +16,15 @@ dirs.forEach((dir) => {
     }
 });
 
-// Start server
 const startServer = async () => {
     try {
-        // Connect to MongoDB
-        await connectDB();
+        const dbHealth = await checkSupabaseHealth();
+        if (dbHealth.status === 'connected') {
+            logger.info(`✅ Supabase connected (${dbHealth.latencyMs}ms)`);
+        } else {
+            logger.warn(`⚠️ Supabase health check degraded: ${dbHealth.error || 'unknown error'}`);
+        }
 
-        // Start Express
         const server = app.listen(PORT, () => {
             logger.info(`
 ╔══════════════════════════════════════════╗
@@ -33,12 +33,12 @@ const startServer = async () => {
 ║  Status:  ✅ Running                     ║
 ║  Port:    ${String(PORT).padEnd(30)}║
 ║  Mode:    ${String(process.env.NODE_ENV || 'development').padEnd(30)}║
+║  DB:      Supabase                       ║
 ║  Docs:    http://localhost:${PORT}/api-docs  ║
 ╚══════════════════════════════════════════╝
-      `);
+            `);
         });
 
-        // Graceful shutdown
         const gracefulShutdown = (signal) => {
             logger.info(`${signal} received. Shutting down gracefully...`);
             server.close(() => {
@@ -55,7 +55,6 @@ const startServer = async () => {
         process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
         process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
-        // Handle unhandled rejections
         process.on('unhandledRejection', (reason, promise) => {
             logger.error('Unhandled Rejection at:', promise, 'reason:', reason);
         });

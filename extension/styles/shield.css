@@ -1,0 +1,128 @@
+.pg-shield-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.2;
+  padding: 2px 8px;
+  border-radius: 999px;
+  margin-left: 6px;
+  vertical-align: middle;
+  cursor: pointer;
+  z-index: 99999;
+  user-select: none;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
+}
+
+.pg-shield-safe {
+  background: #dcfce7;
+  color: #166534;
+  border: 1px solid #22c55e;
+}
+
+.pg-shield-suspicious {
+  background: #fef3c7;
+  color: #92400e;
+  border: 1px solid #f59e0b;
+}
+
+.pg-shield-threat {
+  background: #fee2e2;
+  color: #991b1b;
+  border: 1px solid #ef4444;
+  animation: pgPulse 1.8s infinite;
+}
+
+.pg-shield-hidden-safe {
+  display: none !important;
+}
+
+.pg-box-threat {
+  outline: 2px solid #ef4444 !important;
+  border-radius: 10px !important;
+  background-color: rgba(239, 68, 68, 0.05) !important;
+}
+
+.pg-box-suspicious {
+  outline: 2px solid #f59e0b !important;
+  border-radius: 10px !important;
+  background-color: rgba(245, 158, 11, 0.05) !important;
+}
+
+.pg-floating-banner {
+  position: fixed;
+  top: 14px;
+  right: 16px;
+  max-width: 380px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  border-radius: 14px;
+  padding: 14px 16px;
+  z-index: 2147483647;
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.25);
+  backdrop-filter: blur(12px);
+}
+
+.pg-floating-banner.threat {
+  background: #fef2f2;
+  border: 2px solid #dc2626;
+  color: #7f1d1d;
+}
+
+.pg-floating-banner.suspicious {
+  background: #fffbeb;
+  border: 2px solid #d97706;
+  color: #78350f;
+}
+
+.pg-floating-banner h4 {
+  margin: 0 0 6px;
+  font-size: 13px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.pg-floating-banner p,
+.pg-floating-banner li {
+  margin: 4px 0;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.pg-floating-banner ul {
+  margin: 6px 0 8px 16px;
+  padding: 0;
+}
+
+.pg-banner-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.pg-banner-btn {
+  border: none;
+  border-radius: 8px;
+  padding: 5px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.pg-banner-btn.danger {
+  background: #dc2626;
+  color: #ffffff;
+}
+
+.pg-banner-btn.ghost {
+  background: rgba(15, 23, 42, 0.08);
+  color: inherit;
+}
+
+@keyframes pgPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.35); }
+  50% { box-shadow: 0 0 0 5px rgba(239, 68, 68, 0); }
+}

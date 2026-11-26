@@ -12,6 +12,9 @@ import AdminPage from './pages/AdminPage';
 import MarketPage from './pages/MarketPage';
 import GlobalChatPage from './pages/GlobalChatPage';
 import AnalyzerPage from './pages/AnalyzerPage';
+import BrowserShieldPage from './pages/BrowserShieldPage';
+import FamilyVaultPage from './pages/FamilyVaultPage';
+import ParinidhiFloatingLauncher from './components/ParinidhiFloatingLauncher';
 
 const ProtectedRoute = ({ children, adminOnly = false }) => {
     const { user, loading } = useAuth();
@@ -42,11 +45,14 @@ function App() {
                             <Route path="/chat" element={<ProtectedRoute><ChatPage /></ProtectedRoute>} />
                             <Route path="/terminal" element={<ProtectedRoute><GlobalChatPage /></ProtectedRoute>} />
                             <Route path="/claims" element={<ProtectedRoute><ClaimsPage /></ProtectedRoute>} />
+                            <Route path="/shield" element={<ProtectedRoute><BrowserShieldPage /></ProtectedRoute>} />
+                            <Route path="/family" element={<ProtectedRoute><FamilyVaultPage /></ProtectedRoute>} />
                             <Route path="/market" element={<ProtectedRoute><MarketPage /></ProtectedRoute>} />
                             <Route path="/admin" element={<ProtectedRoute adminOnly><AdminPage /></ProtectedRoute>} />
                             <Route path="*" element={<Navigate to="/dashboard" replace />} />
                         </Routes>
                     </main>
+                    <ParinidhiFloatingLauncher />
                 </div>
             ) : (
                 <Routes>

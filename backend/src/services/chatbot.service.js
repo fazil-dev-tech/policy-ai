@@ -1,21 +1,18 @@
-const mongoose = require('mongoose');
-const { getRedisClient } = require('../config/redis');
-const ChatHistory = require('../models/ChatHistory');
-const Policy = require('../models/Policy');
-const geminiService = require('./gemini.service');
-const logger = require('../utils/logger');
 const crypto = require('crypto');
+const { supabaseAdmin } = require('../config/supabase');
+const { getRedisClient } = require('../config/redis');
+const geminiService = require('./gemini.service');
+const pdfParser = require('./pdfParser.service');
+const { mapChatMessage } = require('../utils/mappers');
+const logger = require('../utils/logger');
 
-const CACHE_TTL = 3600; // 1 hour
+const CACHE_TTL_SEC = 3600;
 const MAX_HISTORY_LENGTH = 20;
+const memoryCache = new Map();
 
-/**
- * Sanitize user input to prevent prompt injection and XSS
- */
 const sanitizeInput = (input) => {
     if (!input || typeof input !== 'string') return '';
 
-    // Remove potential prompt injection patterns
     const injectionPatterns = [
         /ignore (all |previous |above )?instructions/gi,
         /you are now/gi,
@@ -33,58 +30,58 @@ const sanitizeInput = (input) => {
         sanitized = sanitized.replace(pattern, '[filtered]');
     }
 
-    // Limit length
     sanitized = sanitized.substring(0, 5000);
-
-    // Remove control characters
     sanitized = sanitized.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
 
     return sanitized.trim();
 };
 
-/**
- * Get or create a session ID
- */
 const getSessionId = (userId, sessionId) => {
     return sessionId || `session_${userId}_${crypto.randomBytes(8).toString('hex')}`;
 };
 
-/**
- * Get cached conversation from Redis
- */
 const getCachedConversation = async (sessionId) => {
     try {
         const redis = getRedisClient();
-        if (!redis) return null;
-
-        const cached = await redis.get(`chat:${sessionId}`);
-        return cached ? JSON.parse(cached) : null;
+        if (redis) {
+            const cached = await redis.get(`chat:${sessionId}`);
+            if (cached) return JSON.parse(cached);
+        }
     } catch (error) {
         logger.warn('Redis cache read failed:', error.message);
-        return null;
     }
+
+    const mem = memoryCache.get(sessionId);
+    if (mem && mem.expiresAt > Date.now()) {
+        return mem.data;
+    }
+    memoryCache.delete(sessionId);
+    return null;
 };
 
-/**
- * Cache conversation in Redis
- */
 const cacheConversation = async (sessionId, history) => {
+    const trimmed = history.slice(-MAX_HISTORY_LENGTH);
+
     try {
         const redis = getRedisClient();
-        if (!redis) return;
-
-        // Keep only recent history to limit cache size
-        const trimmed = history.slice(-MAX_HISTORY_LENGTH);
-        await redis.setex(`chat:${sessionId}`, CACHE_TTL, JSON.stringify(trimmed));
+        if (redis) {
+            await redis.setex(`chat:${sessionId}`, CACHE_TTL_SEC, JSON.stringify(trimmed));
+        }
     } catch (error) {
         logger.warn('Redis cache write failed:', error.message);
     }
+
+    if (memoryCache.size >= 500) {
+        const oldestKey = memoryCache.keys().next().value;
+        memoryCache.delete(oldestKey);
+    }
+    memoryCache.set(sessionId, {
+        data: trimmed,
+        expiresAt: Date.now() + CACHE_TTL_SEC * 1000,
+    });
 };
 
-/**
- * Process a chat message
- */
-const processMessage = async ({ userId, policyId, message, sessionId, aiModel = 'chatgpt' }) => {
+const processMessage = async ({ userId, policyId, message, sessionId }) => {
     const sanitizedMessage = sanitizeInput(message);
     if (!sanitizedMessage) {
         throw new Error('Invalid message content');
@@ -92,123 +89,158 @@ const processMessage = async ({ userId, policyId, message, sessionId, aiModel = 
 
     const currentSessionId = getSessionId(userId, sessionId);
 
-    // Get policy context
     let policySummary = {};
     if (policyId) {
-        const policy = await Policy.findOne({ _id: policyId, userId });
+        const { data: policy } = await supabaseAdmin
+            .from('policies')
+            .select('ai_summary, policy_number, provider_name, policy_type, coverage_amount')
+            .eq('id', policyId)
+            .eq('user_id', userId)
+            .maybeSingle();
+
         if (policy) {
-            policySummary = policy.aiSummary || {};
-            policySummary.policyNumber = policy.policyNumber;
-            policySummary.providerName = policy.providerName;
-            policySummary.policyType = policy.policyType;
-            policySummary.coverageAmount = policy.coverageAmount;
+            policySummary = {
+                ...(policy.ai_summary || {}),
+                policyNumber: policy.policy_number,
+                providerName: policy.provider_name,
+                policyType: policy.policy_type,
+                coverageAmount: Number(policy.coverage_amount || 0),
+            };
         }
     }
 
-    // Get conversation history (Redis cache first, then MongoDB)
     let conversationHistory = await getCachedConversation(currentSessionId);
     if (!conversationHistory) {
-        const dbHistory = await ChatHistory.find({
-            userId,
-            sessionId: currentSessionId,
-        })
-            .sort({ timestamp: -1 })
-            .limit(MAX_HISTORY_LENGTH)
-            .lean();
-        conversationHistory = dbHistory.reverse();
+        const { data: dbHistory } = await supabaseAdmin
+            .from('chat_history')
+            .select('message, ai_response, timestamp')
+            .eq('user_id', userId)
+            .eq('session_id', currentSessionId)
+            .order('timestamp', { ascending: false })
+            .limit(MAX_HISTORY_LENGTH);
+
+        conversationHistory = (dbHistory || []).reverse().map((row) => ({
+            message: row.message,
+            aiResponse: row.ai_response,
+        }));
     }
 
-    // Call AI service
+    let matchedClauses = [];
+    if (policyId) {
+        matchedClauses = await pdfParser.searchPolicyClauses({
+            policyId,
+            userId,
+            query: sanitizedMessage,
+            limit: 5,
+        });
+    }
+
     let aiResult;
     try {
-        aiResult = await geminiService.chatAboutPolicy(sanitizedMessage, policySummary, conversationHistory);
+        aiResult = await geminiService.chatAboutPolicy(sanitizedMessage, policySummary, conversationHistory, matchedClauses);
     } catch (error) {
-        logger.error('Puter AI chat service error:', error);
-        throw new Error('AI chat service is currently unavailable. Please try again later.');
+        logger.error('AI chat service error:', error.message);
+        throw new Error('AI chat service is currently unavailable. Please check your AI API configuration.');
     }
 
-    // Save to MongoDB
-    const chatEntry = await ChatHistory.create({
-        userId,
-        policyId: policyId || null,
-        sessionId: currentSessionId,
-        message: sanitizedMessage,
-        aiResponse: aiResult.response,
-        metadata: {
-            model: aiResult.model,
-            tokensUsed: aiResult.tokensUsed,
-            responseTimeMs: aiResult.responseTimeMs,
-        },
-    });
+    const { data: chatEntry, error: insertError } = await supabaseAdmin
+        .from('chat_history')
+        .insert({
+            user_id: userId,
+            policy_id: policyId || null,
+            session_id: currentSessionId,
+            message: sanitizedMessage,
+            ai_response: aiResult.response,
+            metadata: {
+                model: aiResult.model,
+                provider: aiResult.provider,
+                tokensUsed: aiResult.tokensUsed || 0,
+                responseTimeMs: aiResult.responseTimeMs || 0,
+            },
+        })
+        .select()
+        .single();
 
-    // Update Redis cache
-    const updatedHistory = [
+    if (insertError) {
+        throw new Error(`Failed to persist chat message: ${insertError.message}`);
+    }
+
+    await cacheConversation(currentSessionId, [
         ...conversationHistory,
         { message: sanitizedMessage, aiResponse: aiResult.response },
-    ];
-    await cacheConversation(currentSessionId, updatedHistory);
+    ]);
 
     return {
-        id: chatEntry._id,
+        id: chatEntry.id,
         sessionId: currentSessionId,
         message: sanitizedMessage,
         aiResponse: aiResult.response,
         model: aiResult.model,
+        provider: aiResult.provider,
         responseTimeMs: aiResult.responseTimeMs,
         timestamp: chatEntry.timestamp,
     };
 };
 
-/**
- * Get chat history for a user session
- */
 const getHistory = async (userId, sessionId, page = 1, limit = 50) => {
-    const query = { userId };
-    if (sessionId) query.sessionId = sessionId;
+    const safePage = Math.max(1, page);
+    const safeLimit = Math.min(100, Math.max(1, limit));
+    const from = (safePage - 1) * safeLimit;
+    const to = from + safeLimit - 1;
 
-    const skip = (page - 1) * limit;
+    let query = supabaseAdmin
+        .from('chat_history')
+        .select('*', { count: 'exact' })
+        .eq('user_id', userId);
 
-    const [messages, total] = await Promise.all([
-        ChatHistory.find(query)
-            .sort({ timestamp: -1 })
-            .skip(skip)
-            .limit(limit)
-            .lean(),
-        ChatHistory.countDocuments(query),
-    ]);
+    if (sessionId) {
+        query = query.eq('session_id', sessionId);
+    }
 
+    const { data, count, error } = await query
+        .order('timestamp', { ascending: false })
+        .range(from, to);
+
+    if (error) {
+        throw new Error(`Failed to fetch chat history: ${error.message}`);
+    }
+
+    const total = count || 0;
     return {
-        messages: messages.reverse(),
+        messages: (data || []).reverse().map(mapChatMessage),
         total,
-        page,
-        pages: Math.ceil(total / limit),
+        page: safePage,
+        pages: Math.ceil(total / safeLimit),
     };
 };
 
-/**
- * Get all sessions for a user
- */
 const getUserSessions = async (userId) => {
-    const sessions = await ChatHistory.aggregate([
-        { $match: { userId: new mongoose.Types.ObjectId(userId) } },
-        {
-            $group: {
-                _id: '$sessionId',
-                lastMessage: { $last: '$message' },
-                lastTimestamp: { $last: '$timestamp' },
-                messageCount: { $sum: 1 },
-            },
-        },
-        { $sort: { lastTimestamp: -1 } },
-        { $limit: 20 },
-    ]);
+    const { data, error } = await supabaseAdmin
+        .from('chat_history')
+        .select('session_id, message, timestamp')
+        .eq('user_id', userId)
+        .order('timestamp', { ascending: false })
+        .limit(500);
 
-    return sessions.map((s) => ({
-        sessionId: s._id,
-        lastMessage: s.lastMessage.substring(0, 100),
-        lastTimestamp: s.lastTimestamp,
-        messageCount: s.messageCount,
-    }));
+    if (error) {
+        throw new Error(`Failed to fetch chat sessions: ${error.message}`);
+    }
+
+    const sessionMap = new Map();
+    for (const row of data || []) {
+        if (!sessionMap.has(row.session_id)) {
+            sessionMap.set(row.session_id, {
+                sessionId: row.session_id,
+                lastMessage: String(row.message || '').substring(0, 100),
+                lastTimestamp: row.timestamp,
+                messageCount: 1,
+            });
+        } else {
+            sessionMap.get(row.session_id).messageCount += 1;
+        }
+    }
+
+    return Array.from(sessionMap.values()).slice(0, 20);
 };
 
 module.exports = {

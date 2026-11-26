@@ -171,9 +171,11 @@ function DataStreamField() {
 
 
 export default function RegisterPage() {
-    const { register } = useAuth();
+    const { register, verifyOtp } = useAuth();
     const navigate = useNavigate();
     const [form, setForm] = useState({ name: '', email: '', password: '', confirmPassword: '' });
+    const [otp, setOtp] = useState('');
+    const [needsVerification, setNeedsVerification] = useState(false);
     const [showPass, setShowPass] = useState(false);
     const [loading, setLoading] = useState(false);
 
@@ -183,11 +185,31 @@ export default function RegisterPage() {
         if (form.password.length < 6) return toast.error('Password must be at least 6 characters');
         setLoading(true);
         try {
-            await register(form.name, form.email, form.password);
-            toast.success('Account created successfully!');
+            const res = await register(form.name, form.email, form.password);
+            if (res?.requiresVerification) {
+                setNeedsVerification(true);
+                toast.success('Account created! Check your email for the 6-digit verification code.');
+            } else {
+                toast.success('Account created successfully!');
+                navigate('/dashboard');
+            }
+        } catch (err) {
+            toast.error(err.response?.data?.error || err.message || 'Registration failed');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleVerifySignup = async (e) => {
+        e.preventDefault();
+        if (otp.length !== 6) return toast.error('Please enter the 6-digit verification code');
+        setLoading(true);
+        try {
+            await verifyOtp(form.email, otp, 'signup');
+            toast.success('Email verified! Welcome to PolicyAI.');
             navigate('/dashboard');
         } catch (err) {
-            toast.error(err.response?.data?.error || 'Registration failed');
+            toast.error(err.response?.data?.error || err.message || 'Invalid verification code');
         } finally {
             setLoading(false);
         }
@@ -232,52 +254,83 @@ export default function RegisterPage() {
                         <div className="logo-icon" style={{ background: 'transparent', padding: 0, overflow: 'hidden' }}>
                             <img src="/logo.png" alt="PolicyAI" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                         </div>
-                        <h1 style={{ color: '#1e293b' }}>Create Account</h1>
-                        <p style={{ color: '#64748b' }}>Join PolicyAI — it's free</p>
+                        <h1 style={{ color: '#1e293b' }}>{needsVerification ? 'Verify Email' : 'Create Account'}</h1>
+                        <p style={{ color: '#64748b' }}>{needsVerification ? `Enter the 6-digit code sent to ${form.email}` : "Join PolicyAI — it's free"}</p>
                     </div>
 
-                    <form onSubmit={handleSubmit}>
-                        <div className="form-group">
-                            <label className="form-label">Full Name</label>
-                            <input id="register-name" type="text" className="form-input"
-                                placeholder="John Doe" value={form.name} required autoComplete="name"
-                                onChange={(e) => setForm({ ...form, name: e.target.value })} />
-                        </div>
-                        <div className="form-group">
-                            <label className="form-label">Email</label>
-                            <input id="register-email" type="email" className="form-input"
-                                placeholder="you@example.com" value={form.email} required autoComplete="email"
-                                onChange={(e) => setForm({ ...form, email: e.target.value })} />
-                        </div>
-                        <div className="form-group">
-                            <label className="form-label">Password</label>
-                            <div style={{ position: 'relative' }}>
-                                <input id="register-password" type={showPass ? 'text' : 'password'}
-                                    className="form-input" placeholder="Min. 6 characters"
-                                    value={form.password} required style={{ paddingRight: 48 }}
-                                    autoComplete="new-password"
-                                    onChange={(e) => setForm({ ...form, password: e.target.value })} />
-                                <button type="button" onClick={() => setShowPass(!showPass)}
-                                    style={{ position: 'absolute', right: 14, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex' }}>
-                                    {showPass ? <EyeOff size={18} /> : <Eye size={18} />}
+                    {needsVerification ? (
+                        <form onSubmit={handleVerifySignup}>
+                            <div className="form-group">
+                                <label className="form-label">6-Digit Verification Code</label>
+                                <input
+                                    id="register-otp"
+                                    type="text"
+                                    className="form-input"
+                                    placeholder="000000"
+                                    value={otp}
+                                    onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                                    required
+                                    autoComplete="one-time-code"
+                                    style={{ letterSpacing: '6px', fontSize: 20, textAlign: 'center', fontWeight: 'bold' }}
+                                />
+                            </div>
+                            <button type="submit" className="btn btn-primary btn-lg" style={{ width: '100%', marginTop: 8 }} disabled={loading}>
+                                {loading
+                                    ? <div className="spinner" style={{ width: 20, height: 20, borderWidth: 2 }} />
+                                    : <><Lock size={18} /> Confirm &amp; Continue</>
+                                }
+                            </button>
+                            <div style={{ textAlign: 'center', marginTop: 12 }}>
+                                <button type="button" onClick={() => { setNeedsVerification(false); setOtp(''); }}
+                                    style={{ background: 'none', border: 'none', color: '#64748b', fontSize: 13, cursor: 'pointer', textDecoration: 'underline' }}>
+                                    Back to registration
                                 </button>
                             </div>
-                        </div>
-                        <div className="form-group">
-                            <label className="form-label">Confirm Password</label>
-                            <input id="register-confirm" type="password" className="form-input"
-                                placeholder="Repeat your password" value={form.confirmPassword} required
-                                autoComplete="new-password"
-                                onChange={(e) => setForm({ ...form, confirmPassword: e.target.value })} />
-                        </div>
-                        <button id="register-submit" type="submit" className="btn btn-primary btn-lg"
-                            style={{ width: '100%', marginTop: 8 }} disabled={loading}>
-                            {loading
-                                ? <div className="spinner" style={{ width: 20, height: 20, borderWidth: 2 }} />
-                                : <><UserPlus size={18} /> Create Account</>
-                            }
-                        </button>
-                    </form>
+                        </form>
+                    ) : (
+                        <form onSubmit={handleSubmit}>
+                            <div className="form-group">
+                                <label className="form-label">Full Name</label>
+                                <input id="register-name" type="text" className="form-input"
+                                    placeholder="John Doe" value={form.name} required autoComplete="name"
+                                    onChange={(e) => setForm({ ...form, name: e.target.value })} />
+                            </div>
+                            <div className="form-group">
+                                <label className="form-label">Email</label>
+                                <input id="register-email" type="email" className="form-input"
+                                    placeholder="you@example.com" value={form.email} required autoComplete="email"
+                                    onChange={(e) => setForm({ ...form, email: e.target.value })} />
+                            </div>
+                            <div className="form-group">
+                                <label className="form-label">Password</label>
+                                <div style={{ position: 'relative' }}>
+                                    <input id="register-password" type={showPass ? 'text' : 'password'}
+                                        className="form-input" placeholder="Min. 6 characters"
+                                        value={form.password} required style={{ paddingRight: 48 }}
+                                        autoComplete="new-password"
+                                        onChange={(e) => setForm({ ...form, password: e.target.value })} />
+                                    <button type="button" onClick={() => setShowPass(!showPass)}
+                                        style={{ position: 'absolute', right: 14, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex' }}>
+                                        {showPass ? <EyeOff size={18} /> : <Eye size={18} />}
+                                    </button>
+                                </div>
+                            </div>
+                            <div className="form-group">
+                                <label className="form-label">Confirm Password</label>
+                                <input id="register-confirm" type="password" className="form-input"
+                                    placeholder="Repeat your password" value={form.confirmPassword} required
+                                    autoComplete="new-password"
+                                    onChange={(e) => setForm({ ...form, confirmPassword: e.target.value })} />
+                            </div>
+                            <button id="register-submit" type="submit" className="btn btn-primary btn-lg"
+                                style={{ width: '100%', marginTop: 8 }} disabled={loading}>
+                                {loading
+                                    ? <div className="spinner" style={{ width: 20, height: 20, borderWidth: 2 }} />
+                                    : <><UserPlus size={18} /> Create Account</>
+                                }
+                            </button>
+                        </form>
+                    )}
 
                     <div className="auth-footer">Already have an account? <Link to="/login">Sign in</Link></div>
                     <div className="auth-footer" style={{ marginTop: 8 }}>

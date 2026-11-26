@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>PolicyGuard Shield</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <header class="pg-hdr">
+    <div class="pg-brand">
+      <div class="pg-logo">PG</div>
+      <div>
+        <h1>PolicyGuard Shield</h1>
+        <p>Web · WhatsApp · Gmail Protection</p>
+      </div>
+    </div>
+    <span id="statusBadge" class="pg-badge safe">SCANNING</span>
+  </header>
+
+  <section class="pg-card">
+    <div class="pg-row">
+      <span class="pg-label">Current Domain</span>
+      <strong id="activeDomain">—</strong>
+    </div>
+    <div class="pg-row">
+      <span class="pg-label">Risk Score</span>
+      <strong id="riskScore">0 / 100</strong>
+    </div>
+    <ul id="reasonsList" class="pg-reasons">
+      <li>Open a website, Gmail, or WhatsApp Web to inspect live links.</li>
+    </ul>
+    <button id="rescanBtn" class="pg-btn pg-btn-primary">Scan Active Tab Now</button>
+  </section>
+
+  <section class="pg-card">
+    <label class="pg-toggle">
+      <input type="checkbox" id="showSafeToggle" />
+      <span>Show green <strong>✓ SAFE</strong> badges on WhatsApp & Gmail</span>
+    </label>
+    <p class="pg-hint">🚨 THREAT (Red) and ⚠ SUSPICIOUS (Orange) inline warnings are always enabled.</p>
+  </section>
+
+  <section class="pg-card">
+    <h3>Report Suspicious URL</h3>
+    <select id="reportCategory" class="pg-input">
+      <option value="phishing">Fake Insurer Website / Phishing</option>
+      <option value="apk_malware">WhatsApp/Gmail .APK Malware</option>
+      <option value="upi_scam">Reverse-UPI / Fake Refund</option>
+      <option value="fake_renewal">Fraudulent Policy Renewal</option>
+      <option value="impersonation">Agent / IRDAI Impersonation</option>
+    </select>
+    <input id="reportDesc" class="pg-input" placeholder="Short description (optional)" />
+    <button id="reportBtn" class="pg-btn pg-btn-danger">Submit Scam Report</button>
+    <div id="reportFeedback" class="pg-hint"></div>
+  </section>
+
+  <section class="pg-card">
+    <details id="syncDetails">
+      <summary>Settings & Optional Account Sync</summary>
+      <label class="pg-label" style="display:block;margin-top:8px;">Backend API URL</label>
+      <input id="apiUrlInput" class="pg-input" placeholder="http://localhost:5000/api" />
+      <button id="saveApiBtn" class="pg-btn pg-btn-secondary" style="margin-bottom:10px;">Save API URL</button>
+
+      <div id="authSignedOut">
+        <input id="loginEmail" type="email" class="pg-input" placeholder="PolicyAI email (optional)" />
+        <input id="loginPassword" type="password" class="pg-input" placeholder="Password" />
+        <button id="loginBtn" class="pg-btn pg-btn-primary">Connect Account</button>
+      </div>
+      <div id="authSignedIn" style="display:none;">
+        <p class="pg-hint">Connected as <strong id="connectedEmail"></strong></p>
+        <button id="logoutBtn" class="pg-btn pg-btn-secondary">Disconnect Account</button>
+      </div>
+    </details>
+  </section>
+
+  <footer class="pg-footer">
+    Cyber fraud or financial scam? Call <strong>1930</strong> immediately (Golden Hour &lt; 2h).
+  </footer>
+
+  <script src="popup.js"></script>
+</body>
+</html>

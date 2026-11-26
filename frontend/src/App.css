@@ -2619,4 +2619,31 @@ select.form-input {
     width: 100%;
     height: 200px;
   }
+
+  .parinidhi-layout {
+    flex-direction: column !important;
+    height: auto !important;
+  }
+
+  .parinidhi-sidebar {
+    width: 100% !important;
+  }
+}
+
+.parinidhi-layout {
+  display: flex;
+  gap: 20px;
+  height: calc(100vh - 64px);
+}
+
+.parinidhi-sidebar {
+  width: 305px;
+  flex-shrink: 0;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-lg);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  backdrop-filter: blur(16px);
 }

@@ -23,7 +23,7 @@ const router = express.Router();
  *               message: { type: string }
  *               policyId: { type: string }
  *               sessionId: { type: string }
- *               aiModel: { type: string, enum: [puter], default: puter }
+ *               aiModel: { type: string }
  *     responses:
  *       200: { description: AI response }
  */

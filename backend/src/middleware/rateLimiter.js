@@ -41,4 +41,10 @@ const uploadLimiter = createRateLimiter(
     'Too many file uploads. Please try again later.'
 );
 
-module.exports = { createRateLimiter, authLimiter, apiLimiter, chatLimiter, uploadLimiter };
+const securityLimiter = createRateLimiter(
+    15 * 60 * 1000,
+    400,
+    'Too many security scan requests. Please wait a moment.'
+);
+
+module.exports = { createRateLimiter, authLimiter, apiLimiter, chatLimiter, uploadLimiter, securityLimiter };

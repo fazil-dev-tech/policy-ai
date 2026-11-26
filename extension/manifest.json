@@ -1,0 +1,48 @@
+{
+  "manifest_version": 3,
+  "name": "PolicyGuard Shield — Browser, WhatsApp & Gmail",
+  "version": "2.0.0",
+  "description": "Real-time insurance phishing, .apk malware, Reverse-UPI scam & lookalike domain protection across Chrome, WhatsApp Web & Gmail.",
+  "permissions": [
+    "storage",
+    "activeTab",
+    "tabs"
+  ],
+  "host_permissions": [
+    "http://localhost:5000/*",
+    "https://*/*",
+    "https://web.whatsapp.com/*",
+    "https://mail.google.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "PolicyGuard Shield"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://web.whatsapp.com/*"],
+      "js": ["shared/localRules.js", "content-whatsapp.js"],
+      "css": ["styles/shield.css"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://mail.google.com/*"],
+      "js": ["shared/localRules.js", "content-gmail.js"],
+      "css": ["styles/shield.css"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://*/*", "http://*/*"],
+      "exclude_matches": [
+        "https://web.whatsapp.com/*",
+        "https://mail.google.com/*"
+      ],
+      "js": ["shared/localRules.js", "content-web.js"],
+      "css": ["styles/shield.css"],
+      "run_at": "document_idle"
+    }
+  ]
+}

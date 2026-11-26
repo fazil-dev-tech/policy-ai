@@ -1,5 +1,5 @@
-const jwt = require('jsonwebtoken');
-const User = require('../models/User');
+const { supabaseAdmin } = require('../config/supabase');
+const { mapProfile } = require('../utils/mappers');
 const logger = require('../utils/logger');
 
 const authenticate = async (req, res, next) => {
@@ -10,23 +10,59 @@ const authenticate = async (req, res, next) => {
         }
 
         const token = authHeader.split(' ')[1];
-        const env = require('../config/env');
-        const decoded = jwt.verify(token, env.JWT_SECRET);
+        const { data: authData, error: authError } = await supabaseAdmin.auth.getUser(token);
 
-        const user = await User.findById(decoded.userId).select('-password_hash -refreshToken');
-        if (!user) {
-            return res.status(401).json({ error: 'Invalid token. User not found.' });
+        if (authError || !authData?.user) {
+            const msg = authError?.message || '';
+            if (msg.toLowerCase().includes('expired')) {
+                return res.status(401).json({ error: 'Token expired', code: 'TOKEN_EXPIRED' });
+            }
+            return res.status(401).json({ error: 'Invalid or expired token' });
         }
 
-        req.user = user;
+        const authUser = authData.user;
+
+        let { data: profile, error: profileError } = await supabaseAdmin
+            .from('profiles')
+            .select('*')
+            .eq('id', authUser.id)
+            .maybeSingle();
+
+        if (profileError) {
+            logger.error('Profile lookup failed:', profileError.message);
+            return res.status(500).json({ error: 'Failed to load user profile' });
+        }
+
+        if (!profile) {
+            const fallbackName =
+                authUser.user_metadata?.name ||
+                (authUser.email ? authUser.email.split('@')[0] : 'User');
+
+            const { data: createdProfile, error: upsertError } = await supabaseAdmin
+                .from('profiles')
+                .upsert(
+                    {
+                        id: authUser.id,
+                        name: fallbackName,
+                        email: (authUser.email || '').toLowerCase(),
+                        role: 'user',
+                    },
+                    { onConflict: 'id' }
+                )
+                .select()
+                .single();
+
+            if (upsertError) {
+                logger.error('Profile auto-create failed:', upsertError.message);
+                return res.status(500).json({ error: 'Failed to initialize user profile' });
+            }
+            profile = createdProfile;
+        }
+
+        req.user = mapProfile(profile);
+        req.accessToken = token;
         next();
     } catch (error) {
-        if (error.name === 'TokenExpiredError') {
-            return res.status(401).json({ error: 'Token expired', code: 'TOKEN_EXPIRED' });
-        }
-        if (error.name === 'JsonWebTokenError') {
-            return res.status(401).json({ error: 'Invalid token' });
-        }
         logger.error('Auth middleware error:', error);
         return res.status(500).json({ error: 'Internal server error' });
     }

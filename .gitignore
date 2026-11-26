@@ -1,5 +1,7 @@
 # Backend
 backend/node_modules/
+backend/.env
+backend/.env.production
 node_modules/
 uploads/
 logs/
@@ -12,6 +14,10 @@ frontend/dist/
 frontend/.env
 frontend/.env.production
 
+# Supabase local temp
+supabase/.temp/
+supabase/.branches/
+
 # OS
 .DS_Store
 Thumbs.db
@@ -19,3 +25,10 @@ Thumbs.db
 # IDE
 .vscode/
 .idea/
+.vercel/
+
+# Python ML Sidecar (local only)
+ml-service/.venv/
+ml-service/models/
+ml-service/*.pt
+ml-service/__pycache__/

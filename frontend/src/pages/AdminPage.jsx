@@ -14,18 +14,50 @@ const COLORS = ['#8b5cf6', '#6366f1', '#3b82f6', '#10b981', '#f59e0b', '#ef4444'
 
 export default function AdminPage() {
     const [stats, setStats] = useState(null);
+    const [scamReports, setScamReports] = useState([]);
+    const [verifiedDomains, setVerifiedDomains] = useState([]);
+    const [newDomain, setNewDomain] = useState({ domain: '', providerName: '', category: 'insurer' });
     const [loading, setLoading] = useState(true);
 
     useEffect(() => { loadStats(); }, []);
 
     const loadStats = async () => {
         try {
-            const { data } = await api.get('/admin/stats');
-            setStats(data);
+            const [statsRes, reportsRes, domainsRes] = await Promise.all([
+                api.get('/admin/stats'),
+                api.get('/admin/scam-reports').catch(() => ({ data: { reports: [] } })),
+                api.get('/admin/verified-domains').catch(() => ({ data: { domains: [] } })),
+            ]);
+            setStats(statsRes.data);
+            setScamReports(reportsRes.data.reports || []);
+            setVerifiedDomains(domainsRes.data.domains || []);
         } catch (err) {
             toast.error(err.response?.data?.error || 'Failed to load admin stats');
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleModerateReport = async (id, moderationStatus) => {
+        try {
+            await api.patch(`/admin/scam-reports/${id}`, { moderationStatus });
+            toast.success(`Report marked ${moderationStatus}`);
+            loadStats();
+        } catch {
+            toast.error('Moderation update failed');
+        }
+    };
+
+    const handleAddDomain = async (e) => {
+        e.preventDefault();
+        if (!newDomain.domain || !newDomain.providerName) return;
+        try {
+            await api.post('/admin/verified-domains', newDomain);
+            toast.success('Verified domain added');
+            setNewDomain({ domain: '', providerName: '', category: 'insurer' });
+            loadStats();
+        } catch {
+            toast.error('Failed to add verified domain');
         }
     };
 
@@ -97,7 +129,7 @@ export default function AdminPage() {
                                         <Cell key={i} fill={COLORS[i % COLORS.length]} />
                                     ))}
                                 </Pie>
-                                <Tooltip contentStyle={{ background: '#1e293b', border: '1px solid rgba(139,92,246,0.3)', borderRadius: 8, color: '#e2e8f0' }} />
+                                <Tooltip contentStyle={{ background: '#ffffff', border: '1px solid #f472b6', borderRadius: 10, color: '#0f172a' }} />
                             </PieChart>
                         </ResponsiveContainer>
                     ) : (
@@ -112,11 +144,11 @@ export default function AdminPage() {
                     {userGrowthData.length > 0 ? (
                         <ResponsiveContainer width="100%" height={300}>
                             <LineChart data={userGrowthData}>
-                                <CartesianGrid strokeDasharray="3 3" stroke="rgba(139,92,246,0.1)" />
-                                <XAxis dataKey="date" tick={{ fill: '#94a3b8', fontSize: 12 }} />
-                                <YAxis tick={{ fill: '#94a3b8', fontSize: 12 }} />
-                                <Tooltip contentStyle={{ background: '#1e293b', border: '1px solid rgba(139,92,246,0.3)', borderRadius: 8, color: '#e2e8f0' }} />
-                                <Line type="monotone" dataKey="users" stroke="#8b5cf6" strokeWidth={2} dot={{ fill: '#8b5cf6' }} />
+                                <CartesianGrid strokeDasharray="3 3" stroke="rgba(236,72,153,0.12)" />
+                                <XAxis dataKey="date" tick={{ fill: '#334155', fontSize: 12 }} />
+                                <YAxis tick={{ fill: '#334155', fontSize: 12 }} />
+                                <Tooltip contentStyle={{ background: '#ffffff', border: '1px solid #f472b6', borderRadius: 10, color: '#0f172a' }} />
+                                <Line type="monotone" dataKey="users" stroke="#ec4899" strokeWidth={2} dot={{ fill: '#ec4899' }} />
                             </LineChart>
                         </ResponsiveContainer>
                     ) : (
@@ -224,6 +256,51 @@ export default function AdminPage() {
                         <p>No fraud alerts — all clear! ✅</p>
                     </div>
                 )}
+            </div>
+
+            {/* Browser Shield Scam Moderation & Verified Registry */}
+            <div className="grid-2" style={{ marginTop: 28 }}>
+                <div className="card" style={{ padding: 20 }}>
+                    <h3 style={{ marginBottom: 12 }}>Browser Shield Scam Moderation ({scamReports.length})</h3>
+                    {scamReports.length > 0 ? (
+                        <div className="table-wrapper" style={{ maxHeight: 280, overflowY: 'auto' }}>
+                            <table className="table">
+                                <thead><tr><th>Domain</th><th>Category</th><th>Status</th><th>Action</th></tr></thead>
+                                <tbody>
+                                    {scamReports.map((r) => (
+                                        <tr key={r.id}>
+                                            <td><code>{r.domain}</code></td>
+                                            <td>{r.category}</td>
+                                            <td><span className={`badge ${r.moderation_status === 'verified' ? 'badge-danger' : r.moderation_status === 'rejected' ? 'badge-success' : 'badge-warning'}`}>{r.moderation_status}</span></td>
+                                            <td style={{ display: 'flex', gap: 6 }}>
+                                                <button className="btn btn-danger btn-sm" onClick={() => handleModerateReport(r.id, 'verified')}>Verify</button>
+                                                <button className="btn btn-secondary btn-sm" onClick={() => handleModerateReport(r.id, 'rejected')}>Reject</button>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    ) : (
+                        <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>No community scam reports queued.</p>
+                    )}
+                </div>
+
+                <div className="card" style={{ padding: 20 }}>
+                    <h3 style={{ marginBottom: 12 }}>Verified Domains Manager ({verifiedDomains.length})</h3>
+                    <form onSubmit={handleAddDomain} style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap' }}>
+                        <input className="form-input" placeholder="domain.in" style={{ flex: 1 }} value={newDomain.domain} onChange={(e) => setNewDomain({ ...newDomain, domain: e.target.value })} />
+                        <input className="form-input" placeholder="Provider Name" style={{ flex: 1 }} value={newDomain.providerName} onChange={(e) => setNewDomain({ ...newDomain, providerName: e.target.value })} />
+                        <button className="btn btn-primary btn-sm" type="submit">Add</button>
+                    </form>
+                    <div style={{ maxHeight: 210, overflowY: 'auto', fontSize: 12 }}>
+                        {verifiedDomains.slice(0, 12).map((d) => (
+                            <div key={d.id} style={{ padding: '4px 0', borderBottom: '1px solid var(--border-color)' }}>
+                                <strong>{d.provider_name}</strong> — <code>{d.domain}</code> ({d.category})
+                            </div>
+                        ))}
+                    </div>
+                </div>
             </div>
         </div>
     );

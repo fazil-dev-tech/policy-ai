@@ -1,5 +1,13 @@
 const express = require('express');
-const { getStats, getUsers } = require('../controllers/admin.controller');
+const {
+    getStats,
+    getUsers,
+    getScamReportsAdmin,
+    moderateScamReport,
+    getVerifiedDomainsAdmin,
+    upsertVerifiedDomain,
+    deleteVerifiedDomain,
+} = require('../controllers/admin.controller');
 const { authenticate, authorize } = require('../middleware/auth');
 
 const router = express.Router();
@@ -41,5 +49,10 @@ router.get('/stats', getStats);
  *       200: { description: List of users }
  */
 router.get('/users', getUsers);
+router.get('/scam-reports', getScamReportsAdmin);
+router.patch('/scam-reports/:id', moderateScamReport);
+router.get('/verified-domains', getVerifiedDomainsAdmin);
+router.post('/verified-domains', upsertVerifiedDomain);
+router.delete('/verified-domains/:id', deleteVerifiedDomain);
 
 module.exports = router;

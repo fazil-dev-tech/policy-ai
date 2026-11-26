@@ -1,52 +1,6 @@
-const nodemailer = require('nodemailer');
+const { sendEmail } = require('./email.service');
 const logger = require('../utils/logger');
 
-let transporter = null;
-
-const getTransporter = () => {
-    if (transporter) return transporter;
-    const env = require('../config/env');
-
-    transporter = nodemailer.createTransport({
-        host: env.SMTP_HOST,
-        port: parseInt(env.SMTP_PORT),
-        secure: false,
-        auth: {
-            user: env.SMTP_USER,
-            pass: env.SMTP_PASS,
-        },
-    });
-
-    return transporter;
-};
-
-/**
- * Send email notification
- */
-const sendEmail = async ({ to, subject, html, text }) => {
-    try {
-        const env = require('../config/env');
-        const mailer = getTransporter();
-
-        const info = await mailer.sendMail({
-            from: `"PolicyAI" <${env.SMTP_FROM}>`,
-            to,
-            subject,
-            html,
-            text,
-        });
-
-        logger.info(`Email sent: ${info.messageId} to ${to}`);
-        return { success: true, messageId: info.messageId };
-    } catch (error) {
-        logger.error('Email send failed:', error.message);
-        return { success: false, error: error.message };
-    }
-};
-
-/**
- * Send claim status update email
- */
 const sendClaimStatusEmail = async (userEmail, userName, claimData) => {
     const statusColors = {
         pending: '#f59e0b',
@@ -72,8 +26,7 @@ const sendClaimStatusEmail = async (userEmail, userName, claimData) => {
         </div>
         <p style="color: #888; font-size: 12px;">This is an automated notification from PolicyAI. Do not reply to this email.</p>
       </div>
-    </div>
-  `;
+    </div>`;
 
     return sendEmail({
         to: userEmail,
@@ -83,16 +36,9 @@ const sendClaimStatusEmail = async (userEmail, userName, claimData) => {
     });
 };
 
-/**
- * Send SMS notification (stub - integrate with Twilio)
- */
 const sendSMS = async (phoneNumber, message) => {
     try {
-        // Twilio integration placeholder
-        logger.info(`SMS to ${phoneNumber}: ${message}`);
-        // const env = require('../config/env');
-        // const twilio = require('twilio')(env.TWILIO_ACCOUNT_SID, env.TWILIO_AUTH_TOKEN);
-        // await twilio.messages.create({ body: message, from: env.TWILIO_PHONE_NUMBER, to: phoneNumber });
+        logger.info(`SMS stub to ${phoneNumber}: ${message}`);
         return { success: true, message: 'SMS sent (stub)' };
     } catch (error) {
         logger.error('SMS send failed:', error.message);

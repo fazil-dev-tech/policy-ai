@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import api from '../services/api';
+import api, { resolveAssetUrl, uploadDirectToSignedStorage } from '../services/api';
 import {
     Upload, FileText, Trash2, Eye, X, AlertTriangle,
     CheckCircle, Shield, ClipboardList, FileCheck, Zap, Bot,
@@ -16,7 +16,7 @@ function ScoreRing({ score }) {
         <svg width="90" height="90" style={{ transform: 'rotate(-90deg)' }}>
             <circle cx="45" cy="45" r={r} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="7" />
             <circle cx="45" cy="45" r={r} fill="none" stroke={color} strokeWidth="7"
-                strokeDasharray={`\${dash} \${circ}`} strokeLinecap="round"
+                strokeDasharray={`${dash} ${circ}`} strokeLinecap="round"
                 style={{ transition: 'stroke-dasharray 1.2s cubic-bezier(0.4,0,0.2,1)' }} />
             <text x="45" y="45" textAnchor="middle" dominantBaseline="central"
                 style={{ transform: 'rotate(90deg)', transformOrigin: '45px 45px', fontSize: 15, fontWeight: 700, fill: color }}>
@@ -120,21 +120,30 @@ export default function AnalyzerPage() {
 
         setUploading(true);
         setUploadStep(1);
-        const formData = new FormData();
-        formData.append('pdf', file);
-
         try {
-            setUploadStep(2);
-            const { data } = await api.post('/documents/upload', formData, {
-                headers: { 'Content-Type': 'multipart/form-data' },
-            });
+            let res;
+            if (file.size > 3.8 * 1024 * 1024) {
+                setUploadStep(2);
+                const uploaded = await uploadDirectToSignedStorage(file, 'documents');
+                res = await api.post('/documents/upload', {
+                    storagePath: uploaded.storagePath,
+                    fileName: uploaded.fileName,
+                    fileSize: uploaded.fileSize,
+                });
+            } else {
+                const formData = new FormData();
+                formData.append('pdf', file);
+                setUploadStep(2);
+                res = await api.post('/documents/upload', formData, {
+                    headers: { 'Content-Type': 'multipart/form-data' },
+                });
+            }
+            const { data } = res;
             setUploadStep(3);
-            await new Promise(r => setTimeout(r, 600));
+            await new Promise(r => setTimeout(r, 400));
             toast.success('Document uploaded and analyzed!');
 
-            // Check nested response vs direct response depending on how axios handles it
             const newDoc = data.document || data;
-
             setDocs([newDoc, ...docs]);
             setSelectedDoc(newDoc);
             setActiveTab('simpleSummary');
@@ -246,14 +255,14 @@ export default function AnalyzerPage() {
                             const typeColor = DOC_TYPE_COLORS[doc.documentType] || '#8b5cf6';
                             return (
                                 <div key={doc._id} className="policy-card" style={{ '--type-color': typeColor }}
-                                    onClick={() => { setSelectedDoc(doc); setActiveTab('simpleSummary'); }}>
+                                    onClick={() => { setSelectedDoc(doc); setActiveTab('simpleSummary'); setChatMessages([]); setShowChat(false); }}>
                                     <div className="policy-card-top">
                                         <span className="badge" style={{ background: typeColor + '22', color: typeColor, border: `1px solid ${typeColor}44` }}>
                                             {doc.documentType}
                                         </span>
                                         <div style={{ display: 'flex', gap: 6 }} onClick={e => e.stopPropagation()}>
                                             <button className="btn btn-secondary btn-sm"
-                                                onClick={() => { setSelectedDoc(doc); setActiveTab('simpleSummary'); }}>
+                                                onClick={() => { setSelectedDoc(doc); setActiveTab('simpleSummary'); setChatMessages([]); setShowChat(false); }}>
                                                 <Eye size={13} /> View
                                             </button>
                                             <button className="btn btn-danger btn-sm" onClick={() => setDocToDelete(doc)}>
@@ -342,7 +351,7 @@ export default function AnalyzerPage() {
                             }
 
                             <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
-                                <a href={(import.meta.env.VITE_API_URL || '').replace('/api', '') + selectedDoc.pdfUrl} target="_blank" rel="noreferrer" className="btn btn-secondary" style={{ flex: 1, textAlign: 'center' }}>
+                                <a href={resolveAssetUrl(selectedDoc.pdfUrl)} target="_blank" rel="noreferrer" className="btn btn-secondary" style={{ flex: 1, textAlign: 'center' }}>
                                     <FileText size={15} /> View PDF
                                 </a>
                                 <button className="btn btn-primary" onClick={() => setShowChat(!showChat)} style={{ flex: 1 }}>
@@ -355,7 +364,7 @@ export default function AnalyzerPage() {
 
                             {/* Chat Panel */}
                             {showChat && (
-                                <div style={{ marginTop: 16, borderRadius: 16, overflow: 'hidden', border: '1px solid var(--border)', background: 'var(--bg-card)' }}>
+                                <div style={{ marginTop: 16, borderRadius: 16, overflow: 'hidden', border: '1px solid var(--border-color)', background: 'var(--bg-card)' }}>
                                     <div style={{ padding: '12px 16px', background: 'linear-gradient(135deg, #8b5cf6, #3b82f6)', color: '#fff', display: 'flex', alignItems: 'center', gap: 8 }}>
                                         <Bot size={18} /> <span style={{ fontWeight: 700 }}>Ask about this document</span>
                                     </div>

@@ -9,34 +9,22 @@ const errorHandler = (err, req, res, _next) => {
         ip: req.ip,
     });
 
-    // Mongoose validation error
-    if (err.name === 'ValidationError') {
-        const errors = Object.values(err.errors).map((e) => ({
-            field: e.path,
-            message: e.message,
-        }));
-        return res.status(400).json({ error: 'Validation failed', details: errors });
+    if (err.code === '23505') {
+        return res.status(409).json({ error: 'Duplicate record already exists' });
     }
 
-    // Mongoose duplicate key error
-    if (err.code === 11000) {
-        const field = Object.keys(err.keyPattern)[0];
-        return res.status(409).json({
-            error: `Duplicate value for field: ${field}`,
-        });
+    if (err.code === '22P02') {
+        return res.status(400).json({ error: 'Invalid identifier format' });
     }
 
-    // Mongoose cast error (invalid ObjectId)
-    if (err.name === 'CastError') {
-        return res.status(400).json({ error: `Invalid ${err.path}: ${err.value}` });
-    }
-
-    // Multer file size error
     if (err.code === 'LIMIT_FILE_SIZE') {
         return res.status(413).json({ error: 'File too large. Maximum size is 10MB.' });
     }
 
-    // JWT errors
+    if (err.message === 'Only PDF files are allowed') {
+        return res.status(400).json({ error: err.message });
+    }
+
     if (err.name === 'JsonWebTokenError') {
         return res.status(401).json({ error: 'Invalid token' });
     }
@@ -45,7 +33,6 @@ const errorHandler = (err, req, res, _next) => {
         return res.status(401).json({ error: 'Token expired' });
     }
 
-    // Default server error
     const statusCode = err.statusCode || 500;
     const message =
         process.env.NODE_ENV === 'production'

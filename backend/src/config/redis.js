@@ -2,38 +2,39 @@ const Redis = require('ioredis');
 const logger = require('../utils/logger');
 
 let redisClient = null;
+let redisAttempted = false;
 
 const getRedisClient = () => {
     if (redisClient) return redisClient;
+    if (redisAttempted) return null;
+    redisAttempted = true;
+
+    const env = require('./env');
+    if (!env.REDIS_URL) {
+        return null;
+    }
 
     try {
-        const env = require('./env');
-        redisClient = new Redis(env.REDIS_URL, {
-            maxRetriesPerRequest: 3,
-            retryDelayOnFailover: 100,
+        const client = new Redis(env.REDIS_URL, {
+            maxRetriesPerRequest: 1,
+            enableOfflineQueue: false,
             lazyConnect: true,
-            reconnectOnError(err) {
-                const targetError = 'READONLY';
-                if (err.message.includes(targetError)) return true;
-                return false;
-            },
+            retryStrategy: () => null,
         });
 
-        redisClient.on('connect', () => {
+        client.on('connect', () => {
             logger.info('Redis connected');
         });
 
-        redisClient.on('error', (err) => {
-            logger.error('Redis error:', err.message);
+        client.on('error', (err) => {
+            logger.warn('Redis unavailable, using in-memory fallback:', err.message);
+            redisClient = null;
         });
 
-        redisClient.on('close', () => {
-            logger.warn('Redis connection closed');
-        });
-
+        redisClient = client;
         return redisClient;
     } catch (error) {
-        logger.warn('Redis not available, falling back to in-memory cache');
+        logger.warn('Redis not available, using in-memory fallback');
         return null;
     }
 };
