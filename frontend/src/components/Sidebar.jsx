@@ -1,14 +1,14 @@
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import {
-    LayoutDashboard, FileText, MessageSquare, Shield,
-    Settings, LogOut, TrendingUp, Sparkles, ShieldAlert, Users
+    LayoutDashboard, FileText, FileSearch, MessageSquare, Shield,
+    Settings, LogOut, TrendingUp, Sparkles, ShieldAlert, Users, X
 } from 'lucide-react';
 
 const navItems = [
     { path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { path: '/policies', label: 'Policies', icon: FileText },
-    { path: '/analyzer', label: 'Content AI', icon: FileText },
+    { path: '/analyzer', label: 'Document AI', icon: FileSearch },
     { path: '/chat', label: 'Policy Chat', icon: MessageSquare },
     { path: '/terminal', label: 'Parinidhi AI', icon: Sparkles },
     { path: '/claims', label: 'Claims', icon: Shield },
@@ -21,13 +21,14 @@ const adminItems = [
     { path: '/admin', label: 'Admin Panel', icon: Settings },
 ];
 
-export default function Sidebar() {
+export default function Sidebar({ mobileOpen = false, onClose = () => {} }) {
     const { user, logout } = useAuth();
     const navigate = useNavigate();
 
-    const handleLogout = () => {
-        logout();
-        navigate('/login');
+    const handleLogout = async () => {
+        onClose();
+        await logout();
+        navigate('/login', { replace: true });
     };
 
     const initials = user?.name
@@ -35,15 +36,20 @@ export default function Sidebar() {
         : '??';
 
     return (
-        <aside className="sidebar">
+        <aside className={`sidebar ${mobileOpen ? 'open' : ''}`}>
             <div className="sidebar-logo">
                 <div className="logo-icon" style={{ padding: 0, overflow: 'hidden', background: 'transparent' }}>
-                    <img src="/logo.png" alt="PolicyAI" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    <img src="/logo.png" alt="PolicyGuard AI" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                 </div>
-                <div>
-                    <h1>PolicyAI</h1>
-                    <span>Insurance Intelligence</span>
+                <div style={{ flex: 1 }}>
+                    <h1>PolicyGuard AI</h1>
+                    <span>IRDAI Intelligence</span>
                 </div>
+                {mobileOpen && (
+                    <button type="button" className="btn btn-secondary btn-sm mobile-close-btn" aria-label="Close navigation menu" onClick={onClose}>
+                        <X size={16} />
+                    </button>
+                )}
             </div>
 
             <nav className="sidebar-nav">
@@ -51,6 +57,7 @@ export default function Sidebar() {
                     <NavLink
                         key={path}
                         to={path}
+                        onClick={onClose}
                         className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}
                     >
                         <Icon />
@@ -65,6 +72,7 @@ export default function Sidebar() {
                             <NavLink
                                 key={path}
                                 to={path}
+                                onClick={onClose}
                                 className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}
                             >
                                 <Icon />

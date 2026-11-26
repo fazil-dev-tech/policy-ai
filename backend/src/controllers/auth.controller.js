@@ -24,7 +24,9 @@ const ensureProfile = async (authUser, fallbackName) => {
         .single();
 
     if (error) {
-        throw new Error(`Failed to initialize user profile: ${error.message}`);
+        const e = new Error(`Failed to initialize user profile: ${error.message}`);
+        if (error.code === '23505') e.statusCode = 409;
+        throw e;
     }
     return created;
 };
@@ -150,7 +152,7 @@ const sendOtp = async (req, res, next) => {
 
         const { error } = await authClient.auth.signInWithOtp({
             email: normalizedEmail,
-            options: { shouldCreateUser: true },
+            options: { shouldCreateUser: Boolean(req.body.createIfMissing) },
         });
 
         if (error) {

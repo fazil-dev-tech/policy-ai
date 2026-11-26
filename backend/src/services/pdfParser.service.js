@@ -29,8 +29,8 @@ const getPdfJs = async () => {
 const maskSensitivePii = (text = '') => {
     return String(text || '')
         .replace(/\b[A-Z]{5}\d{4}[A-Z]\b/g, '[PAN-MASKED]')
-        .replace(/\b\d{4}[\s-]?\d{4}[\s-]?\d{4}\b/g, (m) => `[AADHAAR-****-${m.slice(-4)}]`)
-        .replace(/(\+?91[\s-]?)?[6-9]\d{9}\b/g, (m) => `[PHONE-***${m.slice(-4)}]`);
+        .replace(/\b\d{4}[\s-]\d{4}[\s-]\d{4}\b/g, (m) => `[AADHAAR-****-${m.slice(-4)}]`)
+        .replace(/(?:\+91[\s-]?)[6-9]\d{9}\b/g, (m) => `[PHONE-***${m.slice(-4)}]`);
 };
 
 /**
@@ -44,7 +44,7 @@ const reconstructPageLines = (items = []) => {
         const x = item.transform?.[4] ?? 0;
         const y = Math.round((item.transform?.[5] ?? 0) / 3) * 3;
         if (!rows.has(y)) rows.set(y, []);
-        rows.get(y).push({ x, str: item.str.trim() });
+        rows.get(y).push({ x, width: Number(item.width || 0), str: item.str.trim() });
     }
 
     const sortedYs = Array.from(rows.keys()).sort((a, b) => b - a);
@@ -55,8 +55,8 @@ const reconstructPageLines = (items = []) => {
             const cur = cols[i];
             if (i > 0) {
                 const prev = cols[i - 1];
-                const gap = cur.x - prev.x;
-                parts.push(gap > 85 ? ' | ' : ' ');
+                const visualGap = prev.width > 0 ? cur.x - (prev.x + prev.width) : cur.x - prev.x;
+                parts.push(visualGap > 42 ? ' | ' : ' ');
             }
             parts.push(cur.str);
         }
@@ -70,28 +70,31 @@ const reconstructPageLines = (items = []) => {
 const extractDeterministicHints = (fullText = '') => {
     const hints = {};
 
-    const policyMatch = fullText.match(/Policy\s*(?:No\.?|Number)\s*[\|\s:\-]+([A-Z0-9\/-]{6,25})/i);
+    const policyMatch = fullText.match(/(?:Policy|Certificate)\s*(?:No\.?|Number)[ \t\|:\-]+([A-Z0-9\/.-]{6,35})/i);
     if (policyMatch) hints.policyNumber = policyMatch[1].trim();
 
-    const siMatch = fullText.match(/(?:Basic\s*Floater\s*)?Sum\s*Insured(?:\s*in\s*Rs\.?)?[\s\|:\-]+(?:Rs\.?|INR|₹)?\s*([\d,]{4,12})/i);
+    const siMatch = fullText.match(/(?:Basic\s*Floater\s*|Capital\s*)?(?:Sum\s*Insured|IDV)(?:\s*in\s*Rs\.?)?[ \t\|:\-]+(?:Rs\.?|INR|₹)?\s*([\d,]{4,12}|[\d.]+)\s*(Lakhs?|Lacs?|Crores?)?/i);
     if (siMatch) {
-        const parsed = parseFloat(siMatch[1].replace(/,/g, ''));
-        if (Number.isFinite(parsed) && parsed >= 10000) hints.coverageAmount = parsed;
+        let parsed = parseFloat(siMatch[1].replace(/,/g, ''));
+        const unit = (siMatch[2] || '').toLowerCase();
+        if (unit.startsWith('lakh') || unit.startsWith('lac')) parsed *= 100000;
+        else if (unit.startsWith('crore')) parsed *= 10000000;
+        if (Number.isFinite(parsed) && parsed >= 10000) hints.coverageAmount = Math.round(parsed);
     }
 
-    const periodMatch = fullText.match(/PERIOD\s*OF\s*INSURANCE[^0-9]*(\d{1,2}[\/\-][A-Za-z0-9]{2,3}[\/\-]\d{4})[^\n]*?\bTo\b[^0-9]*(\d{1,2}[\/\-][A-Za-z0-9]{2,3}[\/\-]\d{4})/i);
+    const periodMatch = fullText.match(/(?:PERIOD\s*OF\s*INSURANCE|Policy\s*Period)[^\n]{0,40}?(\d{1,2}[\/\-.][A-Za-z0-9]{2,3}[\/\-.]\d{4})[^\n]{0,30}?\b(?:To|Till|-)\b[^\n]{0,20}?(\d{1,2}[\/\-.][A-Za-z0-9]{2,3}[\/\-.]\d{4})/i);
     if (periodMatch) {
         hints.startDateRaw = periodMatch[1];
         hints.endDateRaw = periodMatch[2];
     }
 
-    const inceptionMatch = fullText.match(/(?:Date\s*of\s*Inception(?:\s*of\s*First\s*Policy)?|First\s*Inception\s*Date)[\s\|:\-]+(\d{1,2}[\/\-][A-Za-z0-9]{2,3}[\/\-]\d{4})/i);
+    const inceptionMatch = fullText.match(/(?:Date\s*of\s*Inception(?:\s*of\s*First\s*Policy)?|First\s*Inception\s*Date)[ \t\|:\-]+(\d{1,2}[\/\-.][A-Za-z0-9]{2,3}[\/\-.]\d{4})/i);
     if (inceptionMatch) hints.inceptionDateRaw = inceptionMatch[1];
 
-    const helplineMatch = fullText.match(/(?:Toll\s*Free|Helpline|24x7)[\s\|:\-]*(?:No\.?|Number)?[\s\|:\-]*(1800[\s-]?\d{3,4}[\s-]?\d{3,4})/i);
+    const helplineMatch = fullText.match(/(?:Toll\s*Free|Helpline|24x7|Customer\s*Care)[ \t\|:\-]*(?:No\.?|Number)?[ \t\|:\-]*((?:1800|1860|022|011|044|080|\+91)[\s-]?\d{3,5}(?:[\s-]?\d{3,5})?)/i);
     if (helplineMatch) hints.helplineNumber = helplineMatch[1].replace(/\s+/g, ' ').trim();
 
-    const intermediaryMatch = fullText.match(/Intermediary[\s\|:\-]+([A-Z0-9\/\-]{6,25})/i);
+    const intermediaryMatch = fullText.match(/Intermediary[ \t\|:\-]+([A-Z0-9\/\-]{6,25})/i);
     if (intermediaryMatch) hints.intermediary = intermediaryMatch[1].trim();
 
     // Parse insured members & declared PEDs from schedule lines when present
@@ -251,9 +254,11 @@ const indexPolicyClauses = async ({ policyId, userId, pages = [] }) => {
 /**
  * Search policy clauses with Postgres websearch FTS + ILIKE fallback for exact Page citations.
  */
+const STOPWORDS = new Set(['what', 'does', 'when', 'where', 'which', 'this', 'that', 'with', 'from', 'have', 'will', 'your', 'about', 'policy', 'insurance', 'please', 'tell', 'much', 'many']);
+
 const searchPolicyClauses = async ({ policyId, userId, query, limit = 5 }) => {
     if (!policyId || !query) return [];
-    const clean = String(query).replace(/[^\w\s₹%.-]/g, ' ').trim();
+    const clean = String(query).replace(/[^\w\s₹.-]/g, ' ').trim();
     if (!clean) return [];
 
     try {
@@ -274,16 +279,18 @@ const searchPolicyClauses = async ({ policyId, userId, query, limit = 5 }) => {
 
     const keywords = clean
         .split(/\s+/)
-        .filter((w) => w.length >= 4)
+        .map((w) => w.replace(/[%_]/g, '').toLowerCase())
+        .filter((w) => w.length >= 4 && !STOPWORDS.has(w))
         .slice(0, 3);
     if (keywords.length === 0) return [];
 
+    const orFilter = keywords.map((kw) => `clause_text.ilike.%${kw}%`).join(',');
     const { data: fallback } = await supabaseAdmin
         .from('policy_clauses')
         .select('id, page_number, section_title, clause_text')
         .eq('policy_id', policyId)
         .eq('user_id', userId)
-        .ilike('clause_text', `%${keywords[0]}%`)
+        .or(orFilter)
         .limit(limit);
 
     return fallback || [];

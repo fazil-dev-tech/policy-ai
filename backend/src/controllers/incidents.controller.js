@@ -5,9 +5,32 @@ const pdfParser = require('../services/pdfParser.service');
 const claimEngine = require('../services/claimEngine.service');
 const pdfGenerator = require('../services/pdfGenerator.service');
 const vehicleDamageService = require('../services/vehicleDamage.service');
+const { mapPolicy, normalizeEnum, safeIsoDate } = require('../utils/mappers');
 const logger = require('../utils/logger');
 
+const VALID_SCENARIOS = [
+    'card_only', 'medical_hospitalization', 'medical_claim', 'motor_accident',
+    'life_claim', 'travel_claim', 'home_claim', 'settlement_audit', 'mis_selling', 'other',
+];
+const VALID_EVIDENCE_CATEGORIES = [
+    'policy_pdf', 'e_card', 'doctor_script', 'lab_xray', 'hospital_estimate',
+    'discharge_summary', 'vehicle_photo', 'garage_quote', 'settlement_sheet', 'brochure', 'other',
+];
+
+const safeJsonParse = (val, fallback) => {
+    if (val === undefined || val === null || val === '') return fallback;
+    if (typeof val !== 'string') return val;
+    try {
+        return JSON.parse(val);
+    } catch {
+        const err = new Error('Malformed JSON payload field');
+        err.statusCode = 400;
+        throw err;
+    }
+};
+
 const analyzeIncident = async (req, res, next) => {
+    const uploadedPathsToCleanup = [];
     try {
         const userId = req.user.id;
         const {
@@ -28,8 +51,13 @@ const analyzeIncident = async (req, res, next) => {
             signedFiles = [],
         } = req.body;
 
-        const parsedVehicleInfo = typeof vehicleInfo === 'string' ? JSON.parse(vehicleInfo || '{}') : vehicleInfo;
-        const parsedSignedFiles = typeof signedFiles === 'string' ? JSON.parse(signedFiles || '[]') : signedFiles;
+        const safeScenario = normalizeEnum(scenarioType, VALID_SCENARIOS, 'medical_claim');
+        const safeIncidentDateIso = safeIsoDate(incidentDate, new Date());
+        const parsedVehicleInfo = safeJsonParse(vehicleInfo, {});
+        const parsedSignedFiles = safeJsonParse(signedFiles, []);
+        if (!Array.isArray(parsedSignedFiles)) {
+            return res.status(400).json({ error: 'signedFiles must be an array' });
+        }
 
         let policy = {};
         if (policyId) {
@@ -40,6 +68,11 @@ const analyzeIncident = async (req, res, next) => {
                 .eq('user_id', userId)
                 .maybeSingle();
             if (pol) policy = pol;
+        }
+
+        const totalIncoming = (req.files || []).length + parsedSignedFiles.length;
+        if (totalIncoming > 8) {
+            return res.status(400).json({ error: 'Maximum 8 evidence files allowed per incident analysis.' });
         }
 
         // Gather raw buffers from multipart files OR Vercel signed direct-to-Supabase uploads
@@ -53,26 +86,28 @@ const analyzeIncident = async (req, res, next) => {
                 storagePath: null,
             });
         }
-        for (const sf of parsedSignedFiles || []) {
-            if (!sf?.storagePath || !String(sf.storagePath).startsWith(`${userId}/`)) continue;
-            const buf = await storageService.downloadBuffer(sf.storagePath);
+        for (const sf of parsedSignedFiles) {
+            if (!sf?.storagePath) continue;
+            const safePath = storageService.assertSafeUserStoragePath(userId, sf.storagePath);
+            const buf = await storageService.downloadBuffer(safePath);
             fileItems.push({
                 buffer: buf,
                 mimetype: sf.mimeType || 'application/pdf',
                 originalname: sf.fileName || 'evidence',
                 size: buf.length,
-                storagePath: sf.storagePath,
+                storagePath: safePath,
                 hintCategory: sf.docCategory || 'other',
             });
         }
 
         const evidenceRecords = [];
         let combinedBillTotal = Number(estimatedAmount) || 0;
-        let isPartialDoc = Boolean(policy?.ai_summary?.partialDocument) || scenarioType === 'card_only';
+        let isPartialDoc = Boolean(policy?.ai_summary?.partialDocument) || safeScenario === 'card_only';
 
         for (const item of fileItems) {
             const magic = storageService.validateMagicBytes(item.buffer, item.mimetype);
             if (!magic.valid) {
+                for (const p of uploadedPathsToCleanup) await storageService.deleteStorageFile(p).catch(() => {});
                 return res.status(400).json({ error: `${item.originalname}: ${magic.reason}` });
             }
 
@@ -86,9 +121,10 @@ const analyzeIncident = async (req, res, next) => {
                     mimeType: magic.detectedMime,
                 });
                 storagePath = uploaded.storagePath;
+                uploadedPathsToCleanup.push(storagePath);
             }
 
-            let docCategory = item.hintCategory || 'other';
+            let docCategory = normalizeEnum(item.hintCategory, VALID_EVIDENCE_CATEGORIES, 'other');
             let ocrText = '';
             let extractedData = {};
             let confidenceScore = 80;
@@ -105,22 +141,27 @@ const analyzeIncident = async (req, res, next) => {
                     else if (low.includes('bill') || low.includes('estimate') || low.includes('hospital')) docCategory = 'hospital_estimate';
                     else if (low.includes('sum insured')) docCategory = 'policy_pdf';
                 }
-            } else if (scenarioType === 'motor_accident' && !item.originalname.toLowerCase().includes('quote')) {
+            } else if (safeScenario === 'motor_accident' && !item.originalname.toLowerCase().includes('quote')) {
                 docCategory = 'vehicle_photo';
                 extractedData = { queuedForVehicleVision: true };
             } else {
-                const ocr = await pdfParser.extractImageOrScannedEvidence({
-                    buffer: item.buffer,
-                    mimeType: magic.detectedMime,
-                    hintCategory: item.hintCategory || 'evidence',
-                });
-                docCategory = ocr.detectedCategory || 'other';
-                ocrText = ocr.rawText || '';
-                extractedData = ocr.extractedFields || {};
-                confidenceScore = Number(ocr.confidenceScore || 70);
-                if (docCategory === 'e_card') isPartialDoc = true;
-                if (!combinedBillTotal && Number(ocr.extractedFields?.totalAmount) > 0) {
-                    combinedBillTotal = Number(ocr.extractedFields.totalAmount);
+                try {
+                    const ocr = await pdfParser.extractImageOrScannedEvidence({
+                        buffer: item.buffer,
+                        mimeType: magic.detectedMime,
+                        hintCategory: item.hintCategory || 'evidence',
+                    });
+                    docCategory = normalizeEnum(ocr.detectedCategory, VALID_EVIDENCE_CATEGORIES, docCategory);
+                    ocrText = ocr.rawText || '';
+                    extractedData = ocr.extractedFields || {};
+                    confidenceScore = Number(ocr.confidenceScore || 70);
+                    if (docCategory === 'e_card') isPartialDoc = true;
+                    if (!combinedBillTotal && Number(ocr.extractedFields?.totalAmount) > 0) {
+                        combinedBillTotal = Number(ocr.extractedFields.totalAmount);
+                    }
+                } catch (ocrErr) {
+                    logger.warn(`Evidence Vision OCR unavailable (${ocrErr.message}); storing image for manual review.`);
+                    confidenceScore = 40;
                 }
             }
 
@@ -139,10 +180,14 @@ const analyzeIncident = async (req, res, next) => {
         }
 
         let motorReport = null;
-        if (scenarioType === 'motor_accident') {
+        if (safeScenario === 'motor_accident') {
             const photoItems = fileItems
                 .filter((f, idx) => evidenceRecords[idx]?.doc_category === 'vehicle_photo')
-                .map((f) => ({ buffer: f.buffer, mimetype: f.mimetype, originalname: f.originalname }));
+                .map((f, idx) => ({
+                    buffer: f.buffer,
+                    mimetype: evidenceRecords[idx]?.mime_type || f.mimetype,
+                    originalname: f.originalname,
+                }));
             motorReport = await vehicleDamageService.analyzeMotorAccident({
                 userId,
                 policyId: policy.id || null,
@@ -151,12 +196,13 @@ const analyzeIncident = async (req, res, next) => {
                 garageQuoteTotal: combinedBillTotal,
             });
             if (motorReport.rejected) {
+                for (const p of uploadedPathsToCleanup) await storageService.deleteStorageFile(p).catch(() => {});
                 return res.status(400).json({ error: motorReport.error, imageQuality: motorReport.imageQuality });
             }
         }
 
         const payoutCalculation =
-            scenarioType === 'motor_accident' && motorReport
+            safeScenario === 'motor_accident' && motorReport
                 ? {
                       verdict: 'Estimated Own-Damage',
                       grossBill: motorReport.repairEstimate.mid,
@@ -176,27 +222,27 @@ const analyzeIncident = async (req, res, next) => {
                 : claimEngine.computeHealthClaimEstimate(policy, policy.structured_terms || {}, {
                       estimatedBill: combinedBillTotal,
                       roomRentPerDay: Number(roomRentPerDay) || 0,
-                      policyRoomCapPerDay: Number(policyRoomCapPerDay) || 0,
-                      copayPct: copayPct || policy.structured_terms?.coPayPct || 0,
-                      deductible: deductible || policy.structured_terms?.deductible || 0,
+                      policyRoomCapPerDay: Number(policyRoomCapPerDay) > 0 ? Number(policyRoomCapPerDay) : undefined,
+                      copayPct: Number(copayPct) > 0 ? Number(copayPct) : undefined,
+                      deductible: Number(deductible) > 0 ? Number(deductible) : undefined,
                       consumablesPct: consumablesPct || 8,
-                      incidentDate,
+                      incidentDate: safeIncidentDateIso,
                       isAccident: isAccident === true || isAccident === 'true',
                       isPedRelated: isPedRelated === true || isPedRelated === 'true',
                       isPartialDoc,
                   });
 
-        const readiness = claimEngine.computeReadinessChecklist(scenarioType, evidenceRecords, policy, incidentDate);
+        const readiness = claimEngine.computeReadinessChecklist(safeScenario, evidenceRecords, policy, safeIncidentDateIso);
 
         const { data: savedIncident, error: incErr } = await supabaseAdmin
             .from('incidents')
             .insert({
                 user_id: userId,
                 policy_id: policy.id || null,
-                scenario_type: scenarioType,
-                incident_date: new Date(incidentDate).toISOString(),
-                title,
-                description,
+                scenario_type: safeScenario,
+                incident_date: safeIncidentDateIso,
+                title: String(title || 'Claim Assessment').slice(0, 180),
+                description: String(description || '').slice(0, 4000),
                 estimated_amount: combinedBillTotal,
                 claimant_details: parsedVehicleInfo,
                 payout_calculation: payoutCalculation,
@@ -208,22 +254,27 @@ const analyzeIncident = async (req, res, next) => {
             .select()
             .single();
 
-        if (incErr) throw new Error(`Failed to save incident: ${incErr.message}`);
+        if (incErr) {
+            for (const p of uploadedPathsToCleanup) await storageService.deleteStorageFile(p).catch(() => {});
+            throw incErr;
+        }
 
         if (evidenceRecords.length > 0) {
-            await supabaseAdmin
+            const { error: evErr } = await supabaseAdmin
                 .from('evidence_files')
                 .insert(evidenceRecords.map((er) => ({ ...er, incident_id: savedIncident.id })));
+            if (evErr) logger.warn('Failed saving evidence_files rows:', evErr.message);
         }
 
         if (motorReport?.report?.id) {
-            await supabaseAdmin
+            const { error: dmErr } = await supabaseAdmin
                 .from('damage_reports')
                 .update({ incident_id: savedIncident.id })
                 .eq('id', motorReport.report.id);
+            if (dmErr) logger.warn('Failed linking damage_report to incident:', dmErr.message);
         }
 
-        logger.info(`Incident ${savedIncident.id} (${scenarioType}) analyzed for user ${userId}`);
+        logger.info(`Incident ${savedIncident.id} (${safeScenario}) analyzed for user ${userId}`);
         res.status(201).json({
             incident: savedIncident,
             evidenceCount: evidenceRecords.length,
@@ -233,6 +284,7 @@ const analyzeIncident = async (req, res, next) => {
             motorReport,
         });
     } catch (error) {
+        for (const p of uploadedPathsToCleanup) await storageService.deleteStorageFile(p).catch(() => {});
         next(error);
     }
 };
@@ -300,18 +352,28 @@ const downloadClaimGuidePdf = async (req, res, next) => {
 
 const analyzeVehicleDamageEndpoint = async (req, res, next) => {
     try {
-        const vehicleInfo =
-            typeof req.body.vehicleInfo === 'string' ? JSON.parse(req.body.vehicleInfo || '{}') : req.body.vehicleInfo || {};
-        const manualParts =
-            typeof req.body.manualParts === 'string' ? JSON.parse(req.body.manualParts || '[]') : req.body.manualParts || [];
-        const signedFiles =
-            typeof req.body.signedFiles === 'string' ? JSON.parse(req.body.signedFiles || '[]') : req.body.signedFiles || [];
+        const vehicleInfo = safeJsonParse(req.body?.vehicleInfo, {});
+        const manualParts = safeJsonParse(req.body?.manualParts, []);
+        const signedFiles = safeJsonParse(req.body?.signedFiles, []);
+        if (!Array.isArray(signedFiles) || signedFiles.length + (req.files || []).length > 6) {
+            return res.status(400).json({ error: 'Maximum 6 accident photos allowed per damage check.' });
+        }
 
-        const imageFiles = [...(req.files || [])];
+        const rawFiles = [...(req.files || [])];
         for (const sf of signedFiles) {
-            if (!sf?.storagePath || !String(sf.storagePath).startsWith(`${req.user.id}/`)) continue;
-            const buffer = await storageService.downloadBuffer(sf.storagePath);
-            imageFiles.push({ buffer, mimetype: sf.mimeType || 'image/jpeg', originalname: sf.fileName || 'photo.jpg' });
+            if (!sf?.storagePath) continue;
+            const safePath = storageService.assertSafeUserStoragePath(req.user.id, sf.storagePath);
+            const buffer = await storageService.downloadBuffer(safePath);
+            rawFiles.push({ buffer, mimetype: sf.mimeType || 'image/jpeg', originalname: sf.fileName || 'photo.jpg' });
+        }
+
+        const imageFiles = [];
+        for (const f of rawFiles) {
+            const magic = storageService.validateMagicBytes(f.buffer, f.mimetype);
+            if (!magic.valid || !String(magic.detectedMime || '').startsWith('image/')) {
+                return res.status(400).json({ error: `${f.originalname}: Only valid JPG, PNG, or WEBP photos are allowed.` });
+            }
+            imageFiles.push({ ...f, mimetype: magic.detectedMime });
         }
 
         if (imageFiles.length === 0 && (!Array.isArray(manualParts) || manualParts.length === 0)) {
@@ -340,6 +402,9 @@ const analyzeVehicleDamageEndpoint = async (req, res, next) => {
 const toggleChecklistItem = async (req, res, next) => {
     try {
         const { key } = req.body || {};
+        if (!key || typeof key !== 'string') {
+            return res.status(400).json({ error: 'Checklist item key is required' });
+        }
         const { data: inc, error } = await supabaseAdmin
             .from('incidents')
             .select('id, readiness_checklist')
@@ -351,6 +416,9 @@ const toggleChecklistItem = async (req, res, next) => {
         if (!inc) return res.status(404).json({ error: 'Incident not found' });
 
         const list = Array.isArray(inc.readiness_checklist) ? inc.readiness_checklist : [];
+        if (!list.some((item) => item.key === key)) {
+            return res.status(404).json({ error: `Checklist item '${key}' not found` });
+        }
         const updated = list.map((item) => (item.key === key ? { ...item, completed: !item.completed } : item));
         const doneCount = updated.filter((i) => i.completed).length;
         const readinessScore = updated.length ? Math.round((doneCount / updated.length) * 100) : 0;
@@ -428,22 +496,29 @@ const getVehicleDamageReports = async (req, res, next) => {
 
 const decodeSettlementShortfall = async (req, res, next) => {
     try {
-        let { policyId = null, claimedAmount = 0, approvedAmount = 0, lineItems = [] } = req.body;
+        let { policyId = null, claimedAmount = 0, approvedAmount = 0, lineItems = [], preferOcr = false, storagePath = null } = req.body || {};
         if (typeof lineItems === 'string') {
-            try { lineItems = JSON.parse(lineItems); } catch { lineItems = []; }
+            lineItems = safeJsonParse(lineItems, []);
+        }
+
+        let fileBuffer = req.file?.buffer || null;
+        let fileMime = req.file?.mimetype || req.body?.mimeType || 'application/pdf';
+        if (!fileBuffer && storagePath) {
+            const safePath = storageService.assertSafeUserStoragePath(req.user.id, storagePath);
+            fileBuffer = await storageService.downloadBuffer(safePath);
         }
 
         // Real document extraction if settlement sheet / rejection letter PDF or photo was uploaded
-        if (req.file) {
-            const magic = storageService.validateMagicBytes(req.file.buffer, req.file.mimetype);
+        if (fileBuffer) {
+            const magic = storageService.validateMagicBytes(fileBuffer, fileMime);
             if (!magic.valid) return res.status(400).json({ error: magic.reason });
             let sheetText = '';
             if (magic.detectedMime === 'application/pdf') {
-                const parsed = await pdfParser.parsePdfWithLayout(req.file.buffer);
+                const parsed = await pdfParser.parsePdfWithLayout(fileBuffer);
                 sheetText = parsed.fullText.slice(0, 8000);
             } else {
                 const ocr = await pdfParser.extractImageOrScannedEvidence({
-                    buffer: req.file.buffer,
+                    buffer: fileBuffer,
                     mimeType: magic.detectedMime,
                     hintCategory: 'settlement_sheet',
                 });
@@ -461,9 +536,26 @@ const decodeSettlementShortfall = async (req, res, next) => {
 Document:\n${sheetText}`,
                     { maxTokens: 2048 }
                 );
-                if (Number(aiRes.data?.claimedAmount) > 0 && !Number(claimedAmount)) claimedAmount = Number(aiRes.data.claimedAmount);
-                if (Number(aiRes.data?.approvedAmount) >= 0 && req.body.approvedAmount === undefined) approvedAmount = Number(aiRes.data.approvedAmount);
-                if (Array.isArray(aiRes.data?.lineItems) && aiRes.data.lineItems.length > 0 && (!Array.isArray(lineItems) || lineItems.length === 0)) {
+                const useOcr = preferOcr === true || preferOcr === 'true';
+                if (Number(aiRes.data?.claimedAmount) > 0 && (useOcr || !Number(claimedAmount))) {
+                    claimedAmount = Number(aiRes.data.claimedAmount);
+                }
+                const aiApp = aiRes.data?.approvedAmount;
+                if (
+                    aiApp !== null &&
+                    aiApp !== undefined &&
+                    aiApp !== '' &&
+                    Number.isFinite(Number(aiApp)) &&
+                    Number(aiApp) >= 0 &&
+                    (useOcr || req.body.approvedAmount === undefined)
+                ) {
+                    approvedAmount = Number(aiApp);
+                }
+                if (
+                    Array.isArray(aiRes.data?.lineItems) &&
+                    aiRes.data.lineItems.length > 0 &&
+                    (useOcr || !Array.isArray(lineItems) || lineItems.length === 0)
+                ) {
                     lineItems = aiRes.data.lineItems;
                 }
             } catch (err) {

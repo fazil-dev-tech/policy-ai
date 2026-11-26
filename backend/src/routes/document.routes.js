@@ -1,5 +1,5 @@
 const express = require('express');
-const { uploadDocument, getUserDocuments, getDocument, deleteDocument, chatWithDocument } = require('../controllers/document.controller');
+const { uploadDocument, getUserDocuments, getDocument, downloadDocumentFile, deleteDocument, chatWithDocument } = require('../controllers/document.controller');
 const { authenticate } = require('../middleware/auth');
 const upload = require('../middleware/upload');
 const { uploadLimiter } = require('../middleware/rateLimiter');
@@ -11,6 +11,9 @@ router.post('/upload', authenticate, uploadLimiter, upload.single('pdf'), upload
 
 // GET /api/documents
 router.get('/', authenticate, getUserDocuments);
+
+// GET /api/documents/:id/file
+router.get('/:id/file', authenticate, downloadDocumentFile);
 
 // GET /api/documents/:id
 router.get('/:id', authenticate, getDocument);

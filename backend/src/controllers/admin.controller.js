@@ -1,6 +1,8 @@
 const { supabaseAdmin } = require('../config/supabase');
 const fraudService = require('../services/fraud.service');
-const { mapProfile } = require('../utils/mappers');
+const { mapProfile, normalizeEnum } = require('../utils/mappers');
+
+const VALID_DOMAIN_CATEGORIES = ['insurer', 'regulator', 'payment_gateway', 'tpa', 'aggregator'];
 
 const getStats = async (req, res, next) => {
     try {
@@ -243,16 +245,17 @@ const upsertVerifiedDomain = async (req, res, next) => {
             return res.status(400).json({ error: 'domain and providerName are required' });
         }
         const cleanDomain = String(domain).toLowerCase().trim().replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0];
+        const safeCategory = normalizeEnum(category, VALID_DOMAIN_CATEGORIES, 'insurer');
         const { data, error } = await supabaseAdmin
             .from('verified_domains')
             .upsert(
                 {
                     domain: cleanDomain,
-                    provider_name: providerName,
-                    category,
-                    official_helpline: officialHelpline,
-                    grievance_email: grievanceEmail,
-                    is_active: isActive,
+                    provider_name: String(providerName).trim(),
+                    category: safeCategory,
+                    official_helpline: String(officialHelpline || '').trim(),
+                    grievance_email: String(grievanceEmail || '').trim(),
+                    is_active: Boolean(isActive),
                     verified_by: req.user.id,
                 },
                 { onConflict: 'domain' }
@@ -268,8 +271,14 @@ const upsertVerifiedDomain = async (req, res, next) => {
 
 const deleteVerifiedDomain = async (req, res, next) => {
     try {
-        const { error } = await supabaseAdmin.from('verified_domains').delete().eq('id', req.params.id);
+        const { data: deleted, error } = await supabaseAdmin
+            .from('verified_domains')
+            .delete()
+            .eq('id', req.params.id)
+            .select('id')
+            .maybeSingle();
         if (error) return next(error);
+        if (!deleted) return res.status(404).json({ error: 'Verified domain not found' });
         res.json({ message: 'Verified domain deleted' });
     } catch (error) {
         next(error);

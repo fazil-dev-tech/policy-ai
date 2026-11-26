@@ -4,9 +4,14 @@
   const TRUSTED_DOMAINS = [
     'starhealth.in',
     'hdfcergo.com',
+    'hdfcbank.com',
+    'hdfclife.com',
     'icicilombard.com',
+    'icicibank.com',
+    'iciciprulife.com',
     'licindia.in',
     'bajajallianz.com',
+    'bajajfinserv.in',
     'newindia.co.in',
     'tataaig.com',
     'careinsurance.com',
@@ -16,17 +21,32 @@
     'sbigeneral.in',
     'irdai.gov.in',
     'bimabharosa.irdai.gov.in',
+    'parivahan.gov.in',
+    'echallan.parivahan.gov.in',
     'policybazaar.com',
     'razorpay.com',
     'billdesk.com',
     'payu.in',
     'mediassistindia.com',
-    'google.com',
-    'whatsapp.com',
+    'fhpl.net',
+    'vidalhealthtpa.com',
+  ];
+
+  const SAFE_PORTALS = [
+    { key: 'star', name: 'Star Health Official Portal', url: 'https://www.starhealth.in' },
+    { key: 'hdfc', name: 'HDFC ERGO Official Portal', url: 'https://www.hdfcergo.com' },
+    { key: 'icici', name: 'ICICI Lombard Official Portal', url: 'https://www.icicilombard.com' },
+    { key: 'lic', name: 'LIC India Official Portal', url: 'https://www.licindia.in' },
+    { key: 'bajaj', name: 'Bajaj Allianz Official Portal', url: 'https://www.bajajallianz.com' },
+    { key: 'parivahan', name: 'Parivahan / e-Challan Official', url: 'https://parivahan.gov.in' },
   ];
 
   const RISKY_TLDS = ['.tk', '.ml', '.ga', '.cf', '.gq', '.xyz', '.top', '.click', '.loan', '.zip'];
-  const BRAND_WORDS = ['starhealth', 'hdfc', 'icici', 'lic', 'bajaj', 'policybazaar', 'irdai', 'parivahan', 'echallan'];
+  const BRAND_WORDS = [
+    'starhealth', 'hdfcergo', 'hdfclife', 'icicilombard', 'icicipru',
+    'licindia', 'bajajallianz', 'policybazaar', 'careinsurance', 'nivabupa',
+    'irdai', 'bimabharosa', 'parivahan', 'echallan',
+  ];
 
   function unwrapUrl(rawUrl, saferUrl) {
     const candidate = saferUrl || rawUrl || '';
@@ -59,6 +79,14 @@
     return TRUSTED_DOMAINS.some((d) => host === d || host.endsWith('.' + d));
   }
 
+  function suggestSafeAlternative(host = '', contextText = '') {
+    const combined = `${host} ${contextText}`.toLowerCase();
+    for (const p of SAFE_PORTALS) {
+      if (combined.includes(p.key)) return p;
+    }
+    return { name: 'IRDAI Bima Bharosa Registry', url: 'https://bimabharosa.irdai.gov.in' };
+  }
+
   function quickLocalRisk(url, surroundingText = '') {
     const host = getHost(url);
     const lowerUrl = String(url || '').toLowerCase();
@@ -66,16 +94,13 @@
     const reasons = [];
     let score = 0;
 
-    if (isTrustedHost(host)) {
-      return { status: 'safe', riskScore: 5, reasons: [`Verified domain (${host})`] };
-    }
-
+    // Evaluate critical .apk and Reverse-UPI signals FIRST (never skip even for drive.google.com/whatsapp.com links)
     if (/\.apk(\?|$|#)/i.test(lowerUrl) || /\.apk\b/i.test(ctx)) {
       score += 75;
       reasons.push('CRITICAL: Android .apk malware attachment or download link');
     }
 
-    if (/enter.*upi\s*pin.*receiv|upi\s*pin.*refund|collect.*request.*claim|kyc.*update/i.test(ctx)) {
+    if (/enter.*upi\s*pin.*receiv|upi\s*pin.*refund|collect.*request.*claim|kyc.*update\.apk/i.test(ctx)) {
       score += 65;
       reasons.push('Reverse-UPI refund / fake KYC scam phrasing detected');
     }
@@ -85,14 +110,18 @@
       reasons.push('Urgency / fake e-challan or policy suspension lure');
     }
 
+    if (isTrustedHost(host) && score < 25) {
+      return { status: 'safe', riskScore: 5, reasons: [`Verified domain (${host})`] };
+    }
+
     if (host.includes('xn--')) {
       score += 45;
       reasons.push('IDN Punycode lookalike domain (xn--)');
     }
 
-    if (lowerUrl.startsWith('http://') && host && host !== 'localhost') {
+    if (lowerUrl.startsWith('http://') && host && host !== 'localhost' && host !== '127.0.0.1') {
       score += 25;
-      reasons.push('Insecure HTTP link');
+      reasons.push('Insecure HTTP link (no HTTPS encryption)');
     }
 
     if (host && RISKY_TLDS.some((t) => host.endsWith(t))) {
@@ -100,14 +129,14 @@
       reasons.push('Suspicious top-level domain');
     }
 
-    if (host && BRAND_WORDS.some((b) => host.includes(b))) {
+    if (host && !isTrustedHost(host) && BRAND_WORDS.some((b) => host.includes(b))) {
       score += 45;
       reasons.push(`Mentions insurer/portal brand on unverified domain (${host})`);
     }
 
     const bounded = Math.min(100, score);
     const status = bounded >= 60 ? 'threat' : bounded >= 25 ? 'suspicious' : 'safe';
-    return { status, riskScore: bounded, reasons };
+    return { status, riskScore: bounded, reasons, safeAlternative: status !== 'safe' ? suggestSafeAlternative(host, ctx) : null };
   }
 
   function createPillElement(verdict, showSafeBadges) {
@@ -126,7 +155,7 @@
     span.textContent = labels[status] || '✓ SAFE';
 
     const reasons = (verdict?.reasons || []).join(' • ');
-    span.title = `PolicyGuard (${verdict?.domain || 'link'} — Risk ${verdict?.riskScore ?? 0}/100): ${reasons || 'Verified'}`;
+    span.title = `PolicyGuard (${verdict?.domain || 'link'} — Risk ${Number(verdict?.riskScore ?? 0)}/100): ${reasons || 'Verified'}`;
 
     span.addEventListener('click', (e) => {
       e.preventDefault();
@@ -142,21 +171,30 @@
     if (existing) existing.remove();
 
     const status = verdict?.status || 'suspicious';
+    const safeStatus = ['threat', 'suspicious', 'safe'].includes(status) ? status : 'suspicious';
+    const score = Number.isFinite(Number(verdict?.riskScore)) ? Number(verdict.riskScore) : 0;
+    const alt = verdict?.safeAlternative || (safeStatus !== 'safe' ? suggestSafeAlternative(verdict?.domain || '', (verdict?.reasons || []).join(' ')) : null);
+
     const box = document.createElement('div');
     box.id = 'pg-inline-detail-banner';
-    box.className = `pg-floating-banner ${status === 'threat' ? 'threat' : 'suspicious'}`;
+    box.className = `pg-floating-banner ${safeStatus}`;
 
     const reasonsHtml = (verdict?.reasons || ['No details']).map((r) => `<li>${escapeHtml(r)}</li>`).join('');
+    const altHtml = alt && safeStatus !== 'safe'
+      ? `<p><strong>Official Check:</strong> <a href="${escapeHtml(alt.url)}" target="_blank" rel="noopener noreferrer" style="color:inherit;text-decoration:underline;font-weight:700;">${escapeHtml(alt.name)} ↗</a></p>`
+      : '';
+
     box.innerHTML = `
       <h4>
-        <span>${status === 'threat' ? '🚨 PolicyGuard Threat Alert' : status === 'suspicious' ? '⚠ PolicyGuard Warning' : '✓ PolicyGuard Verified'}</span>
-        <button class="pg-banner-btn ghost" id="pg-close-detail">✕</button>
+        <span>${safeStatus === 'threat' ? '🚨 PolicyGuard Threat Alert' : safeStatus === 'suspicious' ? '⚠ PolicyGuard Warning' : '✓ PolicyGuard Verified'}</span>
+        <button class="pg-banner-btn ghost" id="pg-close-detail" aria-label="Close alert">✕</button>
       </h4>
-      <p><strong>Domain:</strong> ${escapeHtml(verdict?.domain || 'Unknown')} (Risk: ${verdict?.riskScore ?? 0}/100)</p>
+      <p><strong>Domain:</strong> ${escapeHtml(verdict?.domain || 'Unknown')} (Risk: ${score}/100)</p>
       <ul>${reasonsHtml}</ul>
-      ${status === 'threat' ? '<p><strong>Emergency:</strong> Do NOT enter OTP/UPI PIN or install .apk files. If scammed, dial <strong>1930</strong> immediately.</p>' : ''}
+      ${altHtml}
+      ${safeStatus === 'threat' ? '<p><strong>Emergency:</strong> Do NOT enter OTP/UPI PIN or install .apk files. If scammed, dial <strong>1930</strong> immediately.</p>' : ''}
       <div class="pg-banner-actions">
-        ${verdict?.url ? '<button class="pg-banner-btn danger" id="pg-report-scam-btn">Report Scam</button>' : ''}
+        ${verdict?.url && !/^(gmail|yahoo|outlook|hotmail)\.com$/i.test(verdict?.domain || '') ? '<button class="pg-banner-btn danger" id="pg-report-scam-btn">Report Scam</button>' : ''}
         <button class="pg-banner-btn ghost" id="pg-dismiss-btn">Dismiss</button>
       </div>
     `;
@@ -175,7 +213,11 @@
             description: `Reported inline via PolicyGuard extension: ${(verdict.reasons || []).join('; ')}`,
           },
         },
-        () => {
+        (res) => {
+          if (chrome.runtime.lastError || !res?.ok) {
+            box.innerHTML = '<h4>⚠ Report Failed</h4><p>Could not submit scam report. Check extension backend URL settings.</p>';
+            return;
+          }
           box.innerHTML = '<h4>✓ Scam Reported</h4><p>Submitted for admin review and community warning.</p>';
           setTimeout(() => box.remove(), 2200);
         }
@@ -188,7 +230,8 @@
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;');
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
   }
 
   window.PolicyGuardRules = {
@@ -199,5 +242,6 @@
     createPillElement,
     showToastModal,
     escapeHtml,
+    suggestSafeAlternative,
   };
 })();

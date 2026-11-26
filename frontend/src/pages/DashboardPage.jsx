@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
-import { FileText, MessageSquare, Shield, TrendingUp, Upload, ArrowRight, ShieldAlert, Users, Sparkles } from 'lucide-react';
+import { FileText, Shield, TrendingUp, Upload, ArrowRight, ShieldAlert, Users, Sparkles } from 'lucide-react';
 
 export default function DashboardPage() {
     const { user } = useAuth();
@@ -10,28 +10,32 @@ export default function DashboardPage() {
     const [stats, setStats] = useState({ policies: 0, incidents: 0, familyMembers: 0, threatCount: 0 });
     const [policies, setPolicies] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState('');
 
     useEffect(() => {
         loadDashboard();
     }, []);
 
     const loadDashboard = async () => {
+        setLoading(true);
+        setLoadError('');
         try {
             const [policyRes, incRes, famRes, scanRes] = await Promise.all([
-                api.get('/policy?limit=5'),
+                api.get('/policy?limit=50'),
                 api.get('/incidents').catch(() => ({ data: { incidents: [] } })),
                 api.get('/family').catch(() => ({ data: { members: [] } })),
                 api.get('/security/scans').catch(() => ({ data: { scans: [] } })),
             ]);
             setPolicies(policyRes.data.policies || []);
             setStats({
-                policies: policyRes.data.total || 0,
+                policies: policyRes.data.total ?? (policyRes.data.policies || []).length,
                 incidents: (incRes.data?.incidents || []).length,
                 familyMembers: (famRes.data?.members || []).length,
                 threatCount: (scanRes.data?.scans || []).filter((s) => s.status !== 'safe').length,
             });
         } catch (err) {
             console.error('Dashboard load error:', err);
+            setLoadError(err.response?.data?.error || 'Could not load dashboard metrics.');
         } finally {
             setLoading(false);
         }
@@ -50,9 +54,16 @@ export default function DashboardPage() {
     return (
         <div>
             <div className="page-header">
-                <h1>Welcome back, {user?.name?.split(' ')[0]} 👋</h1>
+                <h1>Welcome back, {user?.name?.split(' ')[0] || 'User'} 👋</h1>
                 <p>Live insurance portfolio, deterministic claims readiness, Parinidhi AI, and threat defense</p>
             </div>
+
+            {loadError && (
+                <div className="card" style={{ padding: 14, marginBottom: 20, border: '1px solid rgba(220,38,38,0.3)', background: 'rgba(254,242,242,0.7)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+                    <span style={{ color: 'var(--danger)', fontSize: 13 }}>{loadError}</span>
+                    <button className="btn btn-secondary btn-sm" onClick={loadDashboard}>Retry</button>
+                </div>
+            )}
 
             {expiringSoon.length > 0 && (
                 <div className="card" style={{ padding: 14, marginBottom: 20, border: '1px solid rgba(217,119,6,0.35)', background: 'rgba(254,243,199,0.55)' }}>
@@ -62,22 +73,22 @@ export default function DashboardPage() {
             )}
 
             <div className="stats-grid">
-                <div className="stat-card" onClick={() => navigate('/policies')} style={{ cursor: 'pointer' }}>
+                <div className="stat-card" role="button" tabIndex={0} onClick={() => navigate('/policies')} onKeyDown={(e) => e.key === 'Enter' && navigate('/policies')} style={{ cursor: 'pointer' }}>
                     <div className="stat-icon purple"><FileText size={24} /></div>
                     <div className="stat-value">{stats.policies}</div>
                     <div className="stat-label">Active Policies</div>
                 </div>
-                <div className="stat-card" onClick={() => navigate('/claims')} style={{ cursor: 'pointer' }}>
+                <div className="stat-card" role="button" tabIndex={0} onClick={() => navigate('/claims')} onKeyDown={(e) => e.key === 'Enter' && navigate('/claims')} style={{ cursor: 'pointer' }}>
                     <div className="stat-icon green"><Shield size={24} /></div>
                     <div className="stat-value">{stats.incidents}</div>
                     <div className="stat-label">Claim Analyses Saved</div>
                 </div>
-                <div className="stat-card" onClick={() => navigate('/family')} style={{ cursor: 'pointer' }}>
+                <div className="stat-card" role="button" tabIndex={0} onClick={() => navigate('/family')} onKeyDown={(e) => e.key === 'Enter' && navigate('/family')} style={{ cursor: 'pointer' }}>
                     <div className="stat-icon blue"><Users size={24} /></div>
                     <div className="stat-value">{stats.familyMembers}</div>
                     <div className="stat-label">Family Vault Members</div>
                 </div>
-                <div className="stat-card" onClick={() => navigate('/shield')} style={{ cursor: 'pointer' }}>
+                <div className="stat-card" role="button" tabIndex={0} onClick={() => navigate('/shield')} onKeyDown={(e) => e.key === 'Enter' && navigate('/shield')} style={{ cursor: 'pointer' }}>
                     <div className="stat-icon amber"><ShieldAlert size={24} /></div>
                     <div className="stat-value">{stats.threatCount}</div>
                     <div className="stat-label">Shield Warnings Cached</div>
@@ -94,8 +105,9 @@ export default function DashboardPage() {
                     </div>
                     {policies.length > 0 ? (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                            {policies.map((p) => (
-                                <div key={p._id} className="policy-card" style={{ cursor: 'default' }}>
+                            {policies.slice(0, 5).map((p) => (
+                                <div key={p._id} className="policy-card" style={{ cursor: 'pointer' }}
+                                    onClick={() => navigate(`/policies?policyId=${p._id}`)}>
                                     <div className="policy-type">{p.policyType}</div>
                                     <h3>{p.providerName}</h3>
                                     <div className="policy-info">
@@ -105,13 +117,13 @@ export default function DashboardPage() {
                                         </div>
                                         <div className="policy-info-row">
                                             <span className="label">Coverage</span>
-                                            <span className="value">₹{p.coverageAmount?.toLocaleString()}</span>
+                                            <span className="value">₹{Number(p.coverageAmount || 0).toLocaleString('en-IN')}</span>
                                         </div>
                                     </div>
                                     <div className="score-bar">
                                         <div
                                             className={`score-bar-fill ${p.verificationScore > 70 ? 'high' : p.verificationScore > 40 ? 'medium' : 'low'}`}
-                                            style={{ width: `${p.verificationScore}%` }}
+                                            style={{ width: `${p.verificationScore || 0}%` }}
                                         />
                                     </div>
                                 </div>
@@ -147,7 +159,7 @@ export default function DashboardPage() {
                                 onClick={() => navigate(path)}
                                 style={{ display: 'flex', alignItems: 'center', gap: 16 }}
                             >
-                                <div className={`stat-icon ${color}`}>
+                                <div className={`stat-icon ${color}`} style={{ flexShrink: 0 }}>
                                     <Icon size={22} />
                                 </div>
                                 <div>

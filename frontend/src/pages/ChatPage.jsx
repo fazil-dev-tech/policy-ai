@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import api from '../services/api';
-import { Send, Bot, User, Plus, MessageSquare, Clock, Copy, Check, ChevronDown } from 'lucide-react';
+import { Send, Bot, User, Plus, MessageSquare, Clock, Copy, Check } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 // ─── Simple markdown renderer ──────────────────────────────────────────────
@@ -56,13 +57,15 @@ function MarkdownText({ content }) {
 function CopyBtn({ text }) {
     const [copied, setCopied] = useState(false);
     const handle = () => {
-        navigator.clipboard.writeText(text).then(() => {
-            setCopied(true);
-            setTimeout(() => setCopied(false), 2000);
-        });
+        navigator.clipboard?.writeText(text)
+            .then(() => {
+                setCopied(true);
+                setTimeout(() => setCopied(false), 2000);
+            })
+            .catch(() => toast.error('Clipboard permission unavailable'));
     };
     return (
-        <button className="msg-copy-btn" onClick={handle} title="Copy response">
+        <button type="button" className="msg-copy-btn" onClick={handle} title="Copy response" aria-label="Copy response">
             {copied ? <Check size={12} /> : <Copy size={12} />}
         </button>
     );
@@ -76,34 +79,48 @@ const QUICK_PROMPTS = [
 ];
 
 export default function ChatPage() {
+    const [searchParams] = useSearchParams();
     const [messages, setMessages] = useState([]);
     const [input, setInput] = useState('');
     const [loading, setLoading] = useState(false);
-    const [sessionId, setSessionId] = useState(null);
+    const [sessionId, setSessionId] = useState(() => sessionStorage.getItem('pg_standard_session') || null);
     const [sessions, setSessions] = useState([]);
     const [policies, setPolicies] = useState([]);
-    const [selectedPolicy, setSelectedPolicy] = useState('');
+    const [selectedPolicy, setSelectedPolicy] = useState(searchParams.get('policyId') || '');
     const messagesEndRef = useRef(null);
     const textareaRef = useRef(null);
 
-    useEffect(() => { loadSessions(); loadPolicies(); }, []);
+    useEffect(() => {
+        loadSessions();
+        loadPolicies();
+        const urlPolicy = searchParams.get('policyId');
+        if (urlPolicy) setSelectedPolicy(urlPolicy);
+        const savedSid = sessionStorage.getItem('pg_standard_session');
+        if (savedSid) loadSessionHistory(savedSid);
+    }, []);
     useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
 
     const loadSessions = async () => {
-        try { const { data } = await api.get('/chat/sessions'); setSessions(data.sessions || []); } catch { }
+        try { const { data } = await api.get('/chat/sessions?agent=standard'); setSessions(data.sessions || []); } catch { }
     };
     const loadPolicies = async () => {
-        try { const { data } = await api.get('/policy'); setPolicies(data.policies || []); } catch { }
+        try { const { data } = await api.get('/policy?limit=50'); setPolicies(data.policies || []); } catch { }
     };
     const loadSessionHistory = async (sid) => {
         try {
             const { data } = await api.get(`/chat/history?sessionId=${sid}`);
-            const formatted = (data.messages || []).flatMap(m => ([
+            const msgs = data.messages || [];
+            const formatted = msgs.flatMap(m => ([
                 { role: 'user', content: m.message, timestamp: m.timestamp },
-                { role: 'ai', content: m.aiResponse, timestamp: m.timestamp, model: m.model },
+                { role: 'ai', content: m.aiResponse, timestamp: m.timestamp, model: m.model, responseTime: m.responseTimeMs },
             ]));
             setMessages(formatted);
             setSessionId(sid);
+            sessionStorage.setItem('pg_standard_session', sid);
+            if (!searchParams.get('policyId')) {
+                const sessionPolicyId = msgs.find((m) => m.policyId)?.policyId || '';
+                setSelectedPolicy(sessionPolicyId);
+            }
         } catch { toast.error('Failed to load chat history'); }
     };
 
@@ -121,6 +138,7 @@ export default function ChatPage() {
                 sessionId: sessionId || undefined,
             });
             setSessionId(data.sessionId);
+            if (data.sessionId) sessionStorage.setItem('pg_standard_session', data.sessionId);
             setMessages(prev => [...prev, {
                 role: 'ai', content: data.aiResponse,
                 model: data.model, responseTime: data.responseTimeMs,
@@ -151,7 +169,7 @@ export default function ChatPage() {
             {/* Sidebar */}
             <div className="chat-sidebar">
                 <div className="chat-sidebar-top">
-                    <button className="btn btn-primary w-full" onClick={() => { setMessages([]); setSessionId(null); }}>
+                    <button className="btn btn-primary w-full" onClick={() => { setMessages([]); setSessionId(null); sessionStorage.removeItem('pg_standard_session'); }}>
                         <Plus size={15} /> New Chat
                     </button>
                 </div>

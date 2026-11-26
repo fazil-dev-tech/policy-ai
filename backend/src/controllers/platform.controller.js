@@ -8,6 +8,12 @@ const storageService = require('../services/storage.service');
 const claimEngine = require('../services/claimEngine.service');
 const logger = require('../utils/logger');
 
+const { normalizeEnum } = require('../utils/mappers');
+
+const VALID_SCAM_CATEGORIES = ['phishing', 'fake_portal', 'reverse_upi', 'apk_malware', 'fake_agent', 'other'];
+const VALID_SURFACES = ['web', 'whatsapp', 'gmail', 'manual'];
+const VALID_RELATIONSHIPS = ['self', 'spouse', 'parent', 'child', 'sibling', 'other'];
+
 /**
  * Optional auth helper: attaches req.userId if Bearer token is valid, otherwise continues anonymously
  * (required for out-of-the-box Chrome extension GREEN/ORANGE/RED alerts without login).
@@ -16,7 +22,8 @@ const resolveOptionalUserId = async (req) => {
     try {
         const authHeader = req.headers.authorization;
         if (!authHeader || !authHeader.startsWith('Bearer ')) return null;
-        const token = authHeader.split(' ')[1];
+        const token = authHeader.slice(7).trim();
+        if (!token) return null;
         const { data } = await supabaseAdmin.auth.getUser(token);
         return data?.user?.id || null;
     } catch {
@@ -75,11 +82,17 @@ const getVerifiedDomains = async (req, res, next) => {
 
 const getRecentScans = async (req, res, next) => {
     try {
-        const { data, error } = await supabaseAdmin
+        let query = supabaseAdmin
             .from('site_scans')
             .select('id, url, domain, source_surface, status, risk_score, reasons, vt_stats, rdap_age_days, hit_count, last_scanned_at')
             .order('last_scanned_at', { ascending: false })
             .limit(30);
+
+        if (req.user?.role !== 'admin') {
+            query = query.eq('user_id', req.user.id);
+        }
+
+        const { data, error } = await query;
         if (error) return next(error);
         res.json({ scans: data || [] });
     } catch (error) {
@@ -115,16 +128,19 @@ const submitScamReport = async (req, res, next) => {
         const { url, category = 'phishing', description = '', sourceSurface = 'web' } = req.body || {};
         if (!url) return res.status(400).json({ error: 'url is required' });
         const userId = await resolveOptionalUserId(req);
-        const domain = securityService.getRegistrableDomain(securityService.extractHostname(url)) || String(url).slice(0, 100);
+        const safeCategory = normalizeEnum(category, VALID_SCAM_CATEGORIES, 'phishing');
+        const safeSurface = normalizeEnum(sourceSurface, VALID_SURFACES, 'web');
+        const safeUrl = securityService.sanitizeUrlForStorage(String(url));
+        const domain = securityService.getRegistrableDomain(securityService.extractHostname(url)) || safeUrl.slice(0, 100);
 
         const { data, error } = await supabaseAdmin
             .from('scam_reports')
             .insert({
                 user_id: userId,
-                reported_url: String(url).slice(0, 500),
+                reported_url: safeUrl,
                 domain,
-                source_surface: sourceSurface,
-                category,
+                source_surface: safeSurface,
+                category: safeCategory,
                 description: String(description || '').slice(0, 1000),
                 moderation_status: 'pending',
             })
@@ -172,7 +188,7 @@ const downloadExtensionZip = async (req, res, next) => {
 // ─── Parinidhi Voice & Research Agent Endpoints ─────────────────────────────
 const chatWithParinidhi = async (req, res, next) => {
     try {
-        const { message, policyId, sessionId, mode } = req.body || {};
+        const { message, policyId, sessionId, mode, language } = req.body || {};
         if (!message || !String(message).trim()) {
             return res.status(400).json({ error: 'message is required' });
         }
@@ -182,6 +198,7 @@ const chatWithParinidhi = async (req, res, next) => {
             policyId: policyId || null,
             sessionId: sessionId || null,
             mode: mode || 'auto',
+            language: language || 'English',
         });
         res.json(result);
     } catch (error) {
@@ -281,22 +298,32 @@ const createFamilyMember = async (req, res, next) => {
             return res.status(400).json({ error: 'fullName is required' });
         }
 
+        const safeRelationship = normalizeEnum(relationship, VALID_RELATIONSHIPS, 'other');
+        let cleanDob = null;
+        if (dateOfBirth) {
+            const parsedDob = new Date(dateOfBirth);
+            if (Number.isNaN(parsedDob.getTime())) {
+                return res.status(400).json({ error: 'Invalid dateOfBirth format (expected YYYY-MM-DD)' });
+            }
+            cleanDob = parsedDob.toISOString().slice(0, 10);
+        }
+
         const { data: member, error } = await supabaseAdmin
             .from('family_members')
             .insert({
                 user_id: req.user.id,
-                full_name: String(fullName).trim(),
-                relationship,
-                date_of_birth: dateOfBirth || null,
-                blood_group: bloodGroup,
-                emergency_contact: emergencyContact,
+                full_name: String(fullName).trim().slice(0, 120),
+                relationship: safeRelationship,
+                date_of_birth: cleanDob,
+                blood_group: String(bloodGroup || '').slice(0, 10),
+                emergency_contact: String(emergencyContact || '').slice(0, 60),
                 chronic_conditions: Array.isArray(chronicConditions)
                     ? chronicConditions
                     : String(chronicConditions || '')
                           .split(',')
                           .map((s) => s.trim())
                           .filter(Boolean),
-                notes,
+                notes: String(notes || '').slice(0, 1000),
             })
             .select()
             .single();
@@ -320,15 +347,28 @@ const createFamilyMember = async (req, res, next) => {
 const linkPolicyToMember = async (req, res, next) => {
     try {
         const { policyId } = req.body || {};
+        if (!policyId) return res.status(400).json({ error: 'policyId is required' });
+
+        // Ownership check: verify req.user.id owns BOTH family_members row and policies row
+        const { data: member, error: memErr } = await supabaseAdmin
+            .from('family_members')
+            .select('id')
+            .eq('id', req.params.id)
+            .eq('user_id', req.user.id)
+            .maybeSingle();
+        if (memErr) return next(memErr);
+        if (!member) return res.status(404).json({ error: 'Family member not found' });
+
         const { data, error } = await supabaseAdmin
             .from('policies')
-            .update({ family_member_id: req.params.id || null })
+            .update({ family_member_id: member.id })
             .eq('id', policyId)
             .eq('user_id', req.user.id)
             .select()
             .maybeSingle();
 
         if (error) return next(error);
+        if (!data) return res.status(404).json({ error: 'Policy not found for this account' });
         res.json({ policy: data });
     } catch (error) {
         next(error);
@@ -337,12 +377,15 @@ const linkPolicyToMember = async (req, res, next) => {
 
 const deleteFamilyMember = async (req, res, next) => {
     try {
-        const { error } = await supabaseAdmin
+        const { data: deleted, error } = await supabaseAdmin
             .from('family_members')
             .delete()
             .eq('id', req.params.id)
-            .eq('user_id', req.user.id);
+            .eq('user_id', req.user.id)
+            .select('id')
+            .maybeSingle();
         if (error) return next(error);
+        if (!deleted) return res.status(404).json({ error: 'Family member not found' });
         res.json({ message: 'Family member deleted' });
     } catch (error) {
         next(error);

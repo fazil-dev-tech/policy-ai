@@ -8,16 +8,76 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
+const LANGUAGE_OPTIONS = [
+    { label: 'English', langCode: 'en-IN' },
+    { label: 'Hindi', langCode: 'hi-IN' },
+    { label: 'Tamil', langCode: 'ta-IN' },
+    { label: 'Telugu', langCode: 'te-IN' },
+    { label: 'Kannada', langCode: 'kn-IN' },
+    { label: 'Malayalam', langCode: 'ml-IN' },
+    { label: 'Bengali', langCode: 'bn-IN' },
+    { label: 'Marathi', langCode: 'mr-IN' },
+];
+
+function MarkdownText({ content }) {
+    if (!content) return null;
+    const lines = String(content).split('\n');
+    const elements = [];
+    let listItems = [];
+    let key = 0;
+
+    const flushList = () => {
+        if (listItems.length) {
+            elements.push(<ul key={key++} className="md-list">{listItems}</ul>);
+            listItems = [];
+        }
+    };
+
+    const renderInline = (text) => {
+        const parts = text.split(/(\*\*[^*]+\*\*|\*[^*]+\*|`[^`]+`)/g);
+        return parts.map((p, i) => {
+            if (p.startsWith('**') && p.endsWith('**')) return <strong key={i}>{p.slice(2, -2)}</strong>;
+            if (p.startsWith('*') && p.endsWith('*')) return <em key={i}>{p.slice(1, -1)}</em>;
+            if (p.startsWith('`') && p.endsWith('`')) return <code key={i} className="md-code">{p.slice(1, -1)}</code>;
+            return p;
+        });
+    };
+
+    lines.forEach((line) => {
+        if (line.match(/^#{1,3} /)) {
+            flushList();
+            const level = line.match(/^(#+)/)[1].length;
+            const text = line.replace(/^#+\s/, '');
+            const Tag = `h${Math.min(level + 2, 6)}`;
+            elements.push(<Tag key={key++} className={`md-h${level}`}>{renderInline(text)}</Tag>);
+        } else if (line.match(/^[-*] /)) {
+            listItems.push(<li key={key++}>{renderInline(line.replace(/^[-*] /, ''))}</li>);
+        } else if (line.match(/^\d+\. /)) {
+            flushList();
+            elements.push(<p key={key++} className="md-numbered">{renderInline(line)}</p>);
+        } else if (line.trim() === '') {
+            flushList();
+            elements.push(<br key={key++} />);
+        } else {
+            flushList();
+            elements.push(<p key={key++} className="md-p">{renderInline(line)}</p>);
+        }
+    });
+    flushList();
+    return <div className="markdown-content">{elements}</div>;
+}
+
 export default function GlobalChatPage() {
     const [searchParams] = useSearchParams();
     const [messages, setMessages] = useState([]);
     const [input, setInput] = useState('');
     const [loading, setLoading] = useState(false);
-    const [sessionId, setSessionId] = useState(null);
+    const [sessionId, setSessionId] = useState(() => sessionStorage.getItem('pg_parinidhi_session') || null);
     const [sessions, setSessions] = useState([]);
     const [policies, setPolicies] = useState([]);
     const [selectedPolicyId, setSelectedPolicyId] = useState(searchParams.get('policyId') || '');
     const [mode, setMode] = useState('auto');
+    const [language, setLanguage] = useState('English');
 
     // Voice & 3D Avatar states
     const [avatarState, setAvatarState] = useState('idle');
@@ -28,17 +88,30 @@ export default function GlobalChatPage() {
     const messagesEndRef = useRef(null);
     const recognitionRef = useRef(null);
     const pulseTimerRef = useRef(null);
+    const textareaRef = useRef(null);
+    const mountedRef = useRef(true);
+    const handleSendRef = useRef(null);
 
     useEffect(() => {
+        mountedRef.current = true;
         loadSessions();
         loadPolicies();
         const urlPolicy = searchParams.get('policyId');
         const urlPrompt = searchParams.get('q');
         if (urlPolicy) setSelectedPolicyId(urlPolicy);
         if (urlPrompt) setInput(urlPrompt);
+        const savedSid = sessionStorage.getItem('pg_parinidhi_session');
+        if (savedSid) loadSessionHistory(savedSid);
+
+        const synth = typeof window !== 'undefined' ? window.speechSynthesis : null;
+        const onVoicesChanged = () => { synth?.getVoices?.(); };
+        synth?.addEventListener?.('voiceschanged', onVoicesChanged);
+
         return () => {
-            window.speechSynthesis?.cancel();
-            recognitionRef.current?.stop();
+            mountedRef.current = false;
+            synth?.removeEventListener?.('voiceschanged', onVoicesChanged);
+            synth?.cancel();
+            try { recognitionRef.current?.stop(); } catch {}
             clearInterval(pulseTimerRef.current);
         };
     }, []);
@@ -49,20 +122,25 @@ export default function GlobalChatPage() {
 
     const loadSessions = async () => {
         try {
-            const { data } = await api.get('/chat/sessions');
-            setSessions(data.sessions || []);
+            const { data } = await api.get('/chat/sessions?agent=parinidhi');
+            if (mountedRef.current) setSessions(data.sessions || []);
         } catch {}
     };
 
     const loadPolicies = async () => {
         try {
-            const { data } = await api.get('/policy');
-            setPolicies(data.policies || []);
+            const { data } = await api.get('/policy?limit=50');
+            if (mountedRef.current) setPolicies(data.policies || []);
         } catch {}
     };
 
-    const pickEnglishFemaleVoice = () => {
+    const pickEnglishFemaleVoice = (langCode = 'en-IN') => {
         const voices = window.speechSynthesis?.getVoices?.() || [];
+        const baseLang = langCode.split('-')[0];
+        if (baseLang !== 'en') {
+            const localVoice = voices.find((v) => v.lang?.toLowerCase().startsWith(baseLang));
+            if (localVoice) return localVoice;
+        }
         const preferred = voices.find((v) =>
             /en/i.test(v.lang) && /(zira|female|aria|jenny|samantha|neerja|heera|hazel|susan|google uk english female|google us english)/i.test(v.name)
         );
@@ -71,35 +149,41 @@ export default function GlobalChatPage() {
 
     const speakResponse = (spokenText) => {
         if (!voiceEnabled || !spokenText || typeof window === 'undefined' || !window.speechSynthesis) {
-            setAvatarState('idle');
-            setMouthLevel(0);
+            if (mountedRef.current) {
+                setAvatarState('idle');
+                setMouthLevel(0);
+            }
             return;
         }
+        const langMeta = LANGUAGE_OPTIONS.find((l) => l.label === language) || LANGUAGE_OPTIONS[0];
         window.speechSynthesis.cancel();
         const utter = new SpeechSynthesisUtterance(spokenText);
-        utter.lang = 'en-IN';
+        utter.lang = langMeta.langCode;
         utter.pitch = 1.08;
         utter.rate = 1.02;
-        const femaleVoice = pickEnglishFemaleVoice();
-        if (femaleVoice) utter.voice = femaleVoice;
+        const chosenVoice = pickEnglishFemaleVoice(langMeta.langCode);
+        if (chosenVoice) utter.voice = chosenVoice;
 
         utter.onstart = () => {
+            if (!mountedRef.current) return;
             setAvatarState('speaking');
             clearInterval(pulseTimerRef.current);
             pulseTimerRef.current = setInterval(() => {
-                setMouthLevel(0.45 + Math.random() * 0.55);
+                if (mountedRef.current) setMouthLevel(0.45 + Math.random() * 0.55);
             }, 95);
         };
         utter.onboundary = () => {
-            setMouthLevel(0.85);
+            if (mountedRef.current) setMouthLevel(0.85);
         };
         utter.onend = () => {
             clearInterval(pulseTimerRef.current);
+            if (!mountedRef.current) return;
             setMouthLevel(0);
             setAvatarState('idle');
         };
         utter.onerror = () => {
             clearInterval(pulseTimerRef.current);
+            if (!mountedRef.current) return;
             setMouthLevel(0);
             setAvatarState('idle');
         };
@@ -110,7 +194,8 @@ export default function GlobalChatPage() {
     const loadSessionHistory = async (sid) => {
         try {
             const { data } = await api.get(`/chat/history?sessionId=${sid}`);
-            const formatted = (data.messages || []).flatMap((m) => [
+            const msgs = data.messages || [];
+            const formatted = msgs.flatMap((m) => [
                 { role: 'user', content: m.message, timestamp: m.timestamp },
                 {
                     role: 'ai',
@@ -127,6 +212,11 @@ export default function GlobalChatPage() {
             ]);
             setMessages(formatted);
             setSessionId(sid);
+            sessionStorage.setItem('pg_parinidhi_session', sid);
+            if (!searchParams.get('policyId')) {
+                const sessionPolicyId = msgs.find((m) => m.policyId)?.policyId || '';
+                setSelectedPolicyId(sessionPolicyId);
+            }
         } catch {
             toast.error('Failed to load chat history');
         }
@@ -134,9 +224,12 @@ export default function GlobalChatPage() {
 
     const startNewSession = () => {
         window.speechSynthesis?.cancel();
+        clearInterval(pulseTimerRef.current);
+        setMouthLevel(0);
         setAvatarState('idle');
         setMessages([]);
         setSessionId(null);
+        sessionStorage.removeItem('pg_parinidhi_session');
     };
 
     const toggleVoiceInput = () => {
@@ -146,44 +239,59 @@ export default function GlobalChatPage() {
             return;
         }
         if (isListening) {
-            recognitionRef.current?.stop();
+            try { recognitionRef.current?.stop(); } catch {}
             setIsListening(false);
             setAvatarState('idle');
             return;
         }
 
+        const langMeta = LANGUAGE_OPTIONS.find((l) => l.label === language) || LANGUAGE_OPTIONS[0];
         const rec = new SpeechRec();
-        rec.lang = 'en-IN';
+        rec.lang = langMeta.langCode;
         rec.interimResults = false;
         rec.maxAlternatives = 1;
         recognitionRef.current = rec;
 
         rec.onstart = () => {
+            if (!mountedRef.current) return;
             setIsListening(true);
             setAvatarState('listening');
         };
         rec.onresult = (e) => {
             const transcript = e.results?.[0]?.[0]?.transcript || '';
+            if (!mountedRef.current) return;
             setIsListening(false);
             if (transcript.trim()) {
-                handleSend(transcript.trim());
+                handleSendRef.current?.(transcript.trim());
             } else {
                 setAvatarState('idle');
             }
         };
         rec.onerror = () => {
+            if (!mountedRef.current) return;
             setIsListening(false);
             setAvatarState('idle');
             toast.error('Mic capture interrupted — try typing or speaking again.');
         };
-        rec.onend = () => setIsListening(false);
-        rec.start();
+        rec.onend = () => {
+            if (mountedRef.current) setIsListening(false);
+        };
+        try {
+            rec.start();
+        } catch {
+            setIsListening(false);
+            setAvatarState('idle');
+            toast.error('Unable to start microphone capture.');
+        }
     };
 
     const handleSend = async (overrideText = null) => {
         const userMsg = (overrideText !== null ? overrideText : input).trim();
         if (!userMsg || loading) return;
-        if (overrideText === null) setInput('');
+        if (overrideText === null) {
+            setInput('');
+            if (textareaRef.current) textareaRef.current.style.height = 'auto';
+        }
         setMessages((prev) => [...prev, { role: 'user', content: userMsg }]);
         setLoading(true);
         setAvatarState('researching');
@@ -194,9 +302,12 @@ export default function GlobalChatPage() {
                 policyId: selectedPolicyId || undefined,
                 sessionId: sessionId || undefined,
                 mode,
+                language,
             });
 
+            if (!mountedRef.current) return;
             setSessionId(data.sessionId);
+            if (data.sessionId) sessionStorage.setItem('pg_parinidhi_session', data.sessionId);
             setMessages((prev) => [
                 ...prev,
                 {
@@ -215,6 +326,7 @@ export default function GlobalChatPage() {
             speakResponse(data.spokenSummary || data.aiResponse);
             loadSessions();
         } catch (err) {
+            if (!mountedRef.current) return;
             setAvatarState('idle');
             toast.error(err.response?.data?.error || 'Parinidhi encountered an error');
             setMessages((prev) => [
@@ -222,15 +334,23 @@ export default function GlobalChatPage() {
                 { role: 'ai', content: 'Sorry, I encountered an error reaching the AI engine. Please try again.' },
             ]);
         } finally {
-            setLoading(false);
+            if (mountedRef.current) setLoading(false);
         }
     };
+
+    handleSendRef.current = handleSend;
 
     const handleKeyDown = (e) => {
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
             handleSend();
         }
+    };
+
+    const autoGrow = (e) => {
+        const el = e.target;
+        el.style.height = 'auto';
+        el.style.height = Math.min(el.scrollHeight, 140) + 'px';
     };
 
     return (
@@ -251,27 +371,33 @@ export default function GlobalChatPage() {
                         <button
                             className="btn btn-secondary btn-sm"
                             onClick={() => {
-                                if (voiceEnabled) window.speechSynthesis?.cancel();
+                                if (voiceEnabled) {
+                                    window.speechSynthesis?.cancel();
+                                    clearInterval(pulseTimerRef.current);
+                                    setMouthLevel(0);
+                                    setAvatarState('idle');
+                                }
                                 setVoiceEnabled(!voiceEnabled);
                             }}
                             title={voiceEnabled ? 'Mute Voice Output' : 'Enable Voice Output'}
+                            aria-label={voiceEnabled ? 'Mute Voice Output' : 'Enable Voice Output'}
                         >
                             {voiceEnabled ? <Volume2 size={14} /> : <VolumeX size={14} />}
                         </button>
-                        <button className="btn btn-secondary btn-sm" onClick={startNewSession} title="New Chat">
+                        <button className="btn btn-secondary btn-sm" onClick={startNewSession} title="New Chat" aria-label="New Chat">
                             <Plus size={14} />
                         </button>
                     </div>
                 </div>
 
-                {/* Context Selector */}
+                {/* Context & Language Selector */}
                 <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--border-color)' }}>
                     <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>
-                        Optional Policy Context
+                        Optional Policy Context &amp; Language
                     </label>
                     <select
                         className="form-input"
-                        style={{ padding: '6px 10px', fontSize: 12, marginBottom: 8 }}
+                        style={{ padding: '6px 10px', fontSize: 12, marginBottom: 6 }}
                         value={selectedPolicyId}
                         onChange={(e) => setSelectedPolicyId(e.target.value)}
                     >
@@ -280,6 +406,17 @@ export default function GlobalChatPage() {
                             <option key={p._id} value={p._id}>
                                 {p.providerName} (#{p.policyNumber})
                             </option>
+                        ))}
+                    </select>
+                    <select
+                        className="form-input"
+                        style={{ padding: '6px 10px', fontSize: 12, marginBottom: 8 }}
+                        value={language}
+                        onChange={(e) => setLanguage(e.target.value)}
+                        aria-label="Response language"
+                    >
+                        {LANGUAGE_OPTIONS.map((l) => (
+                            <option key={l.label} value={l.label}>Language: {l.label}</option>
                         ))}
                     </select>
                     <div style={{ display: 'flex', gap: 4 }}>
@@ -389,12 +526,12 @@ export default function GlobalChatPage() {
                                     border: msg.role === 'ai' ? '1px solid var(--border-color)' : 'none',
                                     padding: '12px 16px',
                                     borderRadius: 14,
-                                    whiteSpace: 'pre-wrap',
+                                    whiteSpace: msg.role === 'ai' ? 'normal' : 'pre-wrap',
                                     lineHeight: 1.65,
                                     fontSize: 14,
                                     width: msg.comparisonCards?.length ? '100%' : 'auto',
                                 }}>
-                                    {msg.content}
+                                    {msg.role === 'ai' ? <MarkdownText content={msg.content} /> : msg.content}
 
                                     {/* Policy Comparison Cards from Live Search */}
                                     {msg.comparisonCards?.length > 0 && (
@@ -429,7 +566,7 @@ export default function GlobalChatPage() {
                                         <div style={{ marginTop: 10, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                                             {msg.citations.map((cit, ci) => (
                                                 <span key={ci} className="badge" style={{ background: 'rgba(236,72,153,0.1)', color: 'var(--accent-primary)', fontSize: 11 }}>
-                                                    <FileText size={10} /> Page {cit.pageNumber} · {cit.sectionTitle.slice(0, 28)}
+                                                    <FileText size={10} /> Page {cit.pageNumber || 1} · {(cit.sectionTitle || 'Policy Clause').slice(0, 28)}
                                                 </span>
                                             ))}
                                         </div>
@@ -449,16 +586,31 @@ export default function GlobalChatPage() {
                             </div>
                         </div>
                     ))}
+                    {loading && (
+                        <div style={{ display: 'flex', gap: 14 }}>
+                            <div style={{
+                                width: 34, height: 34, borderRadius: '50%', flexShrink: 0,
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                background: 'var(--accent-gradient)', color: '#fff',
+                            }}>
+                                <Sparkles size={16} />
+                            </div>
+                            <div className="msg-bubble ai" style={{ padding: '10px 14px', borderRadius: 14, border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.85)' }}>
+                                <div className="typing-indicator"><span /><span /><span /></div>
+                            </div>
+                        </div>
+                    )}
                     <div ref={messagesEndRef} />
                 </div>
 
                 <div className="chat-input-area" style={{ padding: '16px 22px', borderTop: '1px solid var(--border-color)', background: 'var(--bg-card)' }}>
                     <div className="chat-input-wrapper">
                         <textarea
+                            ref={textareaRef}
                             className="chat-textarea"
                             placeholder="Ask Parinidhi about your policy, live insurance plans, or press Speak..."
                             value={input}
-                            onChange={(e) => setInput(e.target.value)}
+                            onChange={(e) => { setInput(e.target.value); autoGrow(e); }}
                             onKeyDown={handleKeyDown}
                             disabled={loading}
                             rows={1}

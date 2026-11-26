@@ -16,6 +16,9 @@ const getTransporter = () => {
         host: env.SMTP_HOST || 'smtp.gmail.com',
         port,
         secure: port === 465,
+        connectionTimeout: 6000,
+        greetingTimeout: 6000,
+        socketTimeout: 8000,
         auth: {
             user: env.SMTP_USER,
             pass: env.SMTP_PASS,
@@ -42,6 +45,7 @@ const sendEmail = async ({ to, subject, html, text }) => {
         logger.info(`Email sent: ${info.messageId} to ${to}`);
         return { success: true, messageId: info.messageId };
     } catch (error) {
+        transporter = null;
         logger.error('Email send failed:', error.message);
         return { success: false, error: error.message };
     }

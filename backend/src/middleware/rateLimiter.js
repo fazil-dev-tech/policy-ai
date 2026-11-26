@@ -7,6 +7,7 @@ const createRateLimiter = (windowMs = 900000, max = 100, message = 'Too many req
         message: { error: message },
         standardHeaders: true,
         legacyHeaders: false,
+        validate: { xForwardedForHeader: false, trustProxy: false },
         handler: (req, res) => {
             res.status(429).json({
                 error: message,

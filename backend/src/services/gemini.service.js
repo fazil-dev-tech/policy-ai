@@ -1,5 +1,6 @@
 const aiService = require('./ai.service');
 const pdfParser = require('./pdfParser.service');
+const { safeIsoDate } = require('../utils/mappers');
 const logger = require('../utils/logger');
 
 const POLICY_EXTRACTION_PROMPT = `You are an expert Indian insurance & document analyst. Analyze the following reconstructed document text (pages separated cleanly with | for table columns).
@@ -57,16 +58,27 @@ const extractPolicyOfflineFallback = (pdfText = '', hints = {}) => {
     const provider =
         low.includes('star health') ? 'Star Health and Allied Insurance'
         : low.includes('hdfc ergo') ? 'HDFC ERGO General Insurance'
-        : low.includes('icici lombard') ? 'ICICI Lombard'
-        : low.includes('bajaj allianz') ? 'Bajaj Allianz'
+        : low.includes('icici lombard') ? 'ICICI Lombard General Insurance'
+        : low.includes('bajaj allianz') ? 'Bajaj Allianz General Insurance'
+        : low.includes('care health') || low.includes('careinsurance') ? 'Care Health Insurance'
+        : low.includes('niva bupa') ? 'Niva Bupa Health Insurance'
+        : low.includes('tata aig') ? 'Tata AIG General Insurance'
+        : low.includes('go digit') || low.includes('godigit') ? 'Go Digit General Insurance'
+        : low.includes('acko') ? 'Acko General Insurance'
+        : low.includes('sbi general') ? 'SBI General Insurance'
         : low.includes('new india') ? 'New India Assurance'
-        : low.includes('lic') ? 'LIC India'
+        : low.includes('oriental insurance') ? 'Oriental Insurance'
+        : low.includes('united india') ? 'United India Insurance'
+        : low.includes('national insurance') ? 'National Insurance Co. Ltd.'
+        : /\blic\b/i.test(low) ? 'LIC India'
         : 'Insurance Provider';
 
     const policyType =
         low.includes('motor') || low.includes('idv') || low.includes('chassis') ? 'auto'
         : low.includes('hospital') || low.includes('floater') || low.includes('sum insured') ? 'health'
         : low.includes('term') || low.includes('nominee') ? 'life'
+        : low.includes('travel') || low.includes('baggage') ? 'travel'
+        : low.includes('home') || low.includes('dwelling') ? 'home'
         : 'other';
 
     const snippet = (regex, fallback) => {
@@ -74,6 +86,7 @@ const extractPolicyOfflineFallback = (pdfText = '', hints = {}) => {
         return m ? m[0].slice(0, 600) : fallback;
     };
 
+    const hasScheduleData = Boolean(hints.policyNumber && hints.coverageAmount);
     return {
         policyNumber: hints.policyNumber || `POL-${Date.now()}`,
         providerName: provider,
@@ -90,7 +103,8 @@ const extractPolicyOfflineFallback = (pdfText = '', hints = {}) => {
         requiredDocuments: 'Policy Schedule / E-Card, ID Proof, Discharge Summary, Final Itemized Bill, Doctor Consultation Note.',
         fraudIndicators: 'Verify room-rent cap & declared PED waiting periods in Clause Search.',
         simpleSummary: `${provider} policy parsed & indexed with ${hints.coverageAmount ? '₹' + Number(hints.coverageAmount).toLocaleString('en-IN') + ' Sum Insured' : 'schedule limits'}.`,
-        verificationScore: 72,
+        verificationScore: hasScheduleData ? 68 : 48,
+        aiFallbackUsed: true,
         structuredTerms: {
             helplineNumber: hints.helplineNumber || '',
             intermediaryCode: hints.intermediary || '',
@@ -104,14 +118,25 @@ const extractPolicyOfflineFallback = (pdfText = '', hints = {}) => {
     };
 };
 
+const selectHighSignalSlice = (masked = '') => {
+    if (masked.length <= 15000) return masked;
+    const head = masked.slice(0, 7500);
+    const tail = masked.slice(-3500);
+    const middle = masked.slice(7500, -3500);
+    // Scan middle pages for critical exclusions, room-rent, co-pay, deductible, waiting periods & sub-limits
+    const criticalLines = middle
+        .split('\n')
+        .filter((line) => /exclusion|waiting|room\s*rent|co-?pay|deductible|sub-?limit|restoration|proportionate|bonus|idv|depreciation|helpline|schedule|member/i.test(line))
+        .slice(0, 50)
+        .join('\n')
+        .slice(0, 4000);
+    return `${head}\n\n...[HIGH-SIGNAL MIDDLE CLAUSES]...\n${criticalLines}\n\n...[END PAGES]...\n${tail}`;
+};
+
 const extractPolicyInfo = async (pdfText, deterministicHints = {}) => {
     try {
         const masked = pdfParser.maskSensitivePii(pdfText);
-        // Compact high-signal slice (first 8.5k Schedule/Terms + last 3.5k Matrix/Helpline) keeps :free models fast and within output budget
-        const trimmedText =
-            masked.length > 12500
-                ? `${masked.slice(0, 8500)}\n\n...[MIDDLE PAGES INDEXED IN POSTGRES FTS]...\n\n${masked.slice(-4000)}`
-                : masked;
+        const trimmedText = selectHighSignalSlice(masked);
 
         const hintBlock = Object.keys(deterministicHints || {}).length
             ? `\nDETERMINISTIC SCHEDULE HINTS (Prefer exact matches):\n${JSON.stringify(deterministicHints)}\n`
@@ -128,8 +153,8 @@ const extractPolicyInfo = async (pdfText, deterministicHints = {}) => {
         if (!data.endDate && deterministicHints.endDateRaw) data.endDate = deterministicHints.endDateRaw;
         if (!data.helplineNumber && deterministicHints.helplineNumber) data.helplineNumber = deterministicHints.helplineNumber;
         if (!data.inceptionDate && deterministicHints.inceptionDateRaw) {
-            const parsed = new Date(deterministicHints.inceptionDateRaw);
-            if (!Number.isNaN(parsed.getTime())) data.inceptionDate = parsed.toISOString().slice(0, 10);
+            const iso = safeIsoDate(deterministicHints.inceptionDateRaw, null);
+            if (iso) data.inceptionDate = iso.slice(0, 10);
         }
         if (deterministicHints.insuredMembers?.length) {
             data.structuredTerms = {
@@ -151,10 +176,23 @@ const extractPolicyInfo = async (pdfText, deterministicHints = {}) => {
 };
 
 const extractPolicyFromScannedImages = async (images = [], deterministicHints = {}) => {
-    const prompt = `${POLICY_EXTRACTION_PROMPT}\nNote: Document appears scanned or an E-card/photo. If only an E-card or partial page is shown, note that exclusions/sub-limits need full wording verification.\nHints: ${JSON.stringify(deterministicHints || {})}`;
-    const { data, provider } = await aiService.generateVisionJson({ prompt, images, maxTokens: 2600 });
-    logger.info(`Scanned policy/card extraction successful via ${provider}`);
-    return data;
+    try {
+        const prompt = `${POLICY_EXTRACTION_PROMPT}\nNote: Document appears scanned or an E-card/photo. If only an E-card or partial page is shown, note that exclusions/sub-limits need full wording verification.\nHints: ${JSON.stringify(deterministicHints || {})}`;
+        const { data, provider } = await aiService.generateVisionJson({ prompt, images, maxTokens: 2600 });
+        if (!data.policyNumber && deterministicHints.policyNumber) data.policyNumber = deterministicHints.policyNumber;
+        if ((!data.coverageAmount || Number(data.coverageAmount) === 0) && deterministicHints.coverageAmount) {
+            data.coverageAmount = deterministicHints.coverageAmount;
+        }
+        logger.info(`Scanned policy/card extraction successful via ${provider}`);
+        return data;
+    } catch (error) {
+        logger.warn(`Scanned policy Vision OCR failed (${error.message}); returning fallback summary.`);
+        return {
+            ...extractPolicyOfflineFallback('', deterministicHints),
+            overview: 'Scanned document/E-card uploaded; Vision OCR unavailable right now — review schedule or ask Parinidhi.',
+            verificationScore: 45,
+        };
+    }
 };
 
 const chatAboutPolicy = async (userMessage, policySummary, conversationHistory = [], matchedClauses = []) => {
@@ -251,7 +289,7 @@ Format using clear headers and bullet points.`;
     } catch (error) {
         logger.error('Market insights failed:', error.message);
         return {
-            text: 'Market insights are currently unavailable. Check AI API key configuration in backend/.env.',
+            text: 'Live AI market insights are temporarily rate-limited. Compare provider settlement ratios, turnaround times, and IRDAI official portal benchmarks directly below.',
             provider: 'unavailable',
             model: 'none',
         };

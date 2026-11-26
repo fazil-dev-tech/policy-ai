@@ -2,12 +2,14 @@ const Redis = require('ioredis');
 const logger = require('../utils/logger');
 
 let redisClient = null;
-let redisAttempted = false;
+let lastRedisFailureAt = 0;
+const REDIS_RETRY_COOLDOWN_MS = 60 * 1000;
 
 const getRedisClient = () => {
     if (redisClient) return redisClient;
-    if (redisAttempted) return null;
-    redisAttempted = true;
+    if (lastRedisFailureAt && Date.now() - lastRedisFailureAt < REDIS_RETRY_COOLDOWN_MS) {
+        return null;
+    }
 
     const env = require('./env');
     if (!env.REDIS_URL) {
@@ -23,17 +25,21 @@ const getRedisClient = () => {
         });
 
         client.on('connect', () => {
+            lastRedisFailureAt = 0;
             logger.info('Redis connected');
         });
 
         client.on('error', (err) => {
             logger.warn('Redis unavailable, using in-memory fallback:', err.message);
+            lastRedisFailureAt = Date.now();
             redisClient = null;
+            try { client.disconnect(false); } catch {}
         });
 
         redisClient = client;
         return redisClient;
     } catch (error) {
+        lastRedisFailureAt = Date.now();
         logger.warn('Redis not available, using in-memory fallback');
         return null;
     }

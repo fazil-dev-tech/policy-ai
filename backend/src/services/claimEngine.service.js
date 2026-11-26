@@ -26,6 +26,18 @@ const getMetalDepreciationRate = (vehicleAgeYears = 2) => {
     return 0.5;
 };
 
+const toNum = (val, fallback = 0) => {
+    if (typeof val === 'number') return Number.isFinite(val) ? val : fallback;
+    if (typeof val === 'string') {
+        const m = val.replace(/,/g, '').match(/-?\d+(?:\.\d+)?/);
+        if (m) {
+            const parsed = Number(m[0]);
+            return Number.isFinite(parsed) ? parsed : fallback;
+        }
+    }
+    return fallback;
+};
+
 /**
  * IRDAI May 2024 Master Circular: 60-Month (5-Year) Continuous Coverage Moratorium
  */
@@ -46,7 +58,8 @@ const checkMoratorium60Months = (inceptionDate, referenceDate = new Date()) => {
         return { known: false, active: false, continuousMonths: null, monthsRemaining: null, note: 'Invalid inception date.' };
     }
 
-    const months = (ref.getFullYear() - start.getFullYear()) * 12 + (ref.getMonth() - start.getMonth());
+    let months = (ref.getFullYear() - start.getFullYear()) * 12 + (ref.getMonth() - start.getMonth());
+    if (ref.getDate() < start.getDate()) months -= 1;
     const safeMonths = Math.max(0, months);
     const active = safeMonths >= 60;
 
@@ -77,13 +90,20 @@ const calculateHealthScore = (policy = {}, terms = {}) => {
 
     const hasZeroDep = Boolean(mergedTerms.zeroDep) || /zero\s*dep/i.test(combinedText);
     const hasRestoration = Boolean(mergedTerms.restoration) || /restor|refill|recharge/i.test(combinedText);
+    const hasRoomPerDayCap = toNum(mergedTerms.roomRentPerDayCap, 0) > 0;
     const noRoomCap =
-        mergedTerms.roomRentCapPct === null ||
-        mergedTerms.roomRentCapPct >= 100 ||
-        /at actuals|single private|no capping/i.test(combinedText);
-    const copayPct = Number(mergedTerms.coPayPct ?? (/\b20%\s*co-?pay/i.test(combinedText) ? 20 : /\b10%\s*co-?pay/i.test(combinedText) ? 10 : 0));
-    const initialWaitDays = Number(mergedTerms.initialWaitingDays ?? 30);
-    const pedWaitMonths = Number(mergedTerms.pedWaitingMonths ?? (/\b36\s*months?/i.test(combinedText) ? 36 : /\b48\s*months?/i.test(combinedText) ? 48 : 24));
+        !hasRoomPerDayCap &&
+        ((mergedTerms.roomRentCapPct === null && !/proportionate|room\s*rent\s*(?:cap|limit|1%)/i.test(combinedText)) ||
+            toNum(mergedTerms.roomRentCapPct, 0) >= 100 ||
+            (/(?<!not\s)at actuals|\bno capping\b|\bno room rent limit\b/i.test(combinedText) &&
+                !/room\s*rent\s*limit/i.test(combinedText)));
+    const copayMatch = combinedText.match(/\b(\d{1,2})%\s*co-?pay/i);
+    const termCopay = toNum(mergedTerms.coPayPct, 0);
+    const copayPct = Math.min(80, Math.max(0, termCopay > 0 ? termCopay : copayMatch ? Number(copayMatch[1]) : 0));
+    const initialWaitDays = Math.max(0, toNum(mergedTerms.initialWaitingDays, 30));
+    const pedMatch = combinedText.match(/\b(12|24|36|48)\s*months?\b/i);
+    const termPed = toNum(mergedTerms.pedWaitingMonths, 0);
+    const pedWaitMonths = Math.max(0, termPed > 0 ? termPed : pedMatch ? Number(pedMatch[1]) : 36);
     const hasHelpline = Boolean(summary.helplineNumber || mergedTerms.helplineNumber);
 
     const checklist = [];
@@ -206,25 +226,35 @@ const buildCisCard = (policy = {}, terms = {}, evaluation = null) => {
  * Deterministic Health / Hospitalization Claim Payout Calculator + Proportionate Deduction
  */
 const computeHealthClaimEstimate = (policy = {}, terms = {}, input = {}) => {
-    const billAmount = Math.max(0, Number(input.estimatedBill || input.estimatedAmount || 0));
-    const roomPerDay = Math.max(0, Number(input.roomRentPerDay || 0));
-    const policyRoomCap = Number(input.policyRoomCapPerDay ?? terms.roomRentPerDayCap ?? (terms.roomRentCapPct ? (Number(policy.coverageAmount || 0) * terms.roomRentCapPct) / 100 : 0));
-    const copayPct = Math.min(80, Math.max(0, Number(input.copayPct ?? terms.coPayPct ?? 0)));
-    const deductible = Math.max(0, Number(input.deductible ?? terms.deductible ?? 0));
-    const consumablesPct = Math.min(35, Math.max(0, Number(input.consumablesPct ?? 8)));
-    const sumInsured = Math.max(0, Number(policy.coverageAmount ?? policy.coverage_amount ?? 0));
-    const priorClaims = Math.max(0, Number(input.priorClaimsInYear || 0));
+    const billAmount = Math.max(0, toNum(input.estimatedBill ?? input.estimatedAmount, 0));
+    const roomPerDay = Math.max(0, toNum(input.roomRentPerDay, 0));
+    const inputRoomCap = toNum(input.policyRoomCapPerDay, 0);
+    const termRoomCap = toNum(terms.roomRentPerDayCap, 0);
+    const pctRoomCap = toNum(terms.roomRentCapPct, 0) > 0 ? (toNum(policy.coverageAmount ?? policy.coverage_amount, 0) * toNum(terms.roomRentCapPct, 0)) / 100 : 0;
+    const policyRoomCap = inputRoomCap > 0 ? inputRoomCap : termRoomCap > 0 ? termRoomCap : pctRoomCap;
+    const copayPct = Math.min(80, Math.max(0, toNum(input.copayPct, toNum(terms.coPayPct, 0))));
+    const deductible = Math.max(0, toNum(input.deductible, toNum(terms.deductible, 0)));
+    const consumablesPct = Math.min(35, Math.max(0, toNum(input.consumablesPct, 8)));
+    const sumInsured = Math.max(0, toNum(policy.coverageAmount ?? policy.coverage_amount, 0));
+    const priorClaims = Math.max(0, toNum(input.priorClaimsInYear, 0));
     const hasRestoration = Boolean(input.hasRestoration ?? terms.restoration);
 
     const incidentDate = input.incidentDate ? new Date(input.incidentDate) : new Date();
     const policyStart = policy.startDate || policy.start_date ? new Date(policy.startDate || policy.start_date) : null;
-    const policyEnd = policy.endDate || policy.end_date ? new Date(policy.endDate || policy.end_date) : null;
+    const rawPolicyEnd = policy.endDate || policy.end_date ? new Date(policy.endDate || policy.end_date) : null;
+    const policyEnd = rawPolicyEnd && !Number.isNaN(rawPolicyEnd.getTime()) ? new Date(rawPolicyEnd.getTime()) : null;
+    if (policyEnd) policyEnd.setUTCHours(23, 59, 59, 999);
     const isAccident = Boolean(input.isAccident);
     const isPedRelated = Boolean(input.isPedRelated);
     const moratorium = checkMoratorium60Months(terms.inceptionDate || policy.inception_date || policyStart, incidentDate);
 
     const alerts = [];
     let verdict = 'Covered';
+
+    if (sumInsured === 0) {
+        verdict = 'Verification Required';
+        alerts.push('Policy Sum Insured is not verified on record (₹0); estimate shown before Sum Insured ceiling.');
+    }
 
     // Eligibility guardrails BEFORE payout math
     if (policyEnd && incidentDate > policyEnd) {
@@ -242,10 +272,14 @@ const computeHealthClaimEstimate = (policy = {}, terms = {}, input = {}) => {
         }
     }
     if (isPedRelated && !moratorium.active) {
-        const pedMonths = Number(terms.pedWaitingMonths || 36);
-        if (moratorium.known && moratorium.continuousMonths < pedMonths) {
-            verdict = 'Verification Required';
-            alerts.push(`Declared PED waiting period (${pedMonths} months) vs ${moratorium.continuousMonths} months completed — verify exact ICD/PED match.`);
+        const pedMonths = toNum(terms.pedWaitingMonths, 36);
+        if (!moratorium.known || moratorium.continuousMonths < pedMonths) {
+            if (verdict !== 'Not Covered') verdict = 'Verification Required';
+            alerts.push(
+                moratorium.known
+                    ? `Declared PED waiting period (${pedMonths} months) vs ${moratorium.continuousMonths} months completed — verify exact ICD/PED match.`
+                    : `Declared PED waiting period (${pedMonths} months) requires verifying first policy inception date.`
+            );
         }
     }
     if (input.isPartialDoc) {
@@ -420,8 +454,13 @@ const computeMotorClaimEstimate = ({
 
     const expectedRepairMid = Math.round((repairMin + repairMax) / 2);
     const referenceTotal = Number(garageQuoteTotal) > 0 ? Number(garageQuoteTotal) : expectedRepairMid;
+    const scaledDepreciation =
+        Number(garageQuoteTotal) > 0 && expectedRepairMid > 0
+            ? Math.round((totalDepreciation / expectedRepairMid) * referenceTotal)
+            : totalDepreciation;
     const fileCharge = Number(vehicleInfo.fileProcessingFee || 0);
-    const grossInsurerEligible = Math.max(0, referenceTotal - totalDepreciation - compulsoryDeductible - fileCharge);
+    const voluntaryDeductible = Number(vehicleInfo.voluntaryDeductible || 0);
+    const grossInsurerEligible = Math.max(0, referenceTotal - scaledDepreciation - compulsoryDeductible - voluntaryDeductible - fileCharge);
     const estimatedPayout = Math.min(idv, grossInsurerEligible);
     const outOfPocket = Math.max(0, referenceTotal - estimatedPayout);
 
@@ -519,7 +558,8 @@ ${claimantName}`;
 
 const computeReadinessChecklist = (scenarioType, evidenceList = [], policy = {}, incidentDate = new Date()) => {
     const categories = new Set((evidenceList || []).map((e) => e.doc_category || e.docCategory));
-    const hoursElapsed = Math.abs((Date.now() - new Date(incidentDate).getTime()) / (1000 * 60 * 60));
+    const parsedTime = new Date(incidentDate).getTime();
+    const hoursElapsed = Number.isNaN(parsedTime) ? 999 : (Date.now() - parsedTime) / (1000 * 60 * 60);
 
     const checks = [
         {
@@ -541,7 +581,7 @@ const computeReadinessChecklist = (scenarioType, evidenceList = [], policy = {},
         checks.push(
             { key: 'photos', label: 'Clear Multi-Angle Accident Damage Photos', completed: categories.has('vehicle_photo'), required: true },
             { key: 'quote', label: 'Authorized Garage Repair Estimate / Quote', completed: categories.has('garage_quote'), required: false },
-            { key: 'dl_rc', label: 'Valid Driving License & Vehicle RC Verification', completed: Boolean(policy?.id), required: true }
+            { key: 'dl_rc', label: 'Valid Driving License & Vehicle RC Verification', completed: categories.has('dl_rc'), required: true }
         );
     } else if (scenarioType === 'settlement_audit') {
         checks.push(
@@ -556,7 +596,7 @@ const computeReadinessChecklist = (scenarioType, evidenceList = [], policy = {},
         );
     }
 
-    if (hoursElapsed <= 24) {
+    if (hoursElapsed >= 0 && hoursElapsed <= 24) {
         checks.push({
             key: 'intimation',
             label: '24-Hour Cashless / Emergency Intimation Window Open',

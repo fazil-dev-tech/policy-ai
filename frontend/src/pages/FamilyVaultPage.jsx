@@ -43,7 +43,7 @@ export default function FamilyVaultPage() {
     const [unassignedPolicies, setUnassignedPolicies] = useState([]);
     const [loading, setLoading] = useState(true);
     const [activeSos, setActiveSos] = useState('hospital');
-    const [form, setForm] = useState({ fullName: '', relationship: 'parent', bloodGroup: '', emergencyContact: '', chronicConditions: '', linkPolicyId: '' });
+    const [form, setForm] = useState({ fullName: '', relationship: 'parent', bloodGroup: '', emergencyContact: '', dateOfBirth: '', chronicConditions: '', notes: '', linkPolicyId: '' });
 
     useEffect(() => {
         loadVault();
@@ -63,18 +63,22 @@ export default function FamilyVaultPage() {
 
     const handleAddMember = async (e) => {
         e.preventDefault();
-        if (!form.fullName.trim()) return;
+        if (!form.fullName.trim()) {
+            toast.error('Please enter the family member name');
+            return;
+        }
         try {
             await api.post('/family', form);
             toast.success('Family member added to Vault!');
-            setForm({ fullName: '', relationship: 'parent', bloodGroup: '', emergencyContact: '', chronicConditions: '', linkPolicyId: '' });
+            setForm({ fullName: '', relationship: 'parent', bloodGroup: '', emergencyContact: '', dateOfBirth: '', chronicConditions: '', notes: '', linkPolicyId: '' });
             loadVault();
         } catch (err) {
             toast.error(err.response?.data?.error || 'Failed to add member');
         }
     };
 
-    const handleDeleteMember = async (id) => {
+    const handleDeleteMember = async (id, name) => {
+        if (!window.confirm(`Remove ${name || 'this family member'} from your Family Vault?`)) return;
         try {
             await api.delete(`/family/${id}`);
             toast.success('Member removed');
@@ -90,8 +94,8 @@ export default function FamilyVaultPage() {
             await api.post(`/family/${memberId}/link-policy`, { policyId });
             toast.success('Policy linked to family member!');
             loadVault();
-        } catch {
-            toast.error('Failed to link policy');
+        } catch (err) {
+            toast.error(err.response?.data?.error || 'Failed to link policy');
         }
     };
 
@@ -102,8 +106,10 @@ export default function FamilyVaultPage() {
             const a = document.createElement('a');
             a.href = url;
             a.download = `Emergency_Card_${policyId.slice(0, 8)}.pdf`;
+            document.body.appendChild(a);
             a.click();
-            URL.revokeObjectURL(url);
+            a.remove();
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
         } catch {
             toast.error('Failed to generate Emergency Card PDF');
         }
@@ -160,6 +166,12 @@ export default function FamilyVaultPage() {
                     </div>
                     <input className="form-input" placeholder="Emergency Phone" style={{ marginBottom: 8 }}
                         value={form.emergencyContact} onChange={(e) => setForm({ ...form, emergencyContact: e.target.value })} />
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
+                        <input className="form-input" type="date" title="Date of Birth (optional)"
+                            value={form.dateOfBirth} onChange={(e) => setForm({ ...form, dateOfBirth: e.target.value })} />
+                        <input className="form-input" placeholder="Vault Notes (optional)"
+                            value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
+                    </div>
                     <input className="form-input" placeholder="Declared PEDs / Allergies (comma-separated)" style={{ marginBottom: 8 }}
                         value={form.chronicConditions} onChange={(e) => setForm({ ...form, chronicConditions: e.target.value })} />
                     {unassignedPolicies.length > 0 && (
@@ -184,10 +196,12 @@ export default function FamilyVaultPage() {
                                             <strong>{m.full_name}</strong> <span className="badge badge-purple">{m.relationship}</span>
                                             {m.blood_group && <span className="badge badge-danger" style={{ marginLeft: 6 }}>{m.blood_group}</span>}
                                         </div>
-                                        <button className="btn btn-danger btn-sm" onClick={() => handleDeleteMember(m.id)}><Trash2 size={13} /></button>
+                                        <button className="btn btn-danger btn-sm" aria-label={`Remove ${m.full_name}`} onClick={() => handleDeleteMember(m.id, m.full_name)}><Trash2 size={13} /></button>
                                     </div>
                                     <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 4 }}>
                                         Emergency: {m.emergency_contact || '—'} · PEDs: {(m.chronic_conditions || []).join(', ') || 'None recorded'}
+                                        {m.date_of_birth && ` · DOB: ${new Date(m.date_of_birth).toLocaleDateString('en-IN')}`}
+                                        {m.notes && ` · Note: ${m.notes}`}
                                     </div>
                                     {(m.policies || []).map((p) => (
                                         <div key={p.id} style={{ fontSize: 12, marginTop: 6, padding: 8, background: 'var(--bg-secondary)', borderRadius: 6, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
@@ -202,7 +216,7 @@ export default function FamilyVaultPage() {
                                     ))}
                                     {unassignedPolicies.length > 0 && (
                                         <select className="form-input" style={{ marginTop: 8, fontSize: 11, padding: '4px 8px' }}
-                                            defaultValue="" onChange={(e) => handleLinkPolicy(m.id, e.target.value)}>
+                                            value="" onChange={(e) => handleLinkPolicy(m.id, e.target.value)}>
                                             <option value="">+ Link unassigned policy...</option>
                                             {unassignedPolicies.map((p) => (
                                                 <option key={p.id} value={p.id}>{p.provider_name} — #{p.policy_number}</option>

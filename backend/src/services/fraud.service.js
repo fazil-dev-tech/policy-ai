@@ -7,8 +7,8 @@ const analyzePolicyFraud = async (policyData) => {
         const ruleBasedFlags = [];
         let ruleBasedScore = 0;
 
-        if (Number(policyData.coverageAmount) > 10000000) {
-            ruleBasedFlags.push('Unusually high coverage amount');
+        if (Number(policyData.coverageAmount) > 50000000) {
+            ruleBasedFlags.push('Unusually high coverage amount (> 5 Crore)');
             ruleBasedScore += 15;
         }
 
@@ -17,7 +17,10 @@ const analyzePolicyFraud = async (policyData) => {
         const durationDays = (endDate - startDate) / (1000 * 60 * 60 * 24);
 
         if (!Number.isNaN(durationDays)) {
-            if (durationDays < 30) {
+            if (durationDays < 0) {
+                ruleBasedFlags.push('Policy end date precedes start date');
+                ruleBasedScore += 35;
+            } else if (durationDays < 30) {
                 ruleBasedFlags.push('Very short policy duration');
                 ruleBasedScore += 10;
             }
@@ -33,7 +36,11 @@ const analyzePolicyFraud = async (policyData) => {
         }
 
         const aiAnalysis = await grokService.analyzeFraud(policyData);
-        const combinedScore = Math.min(100, Math.round((ruleBasedScore + (Number(aiAnalysis.fraudScore) || 0)) / 2));
+        const aiUnknown = !aiAnalysis || aiAnalysis.riskLevel === 'unknown';
+        const combinedScore = Math.min(
+            100,
+            aiUnknown ? ruleBasedScore : Math.round((ruleBasedScore + (Number(aiAnalysis.fraudScore) || 0)) / 2)
+        );
 
         return {
             overallScore: combinedScore,

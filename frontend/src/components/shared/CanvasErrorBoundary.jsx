@@ -13,8 +13,11 @@ export default class CanvasErrorBoundary extends Component {
     render() {
         if (this.state.error) {
             return (
-                <div style={{ color: 'red', padding: 20, background: 'black' }}>
-                    WebGL Crash: {this.state.errorMsg}
+                <div style={{
+                    width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    padding: 24, textAlign: 'center', color: '#94a3b8', fontSize: 13
+                }}>
+                    {this.props.fallbackTitle || 'Interactive 3D visual paused on this device.'}
                 </div>
             );
         }

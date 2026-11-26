@@ -29,12 +29,21 @@ services:
       SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY}
       SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY}
       SUPABASE_STORAGE_BUCKET: ${SUPABASE_STORAGE_BUCKET:-policy-files}
-      AI_PROVIDER: ${AI_PROVIDER:-auto}
-      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      # Free-first AI defaults (OpenRouter :free models like NVIDIA Nemotron & Gemma 4; set AI_ALLOW_PAID=true only if using paid OpenAI/Grok keys)
+      AI_PROVIDER: ${AI_PROVIDER:-openrouter}
+      AI_MODEL: ${AI_MODEL:-nvidia/nemotron-3.5-lightning:free}
+      AI_ALLOW_PAID: ${AI_ALLOW_PAID:-false}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      # Optional free-tier / web-research / threat-intel keys:
       GROQ_API_KEY: ${GROQ_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      TAVILY_API_KEY: ${TAVILY_API_KEY:-}
+      SERPER_API_KEY: ${SERPER_API_KEY:-}
+      VIRUSTOTAL_API_KEY: ${VIRUSTOTAL_API_KEY:-}
+      # Optional paid providers (disabled in auto fallback unless AI_ALLOW_PAID=true):
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       GROK_API_KEY: ${GROK_API_KEY:-}
+      ML_SERVICE_URL: ${ML_SERVICE_URL:-http://127.0.0.1:8000}
       REDIS_URL: redis://redis:6379
       CORS_ORIGIN: http://localhost
       MAX_FILE_SIZE: 10485760

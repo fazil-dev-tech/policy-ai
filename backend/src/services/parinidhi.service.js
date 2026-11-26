@@ -20,7 +20,7 @@ const detectParinidhiMode = (message, policyId, requestedMode = 'auto') => {
     return policyId ? 'context' : 'general';
 };
 
-const runPolicyResearchComparison = async (message, userPolicies = []) => {
+const runPolicyResearchComparison = async (message, userPolicies = [], matchedClauses = [], language = 'English') => {
     const searchRes = await searchService.liveSearch(
         `${message} India IRDAI insurance coverage comparison features limits`,
         { prefix: 'parinidhi_research', searchDepth: 'basic', maxResults: 5, cacheHours: 12, prefer: 'tavily' }
@@ -36,17 +36,24 @@ const runPolicyResearchComparison = async (message, userPolicies = []) => {
         coverageAmount: Number(p.coverage_amount ?? p.coverageAmount ?? 0),
     }));
 
+    const clauseSnippet = (matchedClauses || []).length
+        ? `\nSelected Policy Clauses:\n${matchedClauses
+              .map((c) => `[Page ${c.page_number} · ${c.section_title}]: ${c.clause_text.slice(0, 500)}`)
+              .join('\n')}`
+        : '';
+
     const prompt = `You are Parinidhi, an expert Indian Insurance Research & Voice Advisor.
+Respond in ${language} (keeping insurance numbers, ₹ currency, and [Page X] citations clear).
 User Request: "${message}"
 
-User's Existing Portfolio: ${JSON.stringify(userPortfolioContext)}
+User's Existing Portfolio: ${JSON.stringify(userPortfolioContext)}${clauseSnippet}
 
 Live Web Search Results (${searchRes.engine}):
 ${sourcesSummary || 'No external results available — rely strictly on factual IRDAI benchmarks.'}
 
 Respond ONLY with valid JSON:
 {
-  "spokenAnswer": "Clear 2-4 sentence spoken English answer summarizing the best options, written naturally for text-to-speech without markdown symbols.",
+  "spokenAnswer": "Clear 2-4 sentence spoken answer summarizing the best options, written naturally for text-to-speech without markdown symbols.",
   "markdownAnswer": "Rich concise explanation in markdown bullets.",
   "comparisonCards": [
     {
@@ -71,6 +78,11 @@ Respond ONLY with valid JSON:
             spokenSummary: aiRes.data.spokenAnswer || aiRes.data.markdownAnswer,
             comparisonCards: aiRes.data.comparisonCards || [],
             bestVerdict: aiRes.data.bestVerdict || '',
+            citations: (matchedClauses || []).map((c) => ({
+                pageNumber: c.page_number,
+                sectionTitle: c.section_title || 'Policy Clause',
+                snippet: String(c.clause_text || '').slice(0, 220),
+            })),
             sources: (searchRes.results || []).slice(0, 5),
             searchEngine: searchRes.engine,
             cachedSearch: Boolean(searchRes.cached),
@@ -78,12 +90,24 @@ Respond ONLY with valid JSON:
         };
     } catch (err) {
         logger.warn(`Parinidhi research AI synthesis failed (${err.message}), returning raw search summary.`);
+        const fallbackBullets = (searchRes.results || [])
+            .slice(0, 4)
+            .map((r) => `- **${r.title}**: ${r.snippet.slice(0, 180)}`)
+            .join('\n');
+        const fallbackMsg = searchRes.answer
+            ? `${searchRes.answer}${fallbackBullets ? `\n\n${fallbackBullets}` : ''}`
+            : fallbackBullets || 'Live policy search completed cleanly, though detailed AI synthesis is temporarily rate-limited. Check your uploaded policy details or try again shortly.';
         return {
             mode: 'research',
-            aiResponse: searchRes.answer || 'Here are the live policy search findings I retrieved for your query.',
-            spokenSummary: searchRes.answer || 'I gathered live policy search results for you on screen.',
+            aiResponse: fallbackMsg,
+            spokenSummary: (searchRes.answer || 'I retrieved live search sources for your policy comparison on screen.').slice(0, 450),
             comparisonCards: [],
             bestVerdict: '',
+            citations: (matchedClauses || []).map((c) => ({
+                pageNumber: c.page_number,
+                sectionTitle: c.section_title || 'Policy Clause',
+                snippet: String(c.clause_text || '').slice(0, 220),
+            })),
             sources: (searchRes.results || []).slice(0, 5),
             searchEngine: searchRes.engine,
             cachedSearch: Boolean(searchRes.cached),
@@ -92,11 +116,16 @@ Respond ONLY with valid JSON:
     }
 };
 
-const processParinidhiTurn = async ({ userId, message, policyId = null, sessionId = null, mode = 'auto' }) => {
+const processParinidhiTurn = async ({ userId, message, policyId = null, sessionId = null, mode = 'auto', language = 'English' }) => {
     const start = Date.now();
     const cleanMessage = chatbotService.sanitizeInput(message);
-    if (!cleanMessage) throw new Error('Message is required');
+    if (!cleanMessage) {
+        const err = new Error('Message is required');
+        err.statusCode = 400;
+        throw err;
+    }
 
+    const safeLanguage = String(language || 'English').trim().slice(0, 32) || 'English';
     const currentSessionId = sessionId || `parinidhi_${userId}_${crypto.randomBytes(6).toString('hex')}`;
     const detectedMode = detectParinidhiMode(cleanMessage, policyId, mode);
 
@@ -117,35 +146,35 @@ const processParinidhiTurn = async ({ userId, message, policyId = null, sessionI
     ]);
 
     const history = (recentDbHistory || []).reverse();
+    let matchedClauses = [];
+    let activePolicy = null;
+
+    if (policyId) {
+        activePolicy = (userPolicies || []).find((p) => p.id === policyId) || null;
+        if (!activePolicy) {
+            const { data: fetched } = await supabaseAdmin
+                .from('policies')
+                .select('*')
+                .eq('id', policyId)
+                .eq('user_id', userId)
+                .maybeSingle();
+            activePolicy = fetched;
+        }
+        if (activePolicy) {
+            matchedClauses = await pdfParser.searchPolicyClauses({
+                policyId: activePolicy.id,
+                userId,
+                query: cleanMessage,
+                limit: 5,
+            });
+        }
+    }
+
     let resultPayload;
 
     if (detectedMode === 'research') {
-        resultPayload = await runPolicyResearchComparison(cleanMessage, userPolicies || []);
+        resultPayload = await runPolicyResearchComparison(cleanMessage, userPolicies || [], matchedClauses, safeLanguage);
     } else {
-        let matchedClauses = [];
-        let activePolicy = null;
-
-        if (policyId) {
-            activePolicy = (userPolicies || []).find((p) => p.id === policyId) || null;
-            if (!activePolicy) {
-                const { data: fetched } = await supabaseAdmin
-                    .from('policies')
-                    .select('*')
-                    .eq('id', policyId)
-                    .eq('user_id', userId)
-                    .maybeSingle();
-                activePolicy = fetched;
-            }
-            if (activePolicy) {
-                matchedClauses = await pdfParser.searchPolicyClauses({
-                    policyId: activePolicy.id,
-                    userId,
-                    query: cleanMessage,
-                    limit: 5,
-                });
-            }
-        }
-
         const historyBlock = history
             .map((h) => `User: ${h.message}\nParinidhi: ${h.ai_response}`)
             .join('\n');
@@ -162,16 +191,64 @@ const processParinidhiTurn = async ({ userId, message, policyId = null, sessionI
               ).toLocaleString('en-IN')}\n${JSON.stringify(activePolicy.cis_summary || activePolicy.ai_summary || {})}`
             : '';
 
-        const systemPrompt = `You are Parinidhi, an intelligent, warm, English-speaking female AI insurance and general assistant for PolicyAI / PolicyGuard.
+        const systemPrompt = `You are Parinidhi, an intelligent, warm, clear AI insurance and general assistant for PolicyAI / PolicyGuard.
 Rules:
-1. Keep responses helpful, clear, accurate, and natural for both reading and voice playback.
+1. Respond in ${safeLanguage}, keeping technical numbers, ₹ figures, and [Page X] citations clear and natural for voice playback.
 2. When policy clauses are provided, cite exact [Page X] references and never invent policy limits.
 3. For general questions, answer clearly and thoughtfully using your knowledge.`;
 
         const fullPrompt = `${policyBlock}${clauseBlock}\n\nRECENT CONVERSATION:\n${historyBlock}\n\nUser: ${cleanMessage}\nParinidhi:`;
 
-        const aiRes = await aiService.generateText(fullPrompt, { systemPrompt, temperature: 0.3, maxTokens: 2048 });
-        const spokenSummary = aiRes.text
+        let aiText = '';
+        let modelLabel = '';
+        let fallbackSources = [];
+        let fallbackEngine = null;
+
+        try {
+            const aiRes = await aiService.generateText(fullPrompt, { systemPrompt, temperature: 0.3, maxTokens: 2048 });
+            aiText = aiRes.text;
+            modelLabel = `${aiRes.provider}:${aiRes.model}`;
+        } catch (aiErr) {
+            logger.warn(`Parinidhi LLM unavailable (${aiErr.message}); engaging grounded offline/search fallback.`);
+            if (matchedClauses.length > 0) {
+                aiText = [
+                    `Live AI synthesis is temporarily rate-limited, so here are the matching clauses directly from your **${activePolicy?.provider_name || ''}** policy (**#${activePolicy?.policy_number || ''}**):`,
+                    ...matchedClauses.map((c) => `- **[Page ${c.page_number}] ${c.section_title || 'Clause'}**: ${String(c.clause_text || '').slice(0, 320)}`),
+                ].join('\n');
+                modelLabel = 'offline:policy-clauses';
+            } else if (activePolicy) {
+                const cis = activePolicy.cis_summary || {};
+                const aiSum = activePolicy.ai_summary || {};
+                aiText = [
+                    `Live AI synthesis is temporarily rate-limited. Here are verified facts on **${activePolicy.provider_name} (#${activePolicy.policy_number})**:`,
+                    `- **Sum Insured**: ₹${Number(activePolicy.coverage_amount || 0).toLocaleString('en-IN')}`,
+                    cis.roomRentLimit ? `- **Room Rent Limit**: ${cis.roomRentLimit}` : null,
+                    cis.coPay ? `- **Co-Pay**: ${cis.coPay}` : null,
+                    cis.pedWaitingPeriod ? `- **PED Waiting**: ${cis.pedWaitingPeriod}` : null,
+                    aiSum.exclusions ? `- **Key Exclusions**: ${String(aiSum.exclusions).slice(0, 260)}` : null,
+                    cis.helplineNumber ? `- **24x7 Helpline**: ${cis.helplineNumber}` : null,
+                ]
+                    .filter(Boolean)
+                    .join('\n');
+                modelLabel = 'offline:policy-cis';
+            } else {
+                const webFallback = await searchService
+                    .liveSearch(`${cleanMessage} insurance India IRDAI`, { prefix: 'parinidhi_fallback', maxResults: 4 })
+                    .catch(() => ({ engine: 'offline', answer: '', results: [] }));
+                fallbackSources = (webFallback.results || []).slice(0, 4);
+                fallbackEngine = webFallback.engine || null;
+                if (webFallback.answer || fallbackSources.length > 0) {
+                    const bullets = fallbackSources.map((r) => `- **${r.title}**: ${r.snippet.slice(0, 180)}`).join('\n');
+                    aiText = `${webFallback.answer ? `${webFallback.answer}\n\n` : ''}${bullets}`;
+                    modelLabel = `search:${webFallback.engine || 'web'}`;
+                } else {
+                    aiText = `AI text generation has temporarily reached the free daily quota on this key. Upload or select a policy to query exact [Page X] clauses instantly, or retry shortly.`;
+                    modelLabel = 'offline:quota-notice';
+                }
+            }
+        }
+
+        const spokenSummary = aiText
             .replace(/[#*`_>\[\]]/g, '')
             .replace(/\s+/g, ' ')
             .trim()
@@ -179,23 +256,24 @@ Rules:
 
         resultPayload = {
             mode: activePolicy ? 'context' : 'general',
-            aiResponse: aiRes.text,
+            aiResponse: aiText,
             spokenSummary,
             citations: matchedClauses.map((c) => ({
                 pageNumber: c.page_number,
-                sectionTitle: c.section_title,
-                snippet: c.clause_text.slice(0, 220),
+                sectionTitle: c.section_title || 'Policy Clause',
+                snippet: String(c.clause_text || '').slice(0, 220),
             })),
             comparisonCards: [],
             bestVerdict: '',
-            sources: [],
-            model: `${aiRes.provider}:${aiRes.model}`,
+            sources: fallbackSources,
+            searchEngine: fallbackEngine,
+            model: modelLabel,
         };
     }
 
     const responseTimeMs = Date.now() - start;
 
-    await supabaseAdmin.from('chat_history').insert({
+    const { error: historyErr } = await supabaseAdmin.from('chat_history').insert({
         user_id: userId,
         policy_id: policyId || null,
         session_id: currentSessionId,
@@ -204,6 +282,7 @@ Rules:
         metadata: {
             agent: 'parinidhi',
             mode: resultPayload.mode,
+            language: safeLanguage,
             model: resultPayload.model,
             responseTimeMs,
             comparisonCards: resultPayload.comparisonCards || [],
@@ -213,6 +292,7 @@ Rules:
             searchEngine: resultPayload.searchEngine || null,
         },
     });
+    if (historyErr) logger.warn('Failed persisting parinidhi chat history:', historyErr.message);
 
     return {
         sessionId: currentSessionId,

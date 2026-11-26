@@ -5,19 +5,34 @@ const logger = require('../utils/logger');
 
 const DEFAULT_CACHE_HOURS = 12;
 
-const buildCacheKey = (prefix, query) => {
-    const hash = crypto.createHash('sha256').update(`${prefix}:${String(query || '').trim().toLowerCase()}`).digest('hex').slice(0, 32);
+const fetchWithTimeout = async (url, options = {}, timeoutMs = 8000) => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+        return await fetch(url, { ...options, signal: controller.signal });
+    } finally {
+        clearTimeout(timer);
+    }
+};
+
+const buildCacheKey = (prefix, query, opts = '') => {
+    const hash = crypto
+        .createHash('sha256')
+        .update(`${prefix}:${String(query || '').trim().toLowerCase()}:${opts}`)
+        .digest('hex')
+        .slice(0, 32);
     return `${prefix}_${hash}`;
 };
 
 const getCachedResearch = async (cacheKey) => {
     try {
-        const { data } = await supabaseAdmin
+        const { data, error } = await supabaseAdmin
             .from('research_cache')
             .select('result_json, source, expires_at')
             .eq('cache_key', cacheKey)
             .gt('expires_at', new Date().toISOString())
             .maybeSingle();
+        if (error) return null;
         return data || null;
     } catch {
         return null;
@@ -27,7 +42,7 @@ const getCachedResearch = async (cacheKey) => {
 const setCachedResearch = async (cacheKey, source, query, resultJson, hours = DEFAULT_CACHE_HOURS) => {
     try {
         const expiresAt = new Date(Date.now() + hours * 3600 * 1000).toISOString();
-        await supabaseAdmin.from('research_cache').upsert(
+        const { error } = await supabaseAdmin.from('research_cache').upsert(
             {
                 cache_key: cacheKey,
                 source,
@@ -37,6 +52,7 @@ const setCachedResearch = async (cacheKey, source, query, resultJson, hours = DE
             },
             { onConflict: 'cache_key' }
         );
+        if (error) logger.warn('Research cache write skipped:', error.message);
     } catch (err) {
         logger.warn('Research cache write skipped:', err.message);
     }
@@ -44,7 +60,7 @@ const setCachedResearch = async (cacheKey, source, query, resultJson, hours = DE
 
 const searchWithTavily = async (query, { searchDepth = 'basic', maxResults = 5 } = {}) => {
     if (!env.TAVILY_API_KEY) throw new Error('TAVILY_API_KEY not configured');
-    const resp = await fetch('https://api.tavily.com/search', {
+    const resp = await fetchWithTimeout('https://api.tavily.com/search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -76,7 +92,7 @@ const searchWithTavily = async (query, { searchDepth = 'basic', maxResults = 5 }
 
 const searchWithSerper = async (query, { gl = 'in', hl = 'en', num = 6 } = {}) => {
     if (!env.SERPER_API_KEY) throw new Error('SERPER_API_KEY not configured');
-    const resp = await fetch('https://google.serper.dev/search', {
+    const resp = await fetchWithTimeout('https://google.serper.dev/search', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -118,7 +134,7 @@ const liveSearch = async (query, { prefix = 'web', searchDepth = 'basic', maxRes
     const cleanQuery = String(query || '').trim();
     if (!cleanQuery) return { engine: 'none', cached: false, answer: '', results: [], knowledgeGraph: null };
 
-    const cacheKey = buildCacheKey(prefix, cleanQuery);
+    const cacheKey = buildCacheKey(prefix, cleanQuery, `${searchDepth}:${maxResults}:${prefer}`);
     const cached = await getCachedResearch(cacheKey);
     if (cached) {
         return { ...cached.result_json, cached: true, engine: cached.source };

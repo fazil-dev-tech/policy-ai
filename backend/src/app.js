@@ -25,6 +25,7 @@ const incidentsRoutes = require('./routes/incidents.routes');
 const { securityRouter, platformRouter } = require('./routes/platform.routes');
 
 const app = express();
+app.set('trust proxy', 1);
 
 app.use(
     helmet({
@@ -55,7 +56,9 @@ app.use(
         origin: (origin, callback) => {
             if (isAllowedCorsOrigin(origin)) return callback(null, true);
             logger.warn(`CORS blocked origin: ${origin}`);
-            callback(new Error(`CORS: Origin '${origin}' not allowed`));
+            const err = new Error(`CORS: Origin '${origin}' not allowed`);
+            err.statusCode = 403;
+            callback(err);
         },
         credentials: true,
         methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
@@ -91,7 +94,10 @@ const swaggerOptions = {
             description: 'Enterprise Insurance AI Platform API Documentation (Supabase-backed)',
             contact: { name: 'PolicyAI Team' },
         },
-        servers: [{ url: `http://localhost:${process.env.PORT || 5000}`, description: 'API Server' }],
+        servers: [
+            { url: '/', description: 'Current Server' },
+            { url: `http://localhost:${process.env.PORT || 5000}`, description: 'Local Development Server' },
+        ],
         components: {
             securitySchemes: {
                 bearerAuth: {

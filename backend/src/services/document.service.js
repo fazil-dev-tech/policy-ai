@@ -1,4 +1,6 @@
 const aiService = require('./ai.service');
+const pdfParser = require('./pdfParser.service');
+const { sanitizeInput } = require('./chatbot.service');
 const logger = require('../utils/logger');
 
 const DOCUMENT_EXTRACTION_PROMPT = `You are an elite enterprise Document Analyst AI.
@@ -38,18 +40,20 @@ IMPORTANT:
 - The output MUST be valid JSON only.`;
 
 const getFallbackData = () => ({
-    documentName: 'Unknown Document',
+    documentName: 'Document Pending Manual Review',
     documentType: 'general',
-    simpleSummary: 'AI analysis failed. Please review the document manually.',
-    keyPoints: ['AI processing unavailable.'],
+    simpleSummary: 'AI summary is temporarily rate-limited. Review key clauses or ask questions in document chat.',
+    keyPoints: ['Automated AI extraction reached temporary provider rate limits.'],
     actionItems: [],
     riskFactors: [],
     entities: {},
+    _aiFailed: true,
 });
 
 const extractDocumentInfo = async (pdfText) => {
     try {
-        const prompt = `${DOCUMENT_EXTRACTION_PROMPT}\n\nDocument Text:\n---\n${String(pdfText || '').substring(0, 30000)}\n---`;
+        const masked = pdfParser.maskSensitivePii(String(pdfText || ''));
+        const prompt = `${DOCUMENT_EXTRACTION_PROMPT}\n\nDocument Text:\n---\n${masked.substring(0, 24000)}\n---`;
         const { data, provider } = await aiService.generateJson(prompt);
         logger.info(`Document extraction successful via ${provider}`);
         return data;
@@ -60,6 +64,14 @@ const extractDocumentInfo = async (pdfText) => {
 };
 
 const chatAboutDocument = async (userMessage, documentContext, conversationHistory = []) => {
+    const cleanQuestion = sanitizeInput(String(userMessage || ''));
+    if (!cleanQuestion) {
+        const err = new Error('Message is required');
+        err.statusCode = 400;
+        throw err;
+    }
+    const safeHistory = Array.isArray(conversationHistory) ? conversationHistory.slice(-10) : [];
+
     try {
         const systemPrompt = `You are an expert Document Analyst AI assistant for the PolicyAI platform. Your role is to answer questions about uploaded documents based on the context provided.
 
@@ -70,11 +82,12 @@ RULES:
 4. Be helpful, clear, concise, and use simple language.
 5. If you cannot find the answer in the document context, say so honestly.`;
 
-        let prompt = `DOCUMENT CONTEXT:\n${JSON.stringify(documentContext, null, 2)}\n\nCONVERSATION HISTORY:\n`;
-        for (const h of conversationHistory.slice(-10)) {
-            prompt += `User: ${h.message}\nAssistant: ${h.response}\n`;
+        let prompt = `DOCUMENT CONTEXT:\n${JSON.stringify(documentContext || {}, null, 2)}\n\nCONVERSATION HISTORY:\n`;
+        for (const h of safeHistory) {
+            if (!h || typeof h !== 'object') continue;
+            prompt += `User: ${String(h.message || '')}\nAssistant: ${String(h.response || h.aiResponse || '')}\n`;
         }
-        prompt += `\nUser: ${userMessage}\nAssistant:`;
+        prompt += `\nUser: ${cleanQuestion}\nAssistant:`;
 
         const result = await aiService.generateText(prompt, { systemPrompt });
         logger.info(`Document chat response generated via ${result.provider} in ${result.responseTimeMs}ms`);
@@ -85,8 +98,13 @@ RULES:
             model: `${result.provider}:${result.model}`,
         };
     } catch (error) {
-        logger.error('Document chat failed:', error.message);
-        throw new Error('AI chat service unavailable: ' + error.message);
+        logger.warn('Document chat AI unavailable, returning summary fallback:', error.message);
+        const pts = Array.isArray(documentContext?.keyPoints) ? documentContext.keyPoints.slice(0, 4).join('; ') : '';
+        return {
+            response: `AI synthesis is temporarily rate-limited.\n\nDocument: ${documentContext?.documentName || 'Uploaded PDF'}\nSummary: ${documentContext?.simpleSummary || 'Review extracted points below.'}${pts ? `\nKey Points: ${pts}` : ''}`,
+            responseTimeMs: 0,
+            model: 'offline:document-fallback',
+        };
     }
 };
 

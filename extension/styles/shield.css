@@ -76,6 +76,12 @@
   color: #78350f;
 }
 
+.pg-floating-banner.safe {
+  background: #ecfdf5;
+  border: 2px solid #059669;
+  color: #065f46;
+}
+
 .pg-floating-banner h4 {
   margin: 0 0 6px;
   font-size: 13px;

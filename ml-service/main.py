@@ -7,12 +7,13 @@ on CPU-only laptops (7.68 GB RAM safe via lazy model loading).
 import io
 import os
 import gc
-from typing import List, Optional
+import asyncio
+from typing import List
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
-app = FastAPI(title="PolicyGuard Local ML Sidecar", version="2.0.0")
+app = FastAPI(title="PolicyGuard Local ML Sidecar", version="2.0.1")
 
 app.add_middleware(
     CORSMiddleware,
@@ -21,9 +22,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# COCO vehicle class IDs: bicycle=1, car=2, motorcycle=3, bus=5, truck=7
+# COCO vehicle class IDs: car=2, motorcycle=3, bus=5, truck=7
 VEHICLE_COCO_CLASSES = {2, 3, 5, 7}
-CARDD_WEIGHTS_PATH = os.path.join(os.path.dirname(__file__), "models", "cardd_yolov8.pt")
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+CARDD_WEIGHTS_PATH = os.path.join(BASE_DIR, "models", "cardd_yolov8.pt")
+DEFAULT_YOLO_PATH = os.path.join(BASE_DIR, "yolov8n.pt")
+MAX_IMAGE_BYTES = 10 * 1024 * 1024
 
 _yolo_model = None
 _yolo_mode = "unloaded"
@@ -67,10 +71,36 @@ def get_yolo_model():
         _yolo_model = YOLO(CARDD_WEIGHTS_PATH)
         _yolo_mode = "cardd_damage"
     else:
-        _yolo_model = YOLO("yolov8n.pt")
+        weights = DEFAULT_YOLO_PATH if os.path.exists(DEFAULT_YOLO_PATH) else "yolov8n.pt"
+        _yolo_model = YOLO(weights)
         _yolo_mode = "coco_vehicle_guard"
 
     return _yolo_model, _yolo_mode
+
+
+def map_cardd_label(label: str) -> tuple:
+    low = str(label or "").lower()
+    if "front" in low and "bumper" in low:
+        return ("front_bumper", "plastic")
+    if "rear" in low and "bumper" in low:
+        return ("rear_bumper", "plastic")
+    if "bumper" in low:
+        return ("front_bumper", "plastic")
+    if "windshield" in low or "glass" in low:
+        return ("windshield", "glass")
+    if "headlight" in low or "lamp" in low:
+        return ("headlight", "glass")
+    if "taillight" in low:
+        return ("taillight", "glass")
+    if "hood" in low or "bonnet" in low:
+        return ("bonnet_hood", "metal")
+    if "fender" in low:
+        return ("fender", "metal")
+    if "mirror" in low:
+        return ("side_mirror", "plastic")
+    if "tyre" in low or "tire" in low or "wheel" in low:
+        return ("alloy_wheel_tyre", "rubber")
+    return ("door_panel", "metal")
 
 
 def assess_image_quality(bgr_img) -> dict:
@@ -149,16 +179,6 @@ def infer_damaged_zones_from_box(bgr_img, box_xyxy) -> List[dict]:
             "confidence": 65,
         })
 
-    if not zones:
-        zones.append({
-            "partKey": "front_bumper",
-            "partLabel": "Exterior Body Panel",
-            "severity": "minor",
-            "material": "plastic",
-            "action": "Rubbing / Touch-up",
-            "damageDescription": "Vehicle verified; minor exterior scuffing suspected",
-            "confidence": 60,
-        })
     return zones
 
 
@@ -201,37 +221,55 @@ async def analyze_damage(
     collected_parts = []
 
     for upload in files[:4]:
-        raw = await upload.read()
+        raw = await upload.read(MAX_IMAGE_BYTES + 1)
+        if len(raw) > MAX_IMAGE_BYTES:
+            raise HTTPException(status_code=413, detail=f"Image '{upload.filename}' exceeds 10MB limit")
         try:
             pil_img = Image.open(io.BytesIO(raw)).convert("RGB")
+            pil_img.thumbnail((1920, 1920))
         except Exception as exc:
             raise HTTPException(status_code=400, detail=f"Unreadable image file '{upload.filename}': {exc}") from exc
         rgb_np = np.array(pil_img)
         bgr_np = cv2.cvtColor(rgb_np, cv2.COLOR_RGB2BGR)
         quality_reports.append(assess_image_quality(bgr_np))
 
-        results = model.predict(source=rgb_np, imgsz=640, conf=0.25, device="cpu", verbose=False)
+        results = await asyncio.to_thread(
+            model.predict, source=rgb_np, imgsz=640, conf=0.25, device="cpu", verbose=False
+        )
         for r in results:
             boxes = r.boxes
             if boxes is None or len(boxes) == 0:
                 continue
-            for box in boxes:
-                cls_id = int(box.cls[0])
-                conf = float(box.conf[0])
-                if mode == "coco_vehicle_guard":
-                    if cls_id in VEHICLE_COCO_CLASSES:
-                        vehicle_found = True
-                        xyxy = box.xyxy[0].tolist()
-                        collected_parts.extend(infer_damaged_zones_from_box(bgr_np, xyxy))
-                else:
+            if mode == "coco_vehicle_guard":
+                # Evaluate ONLY the largest/primary vehicle bounding box per frame so background traffic is ignored
+                primary_box = None
+                best_score = -1.0
+                for box in boxes:
+                    cls_id = int(box.cls[0])
+                    if cls_id not in VEHICLE_COCO_CLASSES:
+                        continue
+                    x1, y1, x2, y2 = box.xyxy[0].tolist()
+                    area = max(1.0, (x2 - x1) * (y2 - y1))
+                    rank = area * float(box.conf[0])
+                    if rank > best_score:
+                        best_score = rank
+                        primary_box = box.xyxy[0].tolist()
+                if primary_box is not None:
+                    vehicle_found = True
+                    collected_parts.extend(infer_damaged_zones_from_box(bgr_np, primary_box))
+            else:
+                for box in boxes:
+                    cls_id = int(box.cls[0])
+                    conf = float(box.conf[0])
                     vehicle_found = True
                     label = r.names.get(cls_id, "damage")
+                    part_key, material = map_cardd_label(label)
                     sev = "severe" if conf > 0.72 else "moderate" if conf > 0.45 else "minor"
                     collected_parts.append({
-                        "partKey": "front_bumper" if "bumper" in label.lower() else "door_panel",
+                        "partKey": part_key,
                         "partLabel": label.title(),
                         "severity": sev,
-                        "material": "glass" if "glass" in label.lower() or "lamp" in label.lower() else "metal",
+                        "material": material,
                         "action": "Replace" if sev == "severe" else "Dent & Repaint",
                         "damageDescription": f"CarDD YOLOv8 detection ({round(conf * 100)}% confidence)",
                         "confidence": round(conf * 100),

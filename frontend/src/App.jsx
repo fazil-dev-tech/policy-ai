@@ -1,20 +1,23 @@
+import { useState, lazy, Suspense } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
+import { Menu } from 'lucide-react';
 import { useAuth } from './context/AuthContext';
 import Sidebar from './components/Sidebar';
 import LandingPage from './pages/LandingPage';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
-import DashboardPage from './pages/DashboardPage';
-import PolicyPage from './pages/PolicyPage';
-import ChatPage from './pages/ChatPage';
-import ClaimsPage from './pages/ClaimsPage';
-import AdminPage from './pages/AdminPage';
-import MarketPage from './pages/MarketPage';
-import GlobalChatPage from './pages/GlobalChatPage';
-import AnalyzerPage from './pages/AnalyzerPage';
-import BrowserShieldPage from './pages/BrowserShieldPage';
-import FamilyVaultPage from './pages/FamilyVaultPage';
 import ParinidhiFloatingLauncher from './components/ParinidhiFloatingLauncher';
+
+const DashboardPage = lazy(() => import('./pages/DashboardPage'));
+const PolicyPage = lazy(() => import('./pages/PolicyPage'));
+const ChatPage = lazy(() => import('./pages/ChatPage'));
+const ClaimsPage = lazy(() => import('./pages/ClaimsPage'));
+const AdminPage = lazy(() => import('./pages/AdminPage'));
+const MarketPage = lazy(() => import('./pages/MarketPage'));
+const GlobalChatPage = lazy(() => import('./pages/GlobalChatPage'));
+const AnalyzerPage = lazy(() => import('./pages/AnalyzerPage'));
+const BrowserShieldPage = lazy(() => import('./pages/BrowserShieldPage'));
+const FamilyVaultPage = lazy(() => import('./pages/FamilyVaultPage'));
 
 const ProtectedRoute = ({ children, adminOnly = false }) => {
     const { user, loading } = useAuth();
@@ -26,6 +29,7 @@ const ProtectedRoute = ({ children, adminOnly = false }) => {
 
 function App() {
     const { user, loading } = useAuth();
+    const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
     if (loading) {
         return <div className="loading-spinner"><div className="spinner" /></div>;
@@ -35,22 +39,41 @@ function App() {
         <>
             {user ? (
                 <div className="app-layout">
-                    <Sidebar />
+                    <header className="mobile-topbar">
+                        <button
+                            type="button"
+                            className="mobile-menu-btn"
+                            aria-label="Toggle navigation menu"
+                            onClick={() => setMobileNavOpen((prev) => !prev)}
+                        >
+                            <Menu size={20} />
+                        </button>
+                        <div className="mobile-brand">
+                            <img src="/logo.png" alt="PolicyGuard AI" />
+                            <span>PolicyGuard AI</span>
+                        </div>
+                    </header>
+                    {mobileNavOpen && (
+                        <div className="mobile-nav-backdrop" onClick={() => setMobileNavOpen(false)} />
+                    )}
+                    <Sidebar mobileOpen={mobileNavOpen} onClose={() => setMobileNavOpen(false)} />
                     <main className="main-content">
-                        <Routes>
-                            <Route path="/" element={<Navigate to="/dashboard" replace />} />
-                            <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
-                            <Route path="/policies" element={<ProtectedRoute><PolicyPage /></ProtectedRoute>} />
-                            <Route path="/analyzer" element={<ProtectedRoute><AnalyzerPage /></ProtectedRoute>} />
-                            <Route path="/chat" element={<ProtectedRoute><ChatPage /></ProtectedRoute>} />
-                            <Route path="/terminal" element={<ProtectedRoute><GlobalChatPage /></ProtectedRoute>} />
-                            <Route path="/claims" element={<ProtectedRoute><ClaimsPage /></ProtectedRoute>} />
-                            <Route path="/shield" element={<ProtectedRoute><BrowserShieldPage /></ProtectedRoute>} />
-                            <Route path="/family" element={<ProtectedRoute><FamilyVaultPage /></ProtectedRoute>} />
-                            <Route path="/market" element={<ProtectedRoute><MarketPage /></ProtectedRoute>} />
-                            <Route path="/admin" element={<ProtectedRoute adminOnly><AdminPage /></ProtectedRoute>} />
-                            <Route path="*" element={<Navigate to="/dashboard" replace />} />
-                        </Routes>
+                        <Suspense fallback={<div className="loading-spinner"><div className="spinner" /></div>}>
+                            <Routes>
+                                <Route path="/" element={<Navigate to="/dashboard" replace />} />
+                                <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
+                                <Route path="/policies" element={<ProtectedRoute><PolicyPage /></ProtectedRoute>} />
+                                <Route path="/analyzer" element={<ProtectedRoute><AnalyzerPage /></ProtectedRoute>} />
+                                <Route path="/chat" element={<ProtectedRoute><ChatPage /></ProtectedRoute>} />
+                                <Route path="/terminal" element={<ProtectedRoute><GlobalChatPage /></ProtectedRoute>} />
+                                <Route path="/claims" element={<ProtectedRoute><ClaimsPage /></ProtectedRoute>} />
+                                <Route path="/shield" element={<ProtectedRoute><BrowserShieldPage /></ProtectedRoute>} />
+                                <Route path="/family" element={<ProtectedRoute><FamilyVaultPage /></ProtectedRoute>} />
+                                <Route path="/market" element={<ProtectedRoute><MarketPage /></ProtectedRoute>} />
+                                <Route path="/admin" element={<ProtectedRoute adminOnly><AdminPage /></ProtectedRoute>} />
+                                <Route path="*" element={<Navigate to="/dashboard" replace />} />
+                            </Routes>
+                        </Suspense>
                     </main>
                     <ParinidhiFloatingLauncher />
                 </div>
@@ -59,7 +82,7 @@ function App() {
                     <Route path="/" element={<LandingPage />} />
                     <Route path="/login" element={<LoginPage />} />
                     <Route path="/register" element={<RegisterPage />} />
-                    <Route path="*" element={<Navigate to="/" replace />} />
+                    <Route path="*" element={<Navigate to="/login" replace />} />
                 </Routes>
             )}
         </>

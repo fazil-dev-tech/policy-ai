@@ -11,12 +11,13 @@ const callLocalMlSidecar = async ({ files = [], vehicleInfo = {} }) => {
     const mlUrl = env.ML_SERVICE_URL;
     if (!mlUrl || files.length === 0) return null;
 
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 12000);
     try {
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), 5000);
         const form = new FormData();
         files.slice(0, 4).forEach((f, idx) => {
-            const blob = new Blob([f.buffer], { type: f.mimetype || 'image/jpeg' });
+            const safeMime = f.mimetype === 'image/jpg' ? 'image/jpeg' : f.mimetype || 'image/jpeg';
+            const blob = new Blob([f.buffer], { type: safeMime });
             form.append('files', blob, f.originalname || `photo_${idx}.jpg`);
         });
         form.append('vehicle_age', String(Math.max(0, new Date().getFullYear() - (Number(vehicleInfo.year) || 2022))));
@@ -27,12 +28,13 @@ const callLocalMlSidecar = async ({ files = [], vehicleInfo = {} }) => {
             body: form,
             signal: controller.signal,
         });
-        clearTimeout(timer);
         if (!resp.ok) return null;
         return await resp.json();
     } catch (err) {
         logger.debug(`Local ml-service unreachable (${err.message}) — skipping Tier 2 cleanly.`);
         return null;
+    } finally {
+        clearTimeout(timer);
     }
 };
 
@@ -41,7 +43,7 @@ const analyzeVehicleWithVision = async ({ imageFiles = [], vehicleInfo = {} }) =
         .filter((f) => String(f.mimetype || '').startsWith('image/'))
         .slice(0, 4)
         .map((f) => ({
-            mimeType: f.mimetype,
+            mimeType: f.mimetype === 'image/jpg' ? 'image/jpeg' : f.mimetype,
             base64: f.buffer.toString('base64'),
         }));
 
@@ -153,6 +155,13 @@ const analyzeMotorAccident = async ({
         }
     }
 
+    if (damagedParts.length === 0 && onlyPhotos.length > 0 && detectionSource === 'benchmark_manual') {
+        detectionSource = 'vision_unavailable_manual_recommended';
+        overallSummary =
+            overallSummary ||
+            'Automated damage detection could not inspect visible panels right now (Vision rate-limited & local ML sidecar unavailable). Select affected parts manually below for instant OEM repair & depreciation estimation.';
+    }
+
     // Optional live OEM repair context from Tavily/Serper
     let oemLookup = null;
     if (damagedParts.length > 0 && (vehicleInfo.make || vehicleInfo.model)) {
@@ -205,6 +214,7 @@ const analyzeMotorAccident = async ({
 
     return {
         rejected: false,
+        analysisUnavailable: detectionSource === 'vision_unavailable_manual_recommended',
         report: savedReport || insertPayload,
         ...estimate,
         detectionSource,

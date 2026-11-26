@@ -17,10 +17,15 @@ const envSchema = z.object({
     // Optional Legacy / Cache
     REDIS_URL: z.string().optional().default(''),
 
-    // AI Provider Configuration (ready for replacement API in next phase)
+    // AI Provider Configuration (free OpenRouter :free models prioritized by default)
     AI_PROVIDER: z.enum(['auto', 'gemini', 'openai', 'openrouter', 'groq', 'grok', 'puter']).default('auto'),
     AI_MODEL: z.string().optional().default(''),
     AI_BASE_URL: z.string().optional().default(''),
+    AI_ALLOW_PAID: z
+        .enum(['true', 'false'])
+        .optional()
+        .default('false')
+        .transform((v) => v === 'true'),
     GEMINI_API_KEY: z.string().optional().default(''),
     OPENAI_API_KEY: z.string().optional().default(''),
     OPENROUTER_API_KEY: z.string().optional().default(''),

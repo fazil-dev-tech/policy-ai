@@ -5,33 +5,18 @@ export default function ParinidhiFloatingLauncher() {
     const navigate = useNavigate();
     const location = useLocation();
 
-    if (location.pathname === '/terminal') return null;
+    if (['/terminal', '/chat'].includes(location.pathname)) return null;
 
     return (
         <button
+            type="button"
+            className="parinidhi-fab"
             onClick={() => navigate('/terminal')}
             title="Talk with Parinidhi AI (3D Voice & Policy Research)"
-            style={{
-                position: 'fixed',
-                bottom: 22,
-                right: 22,
-                zIndex: 90,
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8,
-                padding: '10px 16px',
-                borderRadius: 999,
-                border: '1px solid var(--border-glow)',
-                background: 'var(--accent-gradient)',
-                color: '#ffffff',
-                fontWeight: 700,
-                fontSize: 13,
-                cursor: 'pointer',
-                boxShadow: 'var(--accent-glow)',
-            }}
+            aria-label="Open Parinidhi AI Voice Advisor"
         >
             <Mic size={16} />
-            <span>Ask Parinidhi</span>
+            <span className="parinidhi-fab-label">Ask Parinidhi</span>
             <Sparkles size={14} />
         </button>
     );

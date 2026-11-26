@@ -41,7 +41,8 @@ const getHistory = async (req, res, next) => {
 
 const getSessions = async (req, res, next) => {
     try {
-        const sessions = await chatbotService.getUserSessions(req.user.id);
+        const agent = ['parinidhi', 'standard'].includes(req.query.agent) ? req.query.agent : 'all';
+        const sessions = await chatbotService.getUserSessions(req.user.id, { agent });
         res.json({ sessions });
     } catch (error) {
         next(error);

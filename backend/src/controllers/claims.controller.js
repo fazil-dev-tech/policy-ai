@@ -25,7 +25,7 @@ const createClaim = async (req, res, next) => {
         }
 
         const coverageAmount = Number(policy.coverage_amount || 0);
-        if (claimAmount > coverageAmount) {
+        if (coverageAmount > 0 && claimAmount > coverageAmount) {
             return res.status(400).json({
                 error: `Claim amount (${claimAmount}) exceeds coverage (${coverageAmount})`,
             });
@@ -120,7 +120,7 @@ const getUserClaims = async (req, res, next) => {
             .select('*, policies(id, policy_number, provider_name, policy_type)', { count: 'exact' })
             .eq('user_id', req.user.id);
 
-        if (status) query = query.eq('claim_status', status);
+        if (status && status !== 'all') query = query.eq('claim_status', String(status));
 
         const { data, count, error } = await query
             .order('created_at', { ascending: false })

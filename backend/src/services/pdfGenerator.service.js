@@ -3,8 +3,10 @@ const { PDFDocument, StandardFonts, rgb } = require('pdf-lib');
 const sanitizeWinAnsi = (text = '') => {
     return String(text || '')
         .replace(/₹/g, 'INR ')
-        .replace(/—/g, '-')
-        .replace(/–/g, '-')
+        .replace(/[—–]/g, '-')
+        .replace(/[“”]/g, '"')
+        .replace(/[‘’]/g, "'")
+        .replace(/•/g, '*')
         .replace(/[^\x20-\x7E\n]/g, ' ');
 };
 
@@ -17,12 +19,16 @@ const wrapLines = (text, maxChars = 84) => {
             continue;
         }
         let line = '';
-        for (const w of words) {
-            if ((line + ' ' + w).trim().length > maxChars) {
-                out.push(line.trim());
-                line = w;
-            } else {
-                line = `${line} ${w}`.trim();
+        for (const rawWord of words) {
+            // Break long tokens (URLs / policy numbers) so lines never clip off the PDF page
+            const chunks = rawWord.length > maxChars ? rawWord.match(new RegExp(`.{1,${maxChars}}`, 'g')) || [rawWord] : [rawWord];
+            for (const w of chunks) {
+                if ((line + ' ' + w).trim().length > maxChars) {
+                    if (line.trim()) out.push(line.trim());
+                    line = w;
+                } else {
+                    line = `${line} ${w}`.trim();
+                }
             }
         }
         if (line) out.push(line.trim());
@@ -94,22 +100,30 @@ const createPdfWriter = async (title) => {
     };
 
     const kv = (label, value) => {
-        ensureSpace(16);
-        page.drawText(sanitizeWinAnsi(`${label}:`), {
+        const labelStr = sanitizeWinAnsi(`${label}:`);
+        const valLines = wrapLines(String(value || 'N/A'), 56);
+        ensureSpace(Math.max(18, valLines.length * 14 + 4));
+        const labelTooWide = labelStr.length > 26;
+        page.drawText(labelStr.slice(0, 48), {
             x: 36,
             y,
             size: 10,
             font: fontBold,
             color: rgb(0.06, 0.09, 0.16),
         });
-        page.drawText(sanitizeWinAnsi(String(value || 'N/A')).slice(0, 72), {
-            x: 195,
-            y,
-            size: 10,
-            font: fontRegular,
-            color: rgb(0.2, 0.25, 0.33),
-        });
-        y -= 16;
+        if (labelTooWide) y -= 14;
+        for (const vl of valLines.slice(0, 6)) {
+            ensureSpace(15);
+            page.drawText(vl, {
+                x: labelTooWide ? 48 : 205,
+                y,
+                size: 10,
+                font: fontRegular,
+                color: rgb(0.2, 0.25, 0.33),
+            });
+            y -= 14;
+        }
+        y -= 2;
     };
 
     return {
@@ -191,9 +205,9 @@ const generateEmergencyCardPdf = async ({ policy = {}, cis = {}, member = null }
         if (member.blood_group) w.kv('Blood Group', member.blood_group);
         if (member.emergency_contact) w.kv('Family Contact', member.emergency_contact);
     }
-    w.kv('Insurer', cis.insurerName || policy.providerName);
-    w.kv('Policy Number', cis.policyNumber || policy.policyNumber);
-    w.kv('Sum Insured', `INR ${Number(cis.sumInsured || policy.coverageAmount || 0).toLocaleString('en-IN')}`);
+    w.kv('Insurer', cis.insurerName || policy.providerName || policy.provider_name || 'N/A');
+    w.kv('Policy Number', cis.policyNumber || policy.policyNumber || policy.policy_number || 'N/A');
+    w.kv('Sum Insured', `INR ${Number(cis.sumInsured ?? policy.coverageAmount ?? policy.coverage_amount ?? 0).toLocaleString('en-IN')}`);
     w.kv('Eligible Room Category', cis.roomRentLimit || 'Check Schedule');
     w.kv('24x7 Helpline', cis.helplineNumber || '1800 / Refer Policy');
     w.kv('Cashless Intimation Rule', cis.cashlessIntimationRule || 'Within 24 hours of admission');

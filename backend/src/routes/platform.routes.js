@@ -26,7 +26,7 @@ securityRouter.use(securityLimiter);
 securityRouter.post('/check-url', checkSingleUrl);
 securityRouter.post('/batch-check', batchCheckUrls);
 securityRouter.get('/verified-domains', getVerifiedDomains);
-securityRouter.get('/scans', getRecentScans);
+securityRouter.get('/scans', authenticate, getRecentScans);
 securityRouter.get('/scam-reports', getScamReports);
 securityRouter.post('/scam-reports', submitScamReport);
 securityRouter.get('/extension/download', downloadExtensionZip);

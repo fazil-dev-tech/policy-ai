@@ -4,7 +4,7 @@ import { TrendingUp, Star, Clock, Award, BarChart3, Activity, Globe, Heart, Shie
 import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
     ResponsiveContainer, RadarChart, PolarGrid, PolarAngleAxis,
-    PolarRadiusAxis, Radar
+    PolarRadiusAxis, Radar, Legend
 } from 'recharts';
 import toast from 'react-hot-toast';
 
@@ -12,6 +12,7 @@ export default function MarketPage() {
     const [providers, setProviders] = useState([]);
     const [insights, setInsights] = useState(null);
     const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState(false);
     const [insightsLoading, setInsightsLoading] = useState(false);
     const [lastUpdated, setLastUpdated] = useState(null);
     const [verifyInput, setVerifyInput] = useState('');
@@ -20,13 +21,16 @@ export default function MarketPage() {
 
     const handleVerifyInsurer = async (e) => {
         e.preventDefault();
-        if (!verifyInput.trim()) return;
+        if (!verifyInput.trim()) {
+            toast.error('Please enter an insurer name to verify');
+            return;
+        }
         setVerifying(true);
         try {
             const { data } = await api.post('/research/verify-insurer', { providerName: verifyInput.trim() });
             setVerifyResult(data);
-        } catch {
-            toast.error('Insurer live verification failed');
+        } catch (err) {
+            toast.error(err.response?.data?.error || 'Insurer live verification failed');
         } finally {
             setVerifying(false);
         }
@@ -38,11 +42,13 @@ export default function MarketPage() {
     }, []);
 
     const loadProviders = async () => {
+        setLoadError(false);
         try {
             const { data } = await api.get('/market/providers');
             setProviders(data.providers || []);
         } catch (err) {
             console.error(err);
+            setLoadError(true);
         } finally {
             setLoading(false);
         }
@@ -72,10 +78,10 @@ export default function MarketPage() {
 
     return (
         <div>
-            <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
                 <div>
                     <h1>Market Analysis</h1>
-                    <p>Compare insurance providers and get AI-powered insights</p>
+                    <p>Compare Indian insurers, verify official portals & explore IRDAI policyholder rights</p>
                 </div>
                 <button className="btn btn-primary" onClick={loadInsights} disabled={insightsLoading}>
                     {insightsLoading ? <div className="spinner" style={{ width: 16, height: 16, borderWidth: 2 }} /> : <><BarChart3 size={16} /> Generate Insights</>}
@@ -92,7 +98,7 @@ export default function MarketPage() {
                         </div>
                         <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)', background: 'var(--bg-secondary)', padding: '6px 14px', borderRadius: 24, display: 'flex', alignItems: 'center', gap: 6, border: '1px solid var(--border-color)' }}>
                             <Activity size={14} style={{ color: 'var(--accent-primary)' }} />
-                            {lastUpdated ? lastUpdated.toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' }) : 'Updating...'}
+                            {lastUpdated ? lastUpdated.toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }) : 'Updating...'}
                         </span>
                     </div>
                     <div style={{ padding: '32px 24px' }}>
@@ -171,47 +177,38 @@ export default function MarketPage() {
                         </div>
                     </div>
 
-                    {/* Market Perspectives & Types */}
+                    {/* Indian Insurance Market Benchmarks */}
                     <div className="card" style={{ marginBottom: 32 }}>
                         <div className="card-header">
-                            <h3>Global Insurance Market Insights</h3>
+                            <h3>IRDAI Market Structure & Product Segments</h3>
                         </div>
                         <div style={{ padding: 24 }}>
                             <p style={{ color: 'var(--text-secondary)', marginBottom: 20 }}>
-                                Understanding the fundamental structure of the insurance market allows for optimized policy
-                                selection. Below is a professional breakdown of major insurance provider categories and current market perspectives:
+                                Evaluate Indian insurers across IRDAI Claim Settlement Ratios (CSR), Incurred Claim Ratios (ICR), and cashless hospital/garage networks before buying or renewing:
                             </p>
                             <div className="grid-2">
                                 <div style={{ background: 'var(--bg-glass)', padding: 20, borderRadius: 12, border: '1px solid var(--border-color)' }}>
-                                    <h4 style={{ color: 'var(--accent-primary)', marginBottom: 8 }}>Health Insurance Providers</h4>
+                                    <h4 style={{ color: 'var(--accent-primary)', marginBottom: 8 }}>Health Insurance & TPAs</h4>
                                     <p style={{ color: 'var(--text-secondary)', fontSize: 14, lineHeight: 1.6 }}>
-                                        Dominated by HMOs (Health Maintenance Organizations) and PPOs (Preferred Provider Organizations).
-                                        The market is trending towards AI-driven preventative care and personalized premiums based on
-                                        biometric tracking.
+                                        Focus on Room-Rent Sub-limits (single private AC vs 1%/2% cap), Disease Sub-limits, Consumables Riders, No-Claim Bonus (NCB), and the 60-Month PED Moratorium under IRDAI 2024 rules.
                                     </p>
                                 </div>
                                 <div style={{ background: 'var(--bg-glass)', padding: 20, borderRadius: 12, border: '1px solid var(--border-color)' }}>
-                                    <h4 style={{ color: 'var(--accent-primary)', marginBottom: 8 }}>Life Insurance Markets</h4>
+                                    <h4 style={{ color: 'var(--accent-primary)', marginBottom: 8 }}>Term Life & Living Benefits</h4>
                                     <p style={{ color: 'var(--text-secondary)', fontSize: 14, lineHeight: 1.6 }}>
-                                        Divided primarily into Term Life and Whole/Universal Life providers. The market perspective
-                                        is shifting heavily towards accelerated underwriting and living benefits that provide value
-                                        prior to mortality events.
+                                        Compare Claim Settlement Ratio (CSR), Amount Settlement Ratio, and 3-year Section 45 non-forfeiture rules rather than focusing solely on low first-year premium illustrations.
                                     </p>
                                 </div>
                                 <div style={{ background: 'var(--bg-glass)', padding: 20, borderRadius: 12, border: '1px solid var(--border-color)' }}>
-                                    <h4 style={{ color: 'var(--accent-primary)', marginBottom: 8 }}>P&C (Property & Casualty)</h4>
+                                    <h4 style={{ color: 'var(--accent-primary)', marginBottom: 8 }}>Motor & Home Insurance</h4>
                                     <p style={{ color: 'var(--text-secondary)', fontSize: 14, lineHeight: 1.6 }}>
-                                        Covers Auto, Home, and Renters insurance. This sector is experiencing rapid transformation via
-                                        telematics (driving data) and IoT (smart home sensors) to dynamically price risk and prevent
-                                        claims before they happen.
+                                        Check IDV accuracy, Zero-Depreciation (Bumper-to-Bumper) add-on, Engine/Hydrostatic Lock cover, Return-to-Invoice, and NCB protection against standard IRDAI depreciation deductions.
                                     </p>
                                 </div>
                                 <div style={{ background: 'var(--bg-glass)', padding: 20, borderRadius: 12, border: '1px solid var(--border-color)' }}>
-                                    <h4 style={{ color: 'var(--accent-primary)', marginBottom: 8 }}>Commercial & Business Specialty</h4>
+                                    <h4 style={{ color: 'var(--accent-primary)', marginBottom: 8 }}>Commercial, Cyber & Travel</h4>
                                     <p style={{ color: 'var(--text-secondary)', fontSize: 14, lineHeight: 1.6 }}>
-                                        Providers explicitly catering to corporate liability, D&O (Directors and Officers), and Cyber
-                                        Insurance. Cyber policies currently represent the highest growth sector due to escalating
-                                        digital threats globally.
+                                        Covers cyber fraud/UPI unauthorized transaction riders, MSME marine & transit cover, overseas medical evacuation, and D&amp;O liability with clear deductible structures.
                                     </p>
                                 </div>
                             </div>
@@ -220,29 +217,30 @@ export default function MarketPage() {
 
                     {/* Charts */}
                     <div className="grid-2" style={{ marginBottom: 32 }}>
-                        <div className="card">
+                        <div className="card" style={{ padding: 20 }}>
                             <div className="card-header"><h3>Settlement Ratio Comparison</h3></div>
                             <ResponsiveContainer width="100%" height={300}>
-                                <BarChart data={chartData}>
-                                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(236,72,153,0.12)" />
-                                    <XAxis dataKey="name" tick={{ fill: '#334155', fontSize: 11 }} />
-                                    <YAxis tick={{ fill: '#334155', fontSize: 12 }} />
-                                    <Tooltip contentStyle={{ background: '#ffffff', border: '1px solid #f472b6', borderRadius: 10, color: '#0f172a' }} />
-                                    <Bar dataKey="settlement" fill="#ec4899" radius={[4, 4, 0, 0]} />
+                                <BarChart data={chartData} margin={{ bottom: 16 }}>
+                                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(225,29,72,0.12)" />
+                                    <XAxis dataKey="name" interval={0} angle={-12} textAnchor="end" height={48} tick={{ fill: '#334155', fontSize: 11 }} />
+                                    <YAxis domain={[0, 100]} tick={{ fill: '#334155', fontSize: 12 }} />
+                                    <Tooltip contentStyle={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: 10, color: '#0f172a' }} />
+                                    <Bar dataKey="settlement" name="Settlement %" fill="#e11d48" radius={[6, 6, 0, 0]} />
                                 </BarChart>
                             </ResponsiveContainer>
                         </div>
 
-                        <div className="card">
+                        <div className="card" style={{ padding: 20 }}>
                             <div className="card-header"><h3>Provider Comparison</h3></div>
                             <ResponsiveContainer width="100%" height={300}>
                                 <RadarChart data={chartData}>
-                                    <PolarGrid stroke="rgba(236,72,153,0.15)" />
+                                    <PolarGrid stroke="rgba(15,23,42,0.12)" />
                                     <PolarAngleAxis dataKey="name" tick={{ fill: '#334155', fontSize: 11 }} />
-                                    <PolarRadiusAxis tick={{ fill: '#64748b', fontSize: 10 }} />
-                                    <Radar name="Settlement" dataKey="settlement" stroke="#ec4899" fill="#ec4899" fillOpacity={0.22} />
-                                    <Radar name="Rating" dataKey="rating" stroke="#8b5cf6" fill="#8b5cf6" fillOpacity={0.2} />
-                                    <Tooltip contentStyle={{ background: '#ffffff', border: '1px solid #f472b6', borderRadius: 10, color: '#0f172a' }} />
+                                    <PolarRadiusAxis domain={[0, 100]} tick={{ fill: '#64748b', fontSize: 10 }} />
+                                    <Radar name="Settlement %" dataKey="settlement" stroke="#e11d48" fill="#e11d48" fillOpacity={0.2} />
+                                    <Radar name="Rating (/100)" dataKey="rating" stroke="#0284c7" fill="#0284c7" fillOpacity={0.18} />
+                                    <Legend wrapperStyle={{ fontSize: 12 }} />
+                                    <Tooltip contentStyle={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: 10, color: '#0f172a' }} />
                                 </RadarChart>
                             </ResponsiveContainer>
                         </div>
@@ -278,76 +276,84 @@ export default function MarketPage() {
                                                 </span>
                                             </td>
                                             <td>{p.averageClaimTime} days</td>
-                                            <td>₹{p.premiumRange?.min?.toLocaleString()} - ₹{p.premiumRange?.max?.toLocaleString()}</td>
+                                            <td>₹{Number(p.premiumRange?.min || 0).toLocaleString('en-IN')} - ₹{Number(p.premiumRange?.max || 0).toLocaleString('en-IN')}</td>
                                         </tr>
                                     ))}
                                 </tbody>
                             </table>
                         </div>
                     </div>
-                    {/* Live Insurer Verification (Serper + Tavily + Official Domain Registry) */}
-                    <div className="card" style={{ padding: 24, marginTop: 24 }}>
-                        <h3 style={{ marginBottom: 10 }}>Verify Insurer Official Portal & Live Brochure Claims</h3>
-                        <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 12 }}>
-                            Cross-check any insurer against our Supabase Verified Domain Registry and live web search before buying or renewing.
-                        </p>
-                        <form onSubmit={handleVerifyInsurer} style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
-                            <input className="form-input" style={{ flex: '1 1 260px' }} placeholder="Enter insurer name (e.g. Star Health, HDFC ERGO, Acko)"
-                                value={verifyInput} onChange={(e) => setVerifyInput(e.target.value)} />
-                            <button className="btn btn-primary" type="submit" disabled={verifying}>
-                                {verifying ? 'Verifying...' : 'Verify Official Domain & Presence'}
-                            </button>
-                        </form>
-                        {verifyResult && (
-                            <div style={{ padding: 14, borderRadius: 12, background: 'var(--bg-secondary)', border: '1px solid var(--border-color)' }}>
-                                {(verifyResult.verifiedRegistry || []).length > 0 ? (
-                                    <div style={{ marginBottom: 10 }}>
-                                        {verifyResult.verifiedRegistry.map((v) => (
-                                            <div key={v.id} style={{ fontSize: 13 }}>
-                                                <span className="badge badge-success">Verified Registry Match</span> <strong>{v.provider_name}</strong> — <code>{v.domain}</code> · Helpline: {v.official_helpline || '—'} · Grievance: {v.grievance_email || '—'}
-                                            </div>
-                                        ))}
-                                    </div>
-                                ) : (
-                                    <span className="badge badge-warning" style={{ marginBottom: 8 }}>Not in Baseline Registry — Inspect Live Results Carefully</span>
-                                )}
-                                <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 6 }}>
-                                    <strong>Web Search Engine ({verifyResult.webVerification?.engine}):</strong> {verifyResult.webVerification?.answer || ''}
-                                    <ul style={{ margin: '6px 0 0 18px' }}>
-                                        {(verifyResult.webVerification?.results || []).slice(0, 3).map((r, i) => (
-                                            <li key={i}><a href={r.url} target="_blank" rel="noreferrer" style={{ color: 'var(--accent-primary)' }}>{r.title}</a></li>
-                                        ))}
-                                    </ul>
-                                </div>
-                            </div>
-                        )}
-                    </div>
-
-                    {/* Insurance Education Centre (IRDAI Know Your Rights) */}
-                    <div className="card" style={{ padding: 24, marginTop: 24 }}>
-                        <h3 style={{ marginBottom: 14 }}>IRDAI Insurance Education & Policyholder Rights</h3>
-                        <div className="grid-2">
-                            {[
-                                ['60-Month PED Moratorium (May 2024)', 'After 60 continuous months of health coverage, insurers cannot reject claims on non-disclosure or pre-existing disease grounds (except proven fraud).'],
-                                ['3-Hour Cashless Discharge SLA', 'Insurers must decide pre-auth within 1 hour and approve final cashless discharge bills within 3 hours or bear additional hospital stay costs.'],
-                                ['Proportionate Room-Rent Deduction Trap', 'Selecting a hospital room costlier than your 1%/2% policy limit reduces surgeon fees, OT & diagnostics proportionally — always check single room caps.'],
-                                ['30-Day Free-Look & Bima Bharosa', 'Every digital/retail policy includes a 30-day review window to cancel if mis-sold. Unresolved grievances escalate freely via bimabharosa.irdai.gov.in.'],
-                            ].map(([title, body]) => (
-                                <div key={title} style={{ padding: 14, borderRadius: 12, background: 'var(--bg-secondary)', border: '1px solid var(--border-color)' }}>
-                                    <strong style={{ color: 'var(--accent-primary)', fontSize: 14 }}>{title}</strong>
-                                    <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginTop: 6, marginBottom: 0 }}>{body}</p>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
                 </>
+            ) : loadError ? (
+                <div className="empty-state" style={{ marginBottom: 24 }}>
+                    <TrendingUp size={48} />
+                    <h3>Unable to Load Market Benchmarks</h3>
+                    <p>Check your server connection and try again.</p>
+                    <button className="btn btn-secondary" style={{ marginTop: 12 }} onClick={loadProviders}>Retry</button>
+                </div>
             ) : (
-                <div className="empty-state">
+                <div className="empty-state" style={{ marginBottom: 24 }}>
                     <TrendingUp size={64} />
                     <h3>No Market Data Available</h3>
-                    <p>Market data will be populated by administrators</p>
+                    <p>Market benchmark data will appear here once populated by administrators.</p>
                 </div>
             )}
+
+            {/* Live Insurer Verification (Serper + Tavily + Official Domain Registry) */}
+            <div className="card" style={{ padding: 24, marginTop: 24 }}>
+                <h3 style={{ marginBottom: 10 }}>Verify Insurer Official Portal & Live Brochure Claims</h3>
+                <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 12 }}>
+                    Cross-check any insurer against our Supabase Verified Domain Registry and live web search before buying or renewing.
+                </p>
+                <form onSubmit={handleVerifyInsurer} style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
+                    <input className="form-input" style={{ flex: '1 1 260px' }} placeholder="Enter insurer name (e.g. Star Health, HDFC ERGO, Acko)"
+                        value={verifyInput} onChange={(e) => setVerifyInput(e.target.value)} />
+                    <button className="btn btn-primary" type="submit" disabled={verifying}>
+                        {verifying ? 'Verifying...' : 'Verify Official Domain & Presence'}
+                    </button>
+                </form>
+                {verifyResult && (
+                    <div style={{ padding: 14, borderRadius: 12, background: 'var(--bg-secondary)', border: '1px solid var(--border-color)' }}>
+                        {(verifyResult.verifiedRegistry || []).length > 0 ? (
+                            <div style={{ marginBottom: 10 }}>
+                                {verifyResult.verifiedRegistry.map((v) => (
+                                    <div key={v.id} style={{ fontSize: 13 }}>
+                                        <span className="badge badge-success">Verified Registry Match</span> <strong>{v.provider_name}</strong> — <code>{v.domain}</code> · Helpline: {v.official_helpline || '—'} · Grievance: {v.grievance_email || '—'}
+                                    </div>
+                                ))}
+                            </div>
+                        ) : (
+                            <span className="badge badge-warning" style={{ marginBottom: 8 }}>Not in Baseline Registry — Inspect Live Results Carefully</span>
+                        )}
+                        <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 6 }}>
+                            <strong>Web Search Engine ({verifyResult.webVerification?.engine || 'registry'}):</strong> {verifyResult.webVerification?.answer || ''}
+                            <ul style={{ margin: '6px 0 0 18px' }}>
+                                {(verifyResult.webVerification?.results || []).slice(0, 3).map((r, i) => (
+                                    <li key={i}><a href={r.url} target="_blank" rel="noreferrer" style={{ color: 'var(--accent-primary)' }}>{r.title}</a></li>
+                                ))}
+                            </ul>
+                        </div>
+                    </div>
+                )}
+            </div>
+
+            {/* Insurance Education Centre (IRDAI Know Your Rights) */}
+            <div className="card" style={{ padding: 24, marginTop: 24 }}>
+                <h3 style={{ marginBottom: 14 }}>IRDAI Insurance Education & Policyholder Rights</h3>
+                <div className="grid-2">
+                    {[
+                        ['60-Month PED Moratorium (May 2024)', 'After 60 continuous months of health coverage, insurers cannot reject claims on non-disclosure or pre-existing disease grounds (except proven fraud).'],
+                        ['3-Hour Cashless Discharge SLA', 'Insurers must decide pre-auth within 1 hour and approve final cashless discharge bills within 3 hours or bear additional hospital stay costs.'],
+                        ['Proportionate Room-Rent Deduction Trap', 'Selecting a hospital room costlier than your 1%/2% policy limit reduces surgeon fees, OT & diagnostics proportionally — always check single room caps.'],
+                        ['30-Day Free-Look & Bima Bharosa', 'Every digital/retail policy includes a 30-day review window to cancel if mis-sold. Unresolved grievances escalate freely via bimabharosa.irdai.gov.in.'],
+                    ].map(([title, body]) => (
+                        <div key={title} style={{ padding: 14, borderRadius: 12, background: 'var(--bg-secondary)', border: '1px solid var(--border-color)' }}>
+                            <strong style={{ color: 'var(--accent-primary)', fontSize: 14 }}>{title}</strong>
+                            <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginTop: 6, marginBottom: 0 }}>{body}</p>
+                        </div>
+                    ))}
+                </div>
+            </div>
         </div>
     );
 }

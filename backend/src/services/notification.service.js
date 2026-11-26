@@ -1,6 +1,14 @@
 const { sendEmail } = require('./email.service');
 const logger = require('../utils/logger');
 
+const escapeHtml = (str = '') =>
+    String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+
 const sendClaimStatusEmail = async (userEmail, userName, claimData) => {
     const statusColors = {
         pending: '#f59e0b',
@@ -9,6 +17,10 @@ const sendClaimStatusEmail = async (userEmail, userName, claimData) => {
         rejected: '#ef4444',
         settled: '#8b5cf6',
     };
+    const safeName = escapeHtml(userName || 'Policyholder');
+    const safePolicyNum = escapeHtml(claimData?.policyNumber || 'N/A');
+    const safeStatus = escapeHtml(String(claimData?.claimStatus || 'pending').replace(/_/g, ' '));
+    const safeAmount = Number(claimData?.claimAmount || 0).toLocaleString('en-IN');
 
     const html = `
     <div style="font-family: 'Segoe UI', sans-serif; max-width: 600px; margin: auto; background: #1a1a2e; color: #e0e0e0; border-radius: 12px; overflow: hidden;">
@@ -17,12 +29,12 @@ const sendClaimStatusEmail = async (userEmail, userName, claimData) => {
         <p style="margin: 5px 0 0; color: rgba(255,255,255,0.8); font-size: 14px;">Claim Status Update</p>
       </div>
       <div style="padding: 30px;">
-        <p>Hello <strong>${userName}</strong>,</p>
+        <p>Hello <strong>${safeName}</strong>,</p>
         <p>Your claim status has been updated:</p>
         <div style="background: #16213e; border-radius: 8px; padding: 20px; margin: 20px 0;">
-          <p><strong>Policy:</strong> ${claimData.policyNumber}</p>
-          <p><strong>Claim Amount:</strong> ₹${claimData.claimAmount?.toLocaleString()}</p>
-          <p><strong>Status:</strong> <span style="color: ${statusColors[claimData.claimStatus] || '#fff'}; font-weight: bold; text-transform: uppercase;">${claimData.claimStatus?.replace('_', ' ')}</span></p>
+          <p><strong>Policy:</strong> ${safePolicyNum}</p>
+          <p><strong>Claim Amount:</strong> ₹${safeAmount}</p>
+          <p><strong>Status:</strong> <span style="color: ${statusColors[claimData?.claimStatus] || '#fff'}; font-weight: bold; text-transform: uppercase;">${safeStatus}</span></p>
         </div>
         <p style="color: #888; font-size: 12px;">This is an automated notification from PolicyAI. Do not reply to this email.</p>
       </div>
@@ -30,9 +42,9 @@ const sendClaimStatusEmail = async (userEmail, userName, claimData) => {
 
     return sendEmail({
         to: userEmail,
-        subject: `Claim Status Update - ${claimData.claimStatus?.replace('_', ' ').toUpperCase()}`,
+        subject: `Claim Status Update - ${safeStatus.toUpperCase()}`,
         html,
-        text: `Hello ${userName}, your claim for policy ${claimData.policyNumber} has been updated to: ${claimData.claimStatus}. Amount: ₹${claimData.claimAmount}`,
+        text: `Hello ${userName}, your claim for policy ${claimData?.policyNumber} has been updated to: ${claimData?.claimStatus}. Amount: ₹${safeAmount}`,
     });
 };
 

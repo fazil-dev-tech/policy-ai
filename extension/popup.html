@@ -45,9 +45,9 @@
     <select id="reportCategory" class="pg-input">
       <option value="phishing">Fake Insurer Website / Phishing</option>
       <option value="apk_malware">WhatsApp/Gmail .APK Malware</option>
-      <option value="upi_scam">Reverse-UPI / Fake Refund</option>
-      <option value="fake_renewal">Fraudulent Policy Renewal</option>
-      <option value="impersonation">Agent / IRDAI Impersonation</option>
+      <option value="reverse_upi">Reverse-UPI / Fake Refund</option>
+      <option value="fake_portal">Fraudulent Policy Renewal / Portal</option>
+      <option value="fake_agent">Agent / IRDAI Impersonation</option>
     </select>
     <input id="reportDesc" class="pg-input" placeholder="Short description (optional)" />
     <button id="reportBtn" class="pg-btn pg-btn-danger">Submit Scam Report</button>
@@ -55,11 +55,25 @@
   </section>
 
   <section class="pg-card">
+    <details id="historyDetails">
+      <summary>Recent Security Scans</summary>
+      <ul id="scanHistoryList" class="pg-reasons" style="margin-top:8px;">
+        <li>No recent alerts recorded yet.</li>
+      </ul>
+    </details>
+  </section>
+
+  <section class="pg-card">
     <details id="syncDetails">
       <summary>Settings & Optional Account Sync</summary>
       <label class="pg-label" style="display:block;margin-top:8px;">Backend API URL</label>
-      <input id="apiUrlInput" class="pg-input" placeholder="http://localhost:5000/api" />
+      <input id="apiUrlInput" class="pg-input" placeholder="https://policyguard-ai-ecru.vercel.app/api" />
+      <div style="display:flex;gap:6px;margin-bottom:7px;">
+        <button id="presetProdBtn" type="button" class="pg-btn pg-btn-secondary" style="font-size:11px;padding:5px;">Vercel Live</button>
+        <button id="presetLocalBtn" type="button" class="pg-btn pg-btn-secondary" style="font-size:11px;padding:5px;">Localhost 5000</button>
+      </div>
       <button id="saveApiBtn" class="pg-btn pg-btn-secondary" style="margin-bottom:10px;">Save API URL</button>
+      <div id="apiFeedback" class="pg-hint" style="margin-bottom:8px;"></div>
 
       <div id="authSignedOut">
         <input id="loginEmail" type="email" class="pg-input" placeholder="PolicyAI email (optional)" />
@@ -70,6 +84,7 @@
         <p class="pg-hint">Connected as <strong id="connectedEmail"></strong></p>
         <button id="logoutBtn" class="pg-btn pg-btn-secondary">Disconnect Account</button>
       </div>
+      <div id="authFeedback" class="pg-hint"></div>
     </details>
   </section>
 
@@ -77,6 +92,7 @@
     Cyber fraud or financial scam? Call <strong>1930</strong> immediately (Golden Hour &lt; 2h).
   </footer>
 
+  <script src="shared/localRules.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>

@@ -14,11 +14,11 @@ const SORT_COLUMN_MAP = {
 const getProviders = async (req, res, next) => {
     try {
         const { sortBy = 'rating', order = 'desc', policyType } = req.query;
-        const sortColumn = SORT_COLUMN_MAP[sortBy] || 'rating';
+        const sortColumn = Object.hasOwn(SORT_COLUMN_MAP, sortBy) ? SORT_COLUMN_MAP[sortBy] : 'rating';
         const ascending = order === 'asc';
 
         let query = supabaseAdmin.from('market_data').select('*');
-        if (policyType) {
+        if (policyType && typeof policyType === 'string' && policyType !== 'all') {
             query = query.contains('policy_types', [policyType]);
         }
 
@@ -91,19 +91,29 @@ const addProvider = async (req, res, next) => {
             policyTypes,
             customerReviews,
             fraudReports,
-        } = req.body;
+        } = req.body || {};
+
+        if (!providerName || !String(providerName).trim()) {
+            return res.status(400).json({ error: 'providerName is required' });
+        }
+        const csr = Number(claimSettlementRatio);
+        const avgTime = Number(averageClaimTime);
+        const rScore = Number(rating);
+        if (!Number.isFinite(csr) || csr < 0 || csr > 100 || !Number.isFinite(avgTime) || avgTime < 0 || !Number.isFinite(rScore) || rScore < 0 || rScore > 5) {
+            return res.status(400).json({ error: 'Invalid claimSettlementRatio (0-100), averageClaimTime (>=0), or rating (0-5)' });
+        }
 
         const { data: provider, error } = await supabaseAdmin
             .from('market_data')
             .insert({
-                provider_name: providerName,
-                claim_settlement_ratio: claimSettlementRatio,
-                average_claim_time: averageClaimTime,
-                rating,
+                provider_name: String(providerName).trim(),
+                claim_settlement_ratio: csr,
+                average_claim_time: avgTime,
+                rating: rScore,
                 premium_range: premiumRange || { min: 0, max: 0 },
-                policy_types: policyTypes || [],
+                policy_types: Array.isArray(policyTypes) ? policyTypes : [],
                 customer_reviews: customerReviews || { total: 0, averageRating: 0 },
-                fraud_reports: fraudReports || 0,
+                fraud_reports: Math.max(0, Number(fraudReports || 0)),
             })
             .select()
             .single();

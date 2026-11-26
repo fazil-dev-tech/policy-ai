@@ -6,15 +6,34 @@ const normalizeEnum = (value, allowed, fallback) => {
     return match || fallback;
 };
 
-const safeIsoDate = (value, fallbackDate) => {
+const MONTH_MAP = {
+    jan: '01', feb: '02', mar: '03', apr: '04', may: '05', jun: '06',
+    jul: '07', aug: '08', sep: '09', oct: '10', nov: '11', dec: '12',
+};
+
+const safeIsoDate = (value, fallbackDate = new Date()) => {
     if (!value) return fallbackDate.toISOString();
     const str = String(value).trim();
-    // Handle Indian DD/MM/YYYY or DD-MM-YYYY format before Date.parse
-    const dmy = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+    // Handle DD/MMM/YYYY or DD-MMM-YYYY (e.g., 15/Mar/2025)
+    const dMonY = str.match(/^(\d{1,2})[\/\-]([A-Za-z]{3,9})[\/\-](\d{4})$/);
+    if (dMonY) {
+        const mon = MONTH_MAP[dMonY[2].slice(0, 3).toLowerCase()];
+        if (mon) {
+            const isoCandidate = `${dMonY[3]}-${mon}-${dMonY[1].padStart(2, '0')}T00:00:00.000Z`;
+            const p = new Date(isoCandidate);
+            if (!Number.isNaN(p.getTime())) return p.toISOString();
+        }
+    }
+    // Handle Indian DD/MM/YYYY or DD-MM-YYYY or DD.MM.YYYY format before Date.parse
+    const dmy = str.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})$/);
     if (dmy) {
-        const isoCandidate = `${dmy[3]}-${dmy[2].padStart(2, '0')}-${dmy[1].padStart(2, '0')}`;
-        const p = new Date(isoCandidate);
-        if (!Number.isNaN(p.getTime())) return p.toISOString();
+        const day = Number(dmy[1]);
+        const month = Number(dmy[2]);
+        if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+            const isoCandidate = `${dmy[3]}-${dmy[2].padStart(2, '0')}-${dmy[1].padStart(2, '0')}T00:00:00.000Z`;
+            const p = new Date(isoCandidate);
+            if (!Number.isNaN(p.getTime())) return p.toISOString();
+        }
     }
     const parsed = new Date(str);
     if (Number.isNaN(parsed.getTime())) {

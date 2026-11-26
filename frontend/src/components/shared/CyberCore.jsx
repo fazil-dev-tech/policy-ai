@@ -9,22 +9,28 @@ export default function CyberCore({ position = [4, 0, -2], active = false }) {
     const ring3 = useRef();
     const dotsRef = useRef();
 
+    const reducedMotion = useMemo(
+        () => typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches,
+        []
+    );
+
     useFrame(({ clock }) => {
+        if (reducedMotion) return;
         const t = clock.elapsedTime;
-        const speed = active ? 3.5 : 2.5;
+        const speed = active ? 2.2 : 1.1;
         if (groupRef.current) {
-            groupRef.current.position.y = Math.sin(t * 2.0) * 0.25;
-            groupRef.current.rotation.y = t * 0.15 * speed;
+            groupRef.current.position.y = Math.sin(t * 1.4) * 0.2;
+            groupRef.current.rotation.y = t * 0.14 * speed;
         }
-        if (ring1.current) ring1.current.rotation.x = t * 0.3 * speed;
-        if (ring2.current) ring2.current.rotation.y = t * 0.4 * speed;
-        if (ring3.current) ring3.current.rotation.z = t * -0.25 * speed;
-        if (dotsRef.current) dotsRef.current.rotation.y = t * 0.08 * speed;
+        if (ring1.current) ring1.current.rotation.x = t * 0.26 * speed;
+        if (ring2.current) ring2.current.rotation.y = t * 0.32 * speed;
+        if (ring3.current) ring3.current.rotation.z = t * -0.2 * speed;
+        if (dotsRef.current) dotsRef.current.rotation.y = t * 0.06 * speed;
     });
 
-    const primaryColor = active ? "#0ea5e9" : "#d946ef";     // Blue / Magenta
-    const secondaryColor = active ? "#3b82f6" : "#9333ea";   // Deeper Blue / Purple
-    const accentColor = active ? "#10b981" : "#f472b6";      // Green / Pink
+    const primaryColor = active ? "#06b6d4" : "#e11d48";     // Cyan / Crimson Rose
+    const secondaryColor = active ? "#0284c7" : "#ec4899";   // Deep Cyan / Rose
+    const accentColor = active ? "#10b981" : "#f43f5e";      // Emerald / Coral Rose
 
     const { positions, colors } = useMemo(() => {
         const count = 100;

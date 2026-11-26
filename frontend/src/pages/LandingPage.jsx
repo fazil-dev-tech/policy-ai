@@ -1,319 +1,255 @@
-import { useRef, useMemo, Component } from 'react';
+import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { Shield, ChevronRight, Zap, Lock, Globe, BarChart2, Cpu, FileText } from 'lucide-react';
-import * as THREE from 'three';
+import { Canvas } from '@react-three/fiber';
+import {
+    Shield, ChevronRight, Zap, Lock, Globe, BarChart2,
+    Cpu, FileText, Calculator, Car, ShieldAlert, ArrowUpRight, CheckCircle2
+} from 'lucide-react';
+import CanvasErrorBoundary from '../components/shared/CanvasErrorBoundary';
+import CyberCore from '../components/shared/CyberCore';
+import DataStreamField from '../components/shared/DataStreamField';
+import CameraRig from '../components/shared/CameraRig';
+import GridFloor from '../components/shared/GridFloor';
+import ArchitectureOrbit3D from '../components/ArchitectureOrbit3D';
 
-// ─── Error Boundary for Three.js Canvas ──────────────────────────────────────
-class CanvasErrorBoundary extends Component {
-    constructor(props) { super(props); this.state = { error: false, errorMsg: '' }; }
-    static getDerivedStateFromError(error) { return { error: true, errorMsg: error.message || String(error) }; }
-    render() {
-        if (this.state.error) return <div style={{ color: 'red', padding: 20, background: 'black' }}>WebGL Crash: {this.state.errorMsg}</div>;
-        return this.props.children;
-    }
-}
-
-// ─── Precision 3D Cyber Core (Max Professional) ──────────────────────────────
-function CyberCore({ position = [4, 0, -2], active = false }) {
-    const groupRef = useRef();
-    const ring1 = useRef();
-    const ring2 = useRef();
-    const ring3 = useRef();
-    const dotsRef = useRef();
-
-    useFrame(({ clock }) => {
-        const t = clock.elapsedTime;
-        const speed = active ? 3.5 : 2.5;
-        if (groupRef.current) {
-            groupRef.current.position.y = Math.sin(t * 2.0) * 0.25;
-            groupRef.current.rotation.y = t * 0.15 * speed;
-        }
-        if (ring1.current) ring1.current.rotation.x = t * 0.3 * speed;
-        if (ring2.current) ring2.current.rotation.y = t * 0.4 * speed;
-        if (ring3.current) ring3.current.rotation.z = t * -0.25 * speed;
-        if (dotsRef.current) dotsRef.current.rotation.y = t * 0.08 * speed;
-    });
-
-    const primaryColor = active ? "#0ea5e9" : "#d946ef";     // Blue / Magenta
-    const secondaryColor = active ? "#3b82f6" : "#9333ea";   // Deeper Blue / Purple
-    const accentColor = active ? "#10b981" : "#f472b6";      // Green / Pink
-
-    const { positions, colors } = useMemo(() => {
-        const count = 100;
-        const pos = new Float32Array(count * 3);
-        const cols = new Float32Array(count * 3);
-        const colorBase = new THREE.Color(primaryColor);
-        for (let i = 0; i < count; i++) {
-            const phi = Math.acos(-1 + (2 * i) / count);
-            const theta = Math.sqrt(count * Math.PI) * phi;
-            const r = 1.9 + Math.random() * 0.2;
-            pos[i * 3] = r * Math.cos(theta) * Math.sin(phi);
-            pos[i * 3 + 1] = r * Math.sin(theta) * Math.sin(phi);
-            pos[i * 3 + 2] = r * Math.cos(phi);
-            colorBase.toArray(cols, i * 3);
-        }
-        return { positions: pos, colors: cols };
-    }, [primaryColor]);
-
+function FeatureCard({ icon: Icon, title, desc, tag, color }) {
     return (
-        <group ref={groupRef} position={position}>
-            {/* Ambient Base Glow */}
-            <mesh>
-                <sphereGeometry args={[2.5, 32, 32]} />
-                <meshBasicMaterial color={primaryColor} transparent opacity={0.12} blending={THREE.AdditiveBlending} side={THREE.BackSide} />
-            </mesh>
-            <mesh>
-                <sphereGeometry args={[1.5, 32, 32]} />
-                <meshBasicMaterial color={secondaryColor} transparent opacity={0.25} blending={THREE.AdditiveBlending} side={THREE.BackSide} />
-            </mesh>
-
-            {/* Dark Energy Core - Ultra Glossy */}
-            <mesh>
-                <icosahedronGeometry args={[1.2, 2]} />
-                <meshPhongMaterial color="#0f172a" emissive={primaryColor} emissiveIntensity={0.6} specular="#ffffff" shininess={500} flatShading />
-            </mesh>
-
-            {/* Geometric Outer Shell */}
-            <mesh>
-                <icosahedronGeometry args={[1.5, 1]} />
-                <meshStandardMaterial color={accentColor} wireframe transparent opacity={active ? 0.8 : 0.6} />
-            </mesh>
-
-            {/* Swarm Nodes */}
-            <points ref={dotsRef}>
-                <bufferGeometry>
-                    <bufferAttribute attach="attributes-position" args={[positions, 3]} />
-                    <bufferAttribute attach="attributes-color" args={[colors, 3]} />
-                </bufferGeometry>
-                <pointsMaterial size={0.06} vertexColors transparent opacity={0.8} />
-            </points>
-
-            {/* Orbiting Tech Rings */}
-            <group ref={ring1} rotation={[Math.PI / 4, 0, 0]}>
-                <mesh rotation={[Math.PI / 2, 0, 0]}>
-                    <torusGeometry args={[2.2, 0.015, 16, 100, Math.PI * 1.5]} />
-                    <meshBasicMaterial color={primaryColor} transparent opacity={0.7} />
-                </mesh>
-                <mesh position={[2.2, 0, 0]}>
-                    <sphereGeometry args={[0.08, 16, 16]} />
-                    <meshBasicMaterial color="#ffffff" />
-                </mesh>
-                <mesh position={[0, 0, -2.2]}>
-                    <sphereGeometry args={[0.05, 16, 16]} />
-                    <meshBasicMaterial color={primaryColor} />
-                </mesh>
-            </group>
-
-            <group ref={ring2} rotation={[0, Math.PI / 4, 0]}>
-                <mesh rotation={[Math.PI / 2, 0, 0]}>
-                    <torusGeometry args={[2.6, 0.02, 16, 100, Math.PI * 1.8]} />
-                    <meshBasicMaterial color={secondaryColor} transparent opacity={0.6} />
-                </mesh>
-                <mesh position={[-2.6, 0, 0]}>
-                    <sphereGeometry args={[0.06, 16, 16]} />
-                    <meshBasicMaterial color="#ffffff" />
-                </mesh>
-            </group>
-
-            <group ref={ring3} rotation={[0, 0, Math.PI / 3]}>
-                <mesh rotation={[Math.PI / 2, 0, 0]}>
-                    <torusGeometry args={[3.0, 0.01, 16, 100]} />
-                    <meshBasicMaterial color={accentColor} transparent opacity={0.4} />
-                </mesh>
-                <mesh position={[3.0, 0, 0]}>
-                    <sphereGeometry args={[0.07, 16, 16]} />
-                    <meshBasicMaterial color="#ffffff" />
-                </mesh>
-            </group>
-
-            <pointLight distance={20} intensity={active ? 4 : 3} color={primaryColor} position={[0, 0, 0]} />
-            <pointLight distance={12} intensity={2} color="#ffffff" position={[3, 3, 3]} />
-        </group>
-    );
-}
-
-// ─── Data Stream Field ───────────────────────────────────────────────────────
-function DataStreamField({ active = false }) {
-    const pointsRef = useRef();
-    const count = 1200;
-
-    const { positions, randoms, sizes } = useMemo(() => {
-        const pos = new Float32Array(count * 3);
-        const rands = new Float32Array(count);
-        const sz = new Float32Array(count);
-        for (let i = 0; i < count; i++) {
-            pos[i * 3] = (Math.random() - 0.5) * 60;
-            pos[i * 3 + 1] = (Math.random() - 0.5) * 60;
-            pos[i * 3 + 2] = (Math.random() - 0.5) * 30 - 15;
-            rands[i] = Math.random();
-            sz[i] = Math.random() * 2.0;
-        }
-        return { positions: pos, randoms: rands, sizes: sz };
-    }, []);
-
-    useFrame(({ clock }) => {
-        const speed = active ? 1.2 : 0.5;
-        if (pointsRef.current) {
-            for (let i = 0; i < count; i++) {
-                positions[i * 3 + 1] += (randoms[i] + 0.2) * speed;
-                if (positions[i * 3 + 1] > 30) {
-                    positions[i * 3 + 1] = -30;
-                    positions[i * 3] = (Math.random() - 0.5) * 60;
-                }
-            }
-            pointsRef.current.geometry.attributes.position.needsUpdate = true;
-        }
-    });
-
-    return (
-        <points ref={pointsRef}>
-            <bufferGeometry>
-                <bufferAttribute attach="attributes-position" args={[positions, 3]} />
-                <bufferAttribute attach="attributes-size" args={[sizes, 1]} />
-            </bufferGeometry>
-            <pointsMaterial size={0.12} color={active ? "#38bdf8" : "#fbcfe8"} transparent opacity={0.5} sizeAttenuation />
-        </points>
-    );
-}
-
-// ─── Grid Floor ──────────────────────────────────────────────────────────────
-function GridFloor() {
-    const gridRef = useRef();
-    useFrame(({ clock }) => {
-        if (gridRef.current) gridRef.current.position.z = (clock.elapsedTime * 0.8) % 2;
-    });
-    return <gridHelper ref={gridRef} args={[80, 40, '#ec489950', '#f9a8d420']} position={[0, -5, -5]} />;
-}
-
-// ─── Camera Parallax Rig ─────────────────────────────────────────────────────
-function CameraRig() {
-    const { camera } = useThree();
-    useFrame(({ mouse }) => {
-        camera.position.x += (mouse.x * 2.0 - camera.position.x) * 0.05;
-        camera.position.y += (mouse.y * 1.2 - camera.position.y) * 0.05;
-        camera.lookAt(0, 0, 0);
-    });
-    return null;
-}
-
-// ─── Feature Card ────────────────────────────────────────────────────────────
-function FeatureCard({ icon: Icon, title, desc, color }) {
-    return (
-        <div className="feature-card">
-            <div className="feature-icon" style={{ background: `${color}22`, boxShadow: `0 0 24px ${color}33` }}>
-                <Icon size={26} style={{ color }} />
+        <article className="feature-card">
+            <div className="feature-card-top">
+                <div className="feature-icon" style={{ background: `${color}15`, color }}>
+                    <Icon size={22} />
+                </div>
+                <span className="feature-tag">{tag}</span>
             </div>
             <h3>{title}</h3>
             <p>{desc}</p>
-        </div>
+        </article>
     );
 }
 
-// ─── Main Landing Page ───────────────────────────────────────────────────────
 export default function LandingPage() {
     const navigate = useNavigate();
+    const reducedMotion = useMemo(
+        () => typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches,
+        []
+    );
+
+    const scrollTo = (id) => {
+        document.getElementById(id)?.scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth' });
+    };
 
     return (
         <div className="landing-root">
-            {/* Three.js Canvas — Max Realistic Full 3D background */}
-            <div className="landing-canvas">
-                <CanvasErrorBoundary>
-                    <Canvas camera={{ position: [0, 0, 12], fov: 60 }} gl={{ alpha: true, antialias: true }}
-                        style={{ background: 'transparent' }}>
-                        <ambientLight intensity={2.0} />
-                        <directionalLight position={[10, 10, 10]} intensity={2.5} color="#ec4899" />
-                        <pointLight position={[-10, -10, -10]} intensity={1.5} color="#3b82f6" />
-                        <pointLight position={[5, 5, 5]} intensity={1.2} color="#ffffff" />
-
-                        <CameraRig />
-                        <DataStreamField active={false} />
-                        <CyberCore position={[4, 0, -2]} active={false} />
-                        <GridFloor />
-
-                        <fog attach="fog" args={['#fdf2f8', 10, 30]} />
-                    </Canvas>
-                </CanvasErrorBoundary>
-            </div>
-
-            {/* Nav */}
+            {/* Editorial Obsidian Nav */}
             <nav className="landing-nav">
-                <div className="landing-nav-logo">
-                    <div className="logo-icon" style={{ width: 36, height: 36, background: 'transparent', padding: 0, overflow: 'hidden', borderRadius: 10 }}>
-                        <img src="/logo.png" alt="PolicyAI" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                    </div>
-                    <span style={{ color: '#1e293b' }}>PolicyAI</span>
+                <div className="landing-nav-logo" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
+                    <img src="/logo.png" alt="PolicyGuard AI" className="landing-nav-img" />
+                    <span>PolicyGuard <span className="landing-logo-badge">AI</span></span>
                 </div>
+
+                <div className="landing-nav-links">
+                    <button type="button" onClick={() => scrollTo('architecture')}>Architecture</button>
+                    <button type="button" onClick={() => scrollTo('capabilities')}>Capabilities</button>
+                    <button type="button" onClick={() => scrollTo('workflow')}>Workflow</button>
+                </div>
+
                 <div className="landing-nav-actions">
-                    <button className="btn btn-secondary btn-sm" onClick={() => navigate('/login')}>Sign In</button>
-                    <button className="btn btn-primary btn-sm" onClick={() => navigate('/register')}>Get Started</button>
+                    <button type="button" className="btn-nav-ghost" onClick={() => navigate('/login')}>Sign In</button>
+                    <button type="button" className="btn btn-primary btn-sm" onClick={() => navigate('/register')}>
+                        Get Started <ChevronRight size={15} />
+                    </button>
                 </div>
             </nav>
 
-            {/* Hero */}
-            <section className="landing-hero">
-                <div className="landing-hero-content">
-                    <div className="hero-badge">
-                        <Zap size={12} /> AI-Powered · Enterprise Grade
+            {/* Dark Atmospheric Hero Stage */}
+            <section className="landing-hero-stage">
+                <div className="landing-hero-canvas">
+                    <CanvasErrorBoundary fallbackTitle="3D Core visualization ready when WebGL is enabled.">
+                        <Canvas
+                            dpr={[1, 1.5]}
+                            camera={{ position: [0, 0, 12], fov: 56 }}
+                            gl={{ alpha: true, antialias: true }}
+                        >
+                            <ambientLight intensity={1.1} />
+                            <directionalLight position={[10, 10, 10]} intensity={1.8} color="#f43f5e" />
+                            <pointLight position={[-10, -8, -8]} intensity={1.2} color="#22d3ee" />
+                            <CameraRig />
+                            <DataStreamField active={false} color="#f472b6" />
+                            <CyberCore position={[4.1, -0.1, -2]} active={false} />
+                            <GridFloor />
+                            <fog attach="fog" args={['#050814', 10, 28]} />
+                        </Canvas>
+                    </CanvasErrorBoundary>
+                </div>
+
+                <div className="landing-hero-inner">
+                    <div className="hero-badge-obsidian">
+                        <Zap size={13} />
+                        <span>IRDAI-Aligned Policy &amp; Claims Intelligence</span>
                     </div>
-                    <h1 className="hero-title" style={{ fontSize: '4.5rem', lineHeight: '1.1', fontWeight: '800', letterSpacing: '-0.02em', marginBottom: '1.5rem', textShadow: '0 4px 20px rgba(0,0,0,0.05)' }}>
-                        Insurance Intelligence,<br />
-                        <span className="gradient-text" style={{ background: 'linear-gradient(135deg, #ec4899, #8b5cf6, #3b82f6)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>Unleashed by AI.</span>
+
+                    <h1 className="hero-title-obsidian">
+                        Decode Every Clause.<br />
+                        <span className="hero-title-accent">Win Every Fair Claim.</span>
                     </h1>
-                    <p className="hero-subtitle" style={{ fontSize: '1.25rem', lineHeight: '1.6', color: '#475569', maxWidth: '600px', marginBottom: '2.5rem' }}>
-                        Enterprise-grade document analysis. Instantly decode complex jargon, uncover hidden exclusions, map fraud risks, and streamline your claims in under 30 seconds.
+
+                    <p className="hero-subtitle-obsidian">
+                        Stop signing blind PDF renewals. PolicyGuard AI extracts hidden room-rent traps, computes deterministic claim payouts, verifies vehicle damage, and blocks WhatsApp &amp; Gmail scams in real time.
                     </p>
+
                     <div className="hero-cta">
-                        <button className="btn btn-primary btn-lg hero-cta-main" style={{ boxShadow: '0 10px 25px rgba(217, 70, 239, 0.3)' }} onClick={() => navigate('/register')}>
-                            Start Free — No Credit Card <ChevronRight size={18} />
+                        <button type="button" className="btn btn-primary btn-lg" onClick={() => navigate('/register')}>
+                            Start Free Analysis <ChevronRight size={18} />
                         </button>
-                        <button className="btn btn-ghost btn-lg" onClick={() => navigate('/login')}>
-                            Already have an account?
+                        <button type="button" className="btn-hero-outline" onClick={() => scrollTo('architecture')}>
+                            Inspect 3D Architecture <ArrowUpRight size={16} />
                         </button>
                     </div>
-                    <div className="hero-stats" style={{ background: 'rgba(255,255,255,0.6)', backdropFilter: 'blur(10px)', border: '1px solid rgba(255,255,255,0.8)', padding: '20px 30px', borderRadius: '16px', marginTop: '20px' }}>
-                        <div className="hero-stat"><span className="hero-stat-num" style={{ background: 'linear-gradient(135deg, #ec4899, #8b5cf6)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', fontWeight: 800 }}>99.2%</span><span style={{ color: '#475569', fontWeight: 600 }}>Analysis Accuracy</span></div>
-                        <div className="hero-stat-divider" style={{ background: '#cbd5e1' }} />
-                        <div className="hero-stat"><span className="hero-stat-num" style={{ background: 'linear-gradient(135deg, #ec4899, #8b5cf6)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', fontWeight: 800 }}>&lt;30s</span><span style={{ color: '#475569', fontWeight: 600 }}>Processing Time</span></div>
-                        <div className="hero-stat-divider" style={{ background: '#cbd5e1' }} />
-                        <div className="hero-stat"><span className="hero-stat-num" style={{ background: 'linear-gradient(135deg, #ec4899, #8b5cf6)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', fontWeight: 800 }}>100%</span><span style={{ color: '#475569', fontWeight: 600 }}>Secure &amp; Private</span></div>
+
+                    <div className="hero-telemetry-grid">
+                        <div className="hero-telemetry-cell">
+                            <span className="hero-telemetry-val">IRDAI 2024</span>
+                            <span className="hero-telemetry-lbl">60m Moratorium &amp; 3h SLA Rules</span>
+                        </div>
+                        <div className="hero-telemetry-cell">
+                            <span className="hero-telemetry-val">Nemotron + Gemma 4</span>
+                            <span className="hero-telemetry-lbl">$0 Free Multi-Model Failover</span>
+                        </div>
+                        <div className="hero-telemetry-cell">
+                            <span className="hero-telemetry-val">3-Surface Shield</span>
+                            <span className="hero-telemetry-lbl">Chrome Web · WhatsApp · Gmail</span>
+                        </div>
                     </div>
                 </div>
             </section>
 
-            {/* Features */}
-            <section className="landing-features">
-                <h2 className="section-title">Everything you need to master your insurance</h2>
-                <p className="section-subtitle">Powered by advanced AI · Financial-grade security · Zero complexity</p>
-                <div className="features-grid">
-                    <FeatureCard icon={Cpu} title="AI Policy Analysis" color="#8b5cf6"
-                        desc="Upload any PDF — health, life, auto, travel. AI extracts coverage, exclusions, and claim steps in plain English." />
-                    <FeatureCard icon={Shield} title="Fraud Detection" color="#10b981"
-                        desc="AI flags suspicious clauses, hidden fees, and red flags with a real-time verification score." />
-                    <FeatureCard icon={Globe} title="Policy Chat" color="#3b82f6"
-                        desc="Ask anything in natural language. Get instant, accurate answers from your actual document." />
-                    <FeatureCard icon={BarChart2} title="Market Intelligence" color="#f59e0b"
-                        desc="Compare providers, claim settlement ratios, and get tailored consumer recommendations." />
-                    <FeatureCard icon={Lock} title="Claim Guidance" color="#ef4444"
-                        desc="Step-by-step AI-guided claims with required documents, timelines, and tips." />
-                    <FeatureCard icon={FileText} title="Instant Insights" color="#6366f1"
-                        desc="From upload to full analysis in under 30 seconds. Simple summary anyone can understand." />
+            {/* Interactive 3D System Architecture Showcase */}
+            <section id="architecture" className="landing-arch-section">
+                <div className="landing-section-shell">
+                    <div className="arch-section-header">
+                        <span className="arch-eyebrow">LIVE TELEMETRY PIPELINE</span>
+                        <h2>Deterministic + Multi-Model System Architecture</h2>
+                        <p>
+                            Inspect how encrypted PDFs, Chrome Shield signals, OpenRouter zero-cost models, Supabase RLS tables, and IRDAI actuarial math connect end-to-end. Click any orbital node below.
+                        </p>
+                    </div>
+
+                    <ArchitectureOrbit3D />
                 </div>
             </section>
 
-            {/* CTA */}
-            <section className="landing-cta">
-                <div className="landing-cta-box">
-                    <h2>Ready to take control of your insurance?</h2>
-                    <p>Join thousands using PolicyAI to demystify their coverage.</p>
-                    <button className="btn btn-primary btn-lg" onClick={() => navigate('/register')}>
-                        Get Started Free <ChevronRight size={18} />
-                    </button>
+            {/* Clean Editorial Light Band — Core Capabilities */}
+            <section id="capabilities" className="landing-features">
+                <div className="landing-section-shell">
+                    <div className="section-heading-left">
+                        <span className="section-kicker">Core Modules</span>
+                        <h2 className="section-title-clean">Precision tools built for real policyholders</h2>
+                        <p className="section-subtitle-clean">
+                            Every button maps directly to deterministic rules, indexed PDF citations, and auditable outputs — never vague guesses.
+                        </p>
+                    </div>
+
+                    <div className="features-grid">
+                        <FeatureCard
+                            icon={FileText}
+                            tag="PDF + OCR"
+                            color="#e11d48"
+                            title="Table-Aware Policy CIS & Index"
+                            desc="Parses multi-column policy tables cleanly into IRDAI CIS cards, room-rent sub-limits, waiting periods, and searchable page-cited clauses."
+                        />
+                        <FeatureCard
+                            icon={Calculator}
+                            tag="Deterministic"
+                            color="#059669"
+                            title="7-Scenario Payout Waterfall"
+                            desc="Interactive What-If room rent sliders, co-pay & deductible calculators, 3-hour cashless SLA countdowns, and downloadable Claim Guide PDFs."
+                        />
+                        <FeatureCard
+                            icon={Car}
+                            tag="Vision + ML"
+                            color="#d97706"
+                            title="Vehicle Damage & Quote Audit"
+                            desc="Multimodal vision with local FastAPI YOLOv8/sklearn fallback detects damaged parts, calculates IRDAI part depreciation, and flags garage overcharges."
+                        />
+                        <FeatureCard
+                            icon={ShieldAlert}
+                            tag="Chrome MV3"
+                            color="#0284c7"
+                            title="3-Surface Browser Scam Shield"
+                            desc="Blocks malicious .apk installers, reverse-UPI refund lures, lookalike insurer domains, and phishing banners across Chrome, WhatsApp Web & Gmail."
+                        />
+                        <FeatureCard
+                            icon={Cpu}
+                            tag="3D Voice"
+                            color="#7c3aed"
+                            title="Parinidhi Voice & Live Research"
+                            desc="Multilingual 3D voice advisor backed by indexed clause citations and live insurer portal & brochure verification."
+                        />
+                        <FeatureCard
+                            icon={Lock}
+                            tag="Zero-Leak"
+                            color="#0f766e"
+                            title="Family Vault & Emergency SOS"
+                            desc="Centralize blood groups, PED history, linked policies, 1-tap SOS playbooks (112/108/1930/155255), and printable Emergency E-Cards."
+                        />
+                    </div>
                 </div>
             </section>
 
-            <footer className="landing-footer">
-                <span>© 2026 PolicyAI · AI-Powered Insurance Intelligence</span>
+            {/* Clean Workflow Band */}
+            <section id="workflow" className="landing-workflow">
+                <div className="landing-section-shell">
+                    <div className="workflow-grid">
+                        <div>
+                            <span className="section-kicker">3-Step Execution</span>
+                            <h2 className="section-title-clean">From confusing fine print to clear claim action in seconds</h2>
+                            <p className="section-subtitle-clean">
+                                Upload an insurer schedule, run live Claim &amp; Settlement decoders, and export formal GRO escalation PDFs when a TPA short-pays.
+                            </p>
+                            <button type="button" className="btn btn-primary" onClick={() => navigate('/register')}>
+                                Launch Workspace <ChevronRight size={16} />
+                            </button>
+                        </div>
+
+                        <div className="workflow-steps">
+                            {[
+                                ['01', 'Upload Policy PDF or E-Card Photo', 'Signed private storage with PII masking and multi-page clause indexing.'],
+                                ['02', 'Audit Coverage Gaps & Run What-Ifs', 'Simulate room-rent proportionate deductions and 60-month PED moratorium rules before admission.'],
+                                ['03', 'Export Claim Prep & GRO Appeal PDFs', 'Download structured checklists, Emergency Cards, and regulation-backed settlement dispute letters.'],
+                            ].map(([num, heading, body]) => (
+                                <div key={num} className="workflow-step-card">
+                                    <span className="workflow-step-num">{num}</span>
+                                    <div>
+                                        <h3>{heading}</h3>
+                                        <p>{body}</p>
+                                    </div>
+                                    <CheckCircle2 size={18} className="workflow-check" />
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            {/* Final CTA & Footer */}
+            <section className="landing-cta-dark">
+                <div className="landing-cta-card-dark">
+                    <Shield size={28} style={{ color: '#fb7185', marginBottom: 12 }} />
+                    <h2>Take Control of Your Coverage Today</h2>
+                    <p>Open-source insurer intelligence powered by Supabase, IRDAI deterministic rules, and zero-cost open AI.</p>
+                    <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
+                        <button type="button" className="btn btn-primary btn-lg" onClick={() => navigate('/register')}>
+                            Create Free Account <ChevronRight size={18} />
+                        </button>
+                        <button type="button" className="btn-hero-outline" onClick={() => navigate('/login')}>
+                            Sign In
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <footer className="landing-footer-dark">
+                <span>© 2026 PolicyGuard AI · IRDAI Policy &amp; Claims Intelligence</span>
                 <span>Built by Mohamed Fazil Pasha</span>
             </footer>
         </div>

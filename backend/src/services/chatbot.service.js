@@ -40,32 +40,36 @@ const getSessionId = (userId, sessionId) => {
     return sessionId || `session_${userId}_${crypto.randomBytes(8).toString('hex')}`;
 };
 
-const getCachedConversation = async (sessionId) => {
+const cacheKey = (userId, sessionId) => `${userId}:${sessionId}`;
+
+const getCachedConversation = async (userId, sessionId) => {
+    const key = cacheKey(userId, sessionId);
     try {
         const redis = getRedisClient();
         if (redis) {
-            const cached = await redis.get(`chat:${sessionId}`);
+            const cached = await redis.get(`chat:${key}`);
             if (cached) return JSON.parse(cached);
         }
     } catch (error) {
         logger.warn('Redis cache read failed:', error.message);
     }
 
-    const mem = memoryCache.get(sessionId);
+    const mem = memoryCache.get(key);
     if (mem && mem.expiresAt > Date.now()) {
         return mem.data;
     }
-    memoryCache.delete(sessionId);
+    memoryCache.delete(key);
     return null;
 };
 
-const cacheConversation = async (sessionId, history) => {
+const cacheConversation = async (userId, sessionId, history) => {
+    const key = cacheKey(userId, sessionId);
     const trimmed = history.slice(-MAX_HISTORY_LENGTH);
 
     try {
         const redis = getRedisClient();
         if (redis) {
-            await redis.setex(`chat:${sessionId}`, CACHE_TTL_SEC, JSON.stringify(trimmed));
+            await redis.setex(`chat:${key}`, CACHE_TTL_SEC, JSON.stringify(trimmed));
         }
     } catch (error) {
         logger.warn('Redis cache write failed:', error.message);
@@ -75,13 +79,39 @@ const cacheConversation = async (sessionId, history) => {
         const oldestKey = memoryCache.keys().next().value;
         memoryCache.delete(oldestKey);
     }
-    memoryCache.set(sessionId, {
+    memoryCache.set(key, {
         data: trimmed,
         expiresAt: Date.now() + CACHE_TTL_SEC * 1000,
     });
 };
 
-const processMessage = async ({ userId, policyId, message, sessionId }) => {
+const buildOfflinePolicyChatFallback = (userMessage, policySummary, matchedClauses = []) => {
+    const parts = [];
+    if (matchedClauses.length > 0) {
+        parts.push('Live LLM synthesis is temporarily rate-limited, so here are the exact matching clauses from your policy:');
+        for (const c of matchedClauses.slice(0, 4)) {
+            parts.push(`• [Page ${c.page_number} · ${c.section_title}]: ${String(c.clause_text || '').slice(0, 320)}`);
+        }
+    } else if (policySummary && Object.keys(policySummary).length > 0) {
+        parts.push(
+            `Live LLM synthesis is temporarily rate-limited. Summary for ${policySummary.providerName || 'your policy'} (${policySummary.policyNumber || 'N/A'}, Cover ₹${Number(policySummary.coverageAmount || 0).toLocaleString('en-IN')}):`
+        );
+        if (policySummary.simpleSummary) parts.push(policySummary.simpleSummary);
+        if (policySummary.exclusions) parts.push(`Exclusions / Waiting Periods: ${policySummary.exclusions}`);
+        if (policySummary.claimProcedure) parts.push(`Claim Procedure: ${policySummary.claimProcedure}`);
+    } else {
+        parts.push(`Live LLM synthesis is temporarily rate-limited for "${userMessage.slice(0, 120)}". Please upload/select a policy for instant clause search or retry in a moment.`);
+    }
+    return {
+        response: parts.join('\n\n'),
+        tokensUsed: 0,
+        responseTimeMs: 0,
+        model: 'offline:clauses-fallback',
+        provider: 'offline',
+    };
+};
+
+const processMessage = async ({ userId, policyId, message, sessionId, aiModel }) => {
     const sanitizedMessage = sanitizeInput(message);
     if (!sanitizedMessage) {
         throw new Error('Invalid message content');
@@ -109,7 +139,7 @@ const processMessage = async ({ userId, policyId, message, sessionId }) => {
         }
     }
 
-    let conversationHistory = await getCachedConversation(currentSessionId);
+    let conversationHistory = await getCachedConversation(userId, currentSessionId);
     if (!conversationHistory) {
         const { data: dbHistory } = await supabaseAdmin
             .from('chat_history')
@@ -137,10 +167,10 @@ const processMessage = async ({ userId, policyId, message, sessionId }) => {
 
     let aiResult;
     try {
-        aiResult = await geminiService.chatAboutPolicy(sanitizedMessage, policySummary, conversationHistory, matchedClauses);
+        aiResult = await geminiService.chatAboutPolicy(sanitizedMessage, policySummary, conversationHistory, matchedClauses, { aiModel });
     } catch (error) {
-        logger.error('AI chat service error:', error.message);
-        throw new Error('AI chat service is currently unavailable. Please check your AI API configuration.');
+        logger.warn('AI chat unavailable, returning Postgres clause fallback:', error.message);
+        aiResult = buildOfflinePolicyChatFallback(sanitizedMessage, policySummary, matchedClauses);
     }
 
     const { data: chatEntry, error: insertError } = await supabaseAdmin
@@ -152,6 +182,7 @@ const processMessage = async ({ userId, policyId, message, sessionId }) => {
             message: sanitizedMessage,
             ai_response: aiResult.response,
             metadata: {
+                agent: 'standard',
                 model: aiResult.model,
                 provider: aiResult.provider,
                 tokensUsed: aiResult.tokensUsed || 0,
@@ -162,10 +193,10 @@ const processMessage = async ({ userId, policyId, message, sessionId }) => {
         .single();
 
     if (insertError) {
-        throw new Error(`Failed to persist chat message: ${insertError.message}`);
+        throw insertError;
     }
 
-    await cacheConversation(currentSessionId, [
+    await cacheConversation(userId, currentSessionId, [
         ...conversationHistory,
         { message: sanitizedMessage, aiResponse: aiResult.response },
     ]);
@@ -214,16 +245,24 @@ const getHistory = async (userId, sessionId, page = 1, limit = 50) => {
     };
 };
 
-const getUserSessions = async (userId) => {
-    const { data, error } = await supabaseAdmin
+const getUserSessions = async (userId, { agent = 'all' } = {}) => {
+    let query = supabaseAdmin
         .from('chat_history')
-        .select('session_id, message, timestamp')
+        .select('session_id, policy_id, message, timestamp, metadata')
         .eq('user_id', userId)
         .order('timestamp', { ascending: false })
         .limit(500);
 
+    if (agent === 'parinidhi') {
+        query = query.like('session_id', 'parinidhi_%');
+    } else if (agent === 'standard') {
+        query = query.not('session_id', 'like', 'parinidhi_%');
+    }
+
+    const { data, error } = await query;
+
     if (error) {
-        throw new Error(`Failed to fetch chat sessions: ${error.message}`);
+        throw error;
     }
 
     const sessionMap = new Map();
@@ -231,6 +270,8 @@ const getUserSessions = async (userId) => {
         if (!sessionMap.has(row.session_id)) {
             sessionMap.set(row.session_id, {
                 sessionId: row.session_id,
+                policyId: row.policy_id || null,
+                agent: row.metadata?.agent || (String(row.session_id).startsWith('parinidhi_') ? 'parinidhi' : 'standard'),
                 lastMessage: String(row.message || '').substring(0, 100),
                 lastTimestamp: row.timestamp,
                 messageCount: 1,
@@ -240,7 +281,7 @@ const getUserSessions = async (userId) => {
         }
     }
 
-    return Array.from(sessionMap.values()).slice(0, 20);
+    return Array.from(sessionMap.values()).slice(0, 30);
 };
 
 module.exports = {

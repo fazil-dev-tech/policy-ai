@@ -1,9 +1,13 @@
+const PRODUCTION_API_URL = 'https://policyguard-ai-ecru.vercel.app/api';
+
 const DEFAULT_SETTINGS = {
-  apiBaseUrl: 'http://localhost:5000/api',
+  apiBaseUrl: PRODUCTION_API_URL,
   showSafeBadges: false,
   accessToken: '',
+  refreshToken: '',
   userEmail: '',
   scanCache: {},
+  scanHistory: [],
 };
 
 const CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours local browser cache
@@ -26,6 +30,49 @@ function getHostname(rawUrl) {
   }
 }
 
+async function recordScanHistory(verdict) {
+  if (!verdict || !verdict.domain) return;
+  const { scanHistory = [] } = await chrome.storage.local.get(['scanHistory']);
+  const entry = {
+    domain: verdict.domain,
+    status: verdict.status || 'safe',
+    riskScore: Number(verdict.riskScore || 0),
+    surface: verdict.sourceSurface || 'web',
+    ts: Date.now(),
+  };
+  const deduped = [entry, ...scanHistory.filter((h) => h.domain !== entry.domain)].slice(0, 12);
+  await chrome.storage.local.set({ scanHistory: deduped });
+}
+
+async function fetchWithAutoRefresh(url, init = {}, settings = null) {
+  const cfg = settings || (await getSettings());
+  const headers = { ...(init.headers || {}) };
+  if (cfg.accessToken) headers.Authorization = `Bearer ${cfg.accessToken}`;
+  let resp = await fetch(url, { ...init, headers });
+
+  if (resp.status === 401 && cfg.refreshToken) {
+    try {
+      const refResp = await fetch(`${cfg.apiBaseUrl.replace(/\/$/, '')}/auth/refresh`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refreshToken: cfg.refreshToken }),
+      });
+      if (refResp.ok) {
+        const refData = await refResp.json();
+        if (refData.accessToken) {
+          await saveSettings({
+            accessToken: refData.accessToken,
+            refreshToken: refData.refreshToken || cfg.refreshToken,
+          });
+          headers.Authorization = `Bearer ${refData.accessToken}`;
+          resp = await fetch(url, { ...init, headers });
+        }
+      }
+    } catch {}
+  }
+  return resp;
+}
+
 async function updateTabBadge(tabId, status) {
   if (!tabId) return;
   const map = {
@@ -42,7 +89,7 @@ async function updateTabBadge(tabId, status) {
 
 async function batchCheckRemote(items, sourceSurface) {
   const settings = await getSettings();
-  const cache = { ...(settings.scanCache || {}) };
+  const initialCache = { ...(settings.scanCache || {}) };
   const now = Date.now();
   const results = {};
   const toFetch = [];
@@ -51,8 +98,8 @@ async function batchCheckRemote(items, sourceSurface) {
     const url = typeof item === 'string' ? item : item.url;
     const host = getHostname(url);
     if (!host) continue;
-    const cached = cache[host];
-    if (cached && cached.expiresAt > now && !(item.contextFlags || '').trim()) {
+    const cached = initialCache[host];
+    if (cached && cached.expiresAt > now && !(item.contextFlags || '').trim() && !/\.apk(\?|$|#)/i.test(url)) {
       results[url] = { ...cached.verdict, url, sourceSurface };
     } else {
       toFetch.push(typeof item === 'string' ? { url: item } : item);
@@ -61,31 +108,40 @@ async function batchCheckRemote(items, sourceSurface) {
 
   if (toFetch.length > 0) {
     try {
-      const headers = { 'Content-Type': 'application/json' };
-      if (settings.accessToken) headers.Authorization = `Bearer ${settings.accessToken}`;
-      const resp = await fetch(`${settings.apiBaseUrl.replace(/\/$/, '')}/security/batch-check`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ items: toFetch.slice(0, 25), sourceSurface }),
-      });
+      const resp = await fetchWithAutoRefresh(
+        `${settings.apiBaseUrl.replace(/\/$/, '')}/security/batch-check`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ items: toFetch.slice(0, 25), sourceSurface }),
+        },
+        settings
+      );
       if (resp.ok) {
         const json = await resp.json();
+        // Re-read scanCache right before merge so concurrent scans don't overwrite each other
+        const latest = await chrome.storage.local.get(['scanCache']);
+        const mergedCache = { ...(latest.scanCache || {}) };
+
         for (const v of json.results || []) {
-          results[v.url] = { ...v, sourceSurface };
-          if (v.domain) {
-            cache[v.domain] = { verdict: v, expiresAt: now + CACHE_TTL_MS };
+          const mapKey = v.requestedUrl || v.url;
+          results[mapKey] = { ...v, sourceSurface };
+          if (v.url && v.url !== mapKey) results[v.url] = { ...v, sourceSurface };
+          const h = getHostname(mapKey) || v.domain;
+          if (h && !/\.apk(\?|$|#)/i.test(mapKey)) {
+            mergedCache[h] = { verdict: v, expiresAt: now + CACHE_TTL_MS };
+          }
+          if (v.status === 'threat' || v.status === 'suspicious') {
+            await recordScanHistory({ ...v, sourceSurface });
           }
         }
-        // Cap cache size cleanly
-        const keys = Object.keys(cache);
+        const keys = Object.keys(mergedCache);
         if (keys.length > 300) {
-          for (const k of keys.slice(0, keys.length - 300)) delete cache[k];
+          for (const k of keys.slice(0, keys.length - 300)) delete mergedCache[k];
         }
-        await chrome.storage.local.set({ scanCache: cache });
+        await chrome.storage.local.set({ scanCache: mergedCache });
       }
-    } catch (err) {
-      // Offline / backend down fallback handled gracefully by caller localRules
-    }
+    } catch {}
   }
 
   return results;
@@ -100,7 +156,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       }
 
       if (msg.type === 'PG_SAVE_SETTINGS') {
-        sendResponse(await saveSettings(msg.payload || {}));
+        const payload = msg.payload || {};
+        if (payload.apiBaseUrl !== undefined) {
+          payload.scanCache = {}; // Clear stale cache when switching backend API
+        }
+        sendResponse(await saveSettings(payload));
         return;
       }
 
@@ -113,21 +173,40 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
       if (msg.type === 'PG_CHECK_ACTIVE_URL') {
         const settings = await getSettings();
-        const headers = { 'Content-Type': 'application/json' };
-        if (settings.accessToken) headers.Authorization = `Bearer ${settings.accessToken}`;
-        const resp = await fetch(`${settings.apiBaseUrl.replace(/\/$/, '')}/security/check-url`, {
-          method: 'POST',
-          headers,
-          body: JSON.stringify({
-            url: msg.url,
-            sourceSurface: msg.sourceSurface || 'web',
-            contextFlags: msg.contextFlags || '',
-          }),
-        });
+        const host = getHostname(msg.url);
+        const now = Date.now();
+        const cached = settings.scanCache?.[host];
+        if (cached && cached.expiresAt > now && !(msg.contextFlags || '').trim() && !/\.apk(\?|$|#)/i.test(msg.url || '')) {
+          const verdict = { ...cached.verdict, sourceSurface: msg.sourceSurface || 'web', cached: true };
+          if (msg.tabId || sender?.tab?.id) await updateTabBadge(msg.tabId || sender.tab.id, verdict.status);
+          sendResponse({ ok: true, verdict });
+          return;
+        }
+
+        const resp = await fetchWithAutoRefresh(
+          `${settings.apiBaseUrl.replace(/\/$/, '')}/security/check-url`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              url: msg.url,
+              sourceSurface: msg.sourceSurface || 'web',
+              contextFlags: msg.contextFlags || '',
+            }),
+          },
+          settings
+        );
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const verdict = await resp.json();
-        if (msg.tabId) await updateTabBadge(msg.tabId, verdict.status);
-        await chrome.storage.local.set({ lastTabVerdict: verdict });
+        verdict.sourceSurface = msg.sourceSurface || 'web';
+        if (msg.tabId || sender?.tab?.id) await updateTabBadge(msg.tabId || sender.tab.id, verdict.status);
+        if (host && !/\.apk(\?|$|#)/i.test(msg.url || '')) {
+          const latest = await chrome.storage.local.get(['scanCache']);
+          const cache = { ...(latest.scanCache || {}) };
+          cache[host] = { verdict, expiresAt: now + CACHE_TTL_MS };
+          await chrome.storage.local.set({ scanCache: cache });
+        }
+        await recordScanHistory(verdict);
         sendResponse({ ok: true, verdict });
         return;
       }
@@ -140,13 +219,15 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
       if (msg.type === 'PG_REPORT_SCAM') {
         const settings = await getSettings();
-        const headers = { 'Content-Type': 'application/json' };
-        if (settings.accessToken) headers.Authorization = `Bearer ${settings.accessToken}`;
-        const resp = await fetch(`${settings.apiBaseUrl.replace(/\/$/, '')}/security/scam-reports`, {
-          method: 'POST',
-          headers,
-          body: JSON.stringify(msg.payload || {}),
-        });
+        const resp = await fetchWithAutoRefresh(
+          `${settings.apiBaseUrl.replace(/\/$/, '')}/security/scam-reports`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(msg.payload || {}),
+          },
+          settings
+        );
         const data = await resp.json().catch(() => ({}));
         sendResponse({ ok: resp.ok, data });
         return;
@@ -155,5 +236,5 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       sendResponse({ ok: false, error: err.message });
     }
   })();
-  return true; // keep async message channel open
+  return true;
 });

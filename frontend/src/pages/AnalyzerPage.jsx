@@ -26,6 +26,13 @@ function ScoreRing({ score }) {
     );
 }
 
+function formatFieldLabel(rawKey) {
+    return String(rawKey || '')
+        .replace(/([a-z])([A-Z])/g, '$1 $2')
+        .replace(/_/g, ' ')
+        .replace(/^./, (c) => c.toUpperCase());
+}
+
 // ─── Render AI value (string, array, object) ─────────────────────────────────
 function AiValue({ value }) {
     if (!value || value === '') return <span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>Not available</span>;
@@ -37,7 +44,7 @@ function AiValue({ value }) {
                         {typeof item === 'object' ? (
                             <div className="ai-object">
                                 {Object.entries(item).map(([k, v]) => (
-                                    <div key={k}><strong>{k}:</strong> {String(v)}</div>
+                                    <div key={k}><strong>{formatFieldLabel(k)}:</strong> {String(v)}</div>
                                 ))}
                             </div>
                         ) : item}
@@ -51,7 +58,7 @@ function AiValue({ value }) {
             <div className="ai-object-block">
                 {Object.entries(value).map(([k, v]) => (
                     <div key={k} className="ai-object-row">
-                        <span className="ai-object-key">{k}</span>
+                        <span className="ai-object-key">{formatFieldLabel(k)}</span>
                         <span className="ai-object-val">{Array.isArray(v) ? v.join(', ') : String(v)}</span>
                     </div>
                 ))}
@@ -96,10 +103,20 @@ export default function AnalyzerPage() {
 
     useEffect(() => { loadDocs(); }, []);
     useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [chatMessages]);
+    useEffect(() => {
+        const onKey = (e) => {
+            if (e.key === 'Escape') {
+                setSelectedDoc(null);
+                setDocToDelete(null);
+            }
+        };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+    }, []);
 
     const loadDocs = async () => {
         try {
-            const { data } = await api.get('/documents');
+            const { data } = await api.get('/documents?limit=50');
             setDocs(data.documents || []);
         } catch (err) {
             console.error(err);
@@ -115,8 +132,15 @@ export default function AnalyzerPage() {
 
     const handleUpload = async (file) => {
         if (!file) return;
-        if (file.type !== 'application/pdf') return toast.error('Only PDF files are allowed');
-        if (file.size > 10 * 1024 * 1024) return toast.error('File size must be under 10MB');
+        const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name || '');
+        if (!isPdf) {
+            if (fileRef.current) fileRef.current.value = '';
+            return toast.error('Only PDF files are allowed');
+        }
+        if (file.size > 10 * 1024 * 1024) {
+            if (fileRef.current) fileRef.current.value = '';
+            return toast.error('File size must be under 10MB');
+        }
 
         setUploading(true);
         setUploadStep(1);
@@ -125,6 +149,7 @@ export default function AnalyzerPage() {
             if (file.size > 3.8 * 1024 * 1024) {
                 setUploadStep(2);
                 const uploaded = await uploadDirectToSignedStorage(file, 'documents');
+                setUploadStep(3);
                 res = await api.post('/documents/upload', {
                     storagePath: uploaded.storagePath,
                     fileName: uploaded.fileName,
@@ -137,22 +162,28 @@ export default function AnalyzerPage() {
                 res = await api.post('/documents/upload', formData, {
                     headers: { 'Content-Type': 'multipart/form-data' },
                 });
+                setUploadStep(3);
             }
             const { data } = res;
-            setUploadStep(3);
-            await new Promise(r => setTimeout(r, 400));
-            toast.success('Document uploaded and analyzed!');
-
+            setUploadStep(4);
+            await new Promise(r => setTimeout(r, 350));
             const newDoc = data.document || data;
-            setDocs([newDoc, ...docs]);
+            if (newDoc.status === 'failed' || newDoc.aiSummary?._aiFailed) {
+                toast('PDF saved with offline text summary (AI rate-limited)');
+            } else {
+                toast.success('Document uploaded and analyzed!');
+            }
+
+            setDocs((prev) => [newDoc, ...prev]);
             setSelectedDoc(newDoc);
             setActiveTab('simpleSummary');
         } catch (err) {
             console.error(err);
-            toast.error(err.response?.data?.error || 'Upload failed');
+            toast.error(err.response?.data?.error || err.message || 'Upload failed');
         } finally {
             setUploading(false);
             setUploadStep(0);
+            if (fileRef.current) fileRef.current.value = '';
         }
     };
 
@@ -170,8 +201,6 @@ export default function AnalyzerPage() {
         }
     };
 
-    const UPLOAD_STEPS = ['', 'Parsing PDF...', 'AI Analysing...', 'Done ✓'];
-
     const sendMessage = async () => {
         if (!chatInput.trim() || !selectedDoc || chatLoading) return;
         const userMsg = chatInput.trim();
@@ -179,19 +208,43 @@ export default function AnalyzerPage() {
         setChatMessages(prev => [...prev, { role: 'user', text: userMsg }]);
         setChatLoading(true);
         try {
-            const history = chatMessages.map(m => ({
-                message: m.role === 'user' ? m.text : '',
-                response: m.role === 'ai' ? m.text : '',
-            })).filter(h => h.message || h.response);
+            const history = [];
+            for (const m of chatMessages) {
+                if (m.role === 'user') {
+                    history.push({ message: m.text, response: '' });
+                } else if (m.role === 'ai') {
+                    if (history.length > 0 && !history[history.length - 1].response) {
+                        history[history.length - 1].response = m.text;
+                    } else {
+                        history.push({ message: '', response: m.text });
+                    }
+                }
+            }
             const { data } = await api.post('/documents/' + selectedDoc._id + '/chat', {
                 message: userMsg, history
             });
             setChatMessages(prev => [...prev, { role: 'ai', text: data.response }]);
         } catch (err) {
             console.error(err);
-            setChatMessages(prev => [...prev, { role: 'ai', text: 'Sorry, I could not process your question. Please try again.' }]);
+            const errMsg = err.response?.data?.error || 'Sorry, I could not process your question. Please try again.';
+            setChatMessages(prev => [...prev, { role: 'ai', text: errMsg }]);
         } finally {
             setChatLoading(false);
+        }
+    };
+
+    const viewDocumentPdf = async (doc) => {
+        try {
+            const resp = await api.get('/documents/' + doc._id + '/file', { responseType: 'blob' });
+            const url = URL.createObjectURL(resp.data);
+            window.open(url, '_blank', 'noopener,noreferrer');
+            setTimeout(() => URL.revokeObjectURL(url), 60000);
+        } catch {
+            if (doc.pdfUrl) {
+                window.open(resolveAssetUrl(doc.pdfUrl), '_blank', 'noopener,noreferrer');
+            } else {
+                toast.error('Original PDF file is unavailable');
+            }
         }
     };
 
@@ -202,8 +255,8 @@ export default function AnalyzerPage() {
     return (
         <div>
             <div className="page-header" style={{ marginBottom: 24 }}>
-                <h1 style={{ background: 'linear-gradient(135deg, #8b5cf6, #3b82f6)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', fontWeight: 800 }}>General PDF Analyzer</h1>
-                <p style={{ color: 'var(--text-muted)', marginTop: 4 }}>Upload and analyze any document type (contracts, invoices, reports) with AI</p>
+                <h1>General PDF Analyzer</h1>
+                <p>Upload and analyze any document type (contracts, invoices, reports) with clause summaries and Q&amp;A</p>
             </div>
 
             {/* Upload Zone */}
@@ -266,17 +319,28 @@ export default function AnalyzerPage() {
                                                 <Eye size={13} /> View
                                             </button>
                                             <button className="btn btn-danger btn-sm" onClick={() => setDocToDelete(doc)}>
-                                                <Bot size={13} /> Delete
+                                                <Trash2 size={13} /> Delete
                                             </button>
                                         </div>
                                     </div>
                                     <h3 className="policy-provider" style={{ marginTop: '8px' }}>{doc.documentName}</h3>
                                     <div className="policy-card-bottom" style={{ marginTop: 24 }}>
-                                        <div className="score-bar">
-                                            <div className="score-bar-fill"
-                                                style={{ width: '100%', background: `linear-gradient(90deg, ${typeColor}, ${typeColor}99)` }} />
-                                        </div>
-                                        <span className="score-label">Analyzed by Enterprise AI</span>
+                                        {(() => {
+                                            const isFallback = doc.status === 'failed' || doc.aiSummary?._aiFailed;
+                                            return (
+                                                <>
+                                                    <div className="score-bar">
+                                                        <div
+                                                            className={`score-bar-fill ${isFallback ? 'medium' : 'high'}`}
+                                                            style={{ width: isFallback ? '60%' : '100%' }}
+                                                        />
+                                                    </div>
+                                                    <span className="score-label">
+                                                        {isFallback ? 'Offline Text Extract' : 'Analyzed by PolicyGuard AI'}
+                                                    </span>
+                                                </>
+                                            );
+                                        })()}
                                     </div>
                                     <div className="policy-card-glow" style={{ '--type-color': typeColor }} />
                                 </div>
@@ -294,7 +358,7 @@ export default function AnalyzerPage() {
             {/* Document Detail Modal */}
             {
                 selectedDoc && (
-                    <div className="modal-overlay" onClick={() => setSelectedDoc(null)}>
+                    <div className="modal-overlay" role="dialog" aria-modal="true" onClick={() => setSelectedDoc(null)}>
                         <div className="modal policy-modal" onClick={e => e.stopPropagation()}>
                             <div className="modal-header">
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
@@ -303,7 +367,9 @@ export default function AnalyzerPage() {
                                         <h2 style={{ fontSize: 20, fontWeight: 700 }}>{selectedDoc.documentName}</h2>
                                         <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
                                             <span className="badge badge-purple">{selectedDoc.documentType}</span>
-                                            <span className={`badge badge-success`}>Analyzed</span>
+                                            <span className={`badge ${selectedDoc.status === 'failed' || selectedDoc.aiSummary?._aiFailed ? 'badge-warning' : 'badge-success'}`}>
+                                                {selectedDoc.status === 'failed' || selectedDoc.aiSummary?._aiFailed ? 'Offline Extract' : 'Analyzed'}
+                                            </span>
                                         </div>
                                     </div>
                                 </div>
@@ -351,9 +417,9 @@ export default function AnalyzerPage() {
                             }
 
                             <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
-                                <a href={resolveAssetUrl(selectedDoc.pdfUrl)} target="_blank" rel="noreferrer" className="btn btn-secondary" style={{ flex: 1, textAlign: 'center' }}>
+                                <button type="button" onClick={() => viewDocumentPdf(selectedDoc)} className="btn btn-secondary" style={{ flex: 1, textAlign: 'center' }}>
                                     <FileText size={15} /> View PDF
-                                </a>
+                                </button>
                                 <button className="btn btn-primary" onClick={() => setShowChat(!showChat)} style={{ flex: 1 }}>
                                     <MessageCircle size={15} /> {showChat ? 'Hide Chat' : 'Ask AI'}
                                 </button>
@@ -415,8 +481,8 @@ export default function AnalyzerPage() {
             {/* Delete Confirmation Modal */}
             {
                 docToDelete && (
-                    <div className="modal-overlay" onClick={() => setDocToDelete(null)}>
-                        <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: 400, textAlign: 'center' }}>
+                    <div className="modal-overlay" role="dialog" aria-modal="true" onClick={() => setDocToDelete(null)}>
+                        <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 400, textAlign: 'center' }}>
                             <div style={{ padding: '24px', background: 'var(--bg-glass)' }}>
                                 <div style={{
                                     width: 64, height: 64, borderRadius: '50%', background: 'rgba(239, 68, 68, 0.1)',

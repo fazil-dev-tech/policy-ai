@@ -14,6 +14,7 @@ export default function BrowserShieldPage() {
     const [scans, setScans] = useState([]);
     const [verifiedDomains, setVerifiedDomains] = useState([]);
     const [scamReports, setScamReports] = useState([]);
+    const [loading, setLoading] = useState(true);
 
     const [reportForm, setReportForm] = useState({ url: '', category: 'phishing', description: '' });
 
@@ -31,12 +32,19 @@ export default function BrowserShieldPage() {
             setVerifiedDomains(domainsRes.data.domains || []);
             setScans(scansRes.data.scans || []);
             setScamReports(reportsRes.data.reports || []);
-        } catch {}
+        } catch (err) {
+            toast.error(err.response?.data?.error || 'Failed to load Browser Shield data');
+        } finally {
+            setLoading(false);
+        }
     };
 
     const handleCheckUrl = async (e) => {
         e.preventDefault();
-        if (!testUrl.trim()) return;
+        if (!testUrl.trim()) {
+            toast.error('Enter a URL or domain to check');
+            return;
+        }
         setChecking(true);
         try {
             const { data } = await api.post('/security/check-url', {
@@ -55,16 +63,23 @@ export default function BrowserShieldPage() {
 
     const handleSubmitScam = async (e) => {
         e.preventDefault();
-        if (!reportForm.url.trim()) return;
+        if (!reportForm.url.trim()) {
+            toast.error('Enter a suspicious URL or domain to report');
+            return;
+        }
         try {
             const { data } = await api.post('/security/scam-reports', reportForm);
             toast.success(data.message || 'Scam report submitted!');
             setReportForm({ url: '', category: 'phishing', description: '' });
             loadShieldData();
-        } catch {
-            toast.error('Failed to submit scam report');
+        } catch (err) {
+            toast.error(err.response?.data?.error || 'Failed to submit scam report');
         }
     };
+
+    if (loading) {
+        return <div className="loading-spinner"><div className="spinner" /></div>;
+    }
 
     return (
         <div>
@@ -94,7 +109,7 @@ export default function BrowserShieldPage() {
                 <div className="card" style={{ padding: 20, border: '1px solid rgba(220,38,38,0.28)', background: 'rgba(254,242,242,0.65)' }}>
                     <h3 style={{ marginBottom: 10, color: 'var(--danger)' }}><PhoneCall size={17} /> Cyber Scam / Reverse-UPI Golden Hour</h3>
                     <p style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6, marginBottom: 10 }}>
-                        Never enter your UPI PIN to <em>receive</em> a claim refund or install <code>.apk</code> files shared on WhatsApp/Gmail (`Challan_Update.apk`, `Policy_KYC.apk`).
+                        Never enter your UPI PIN to <em>receive</em> a claim refund or install <code>.apk</code> files shared on WhatsApp/Gmail (<code>Challan_Update.apk</code>, <code>Policy_KYC.apk</code>).
                     </p>
                     <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--danger)' }}>
                         Dial National Cybercrime Helpline: 1930 · cybercrime.gov.in
@@ -119,7 +134,7 @@ export default function BrowserShieldPage() {
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
                                 <strong>{verdict.domain || verdict.url}</strong>
                                 <span className={`badge ${verdict.status === 'threat' ? 'badge-danger' : verdict.status === 'suspicious' ? 'badge-warning' : 'badge-success'}`}>
-                                    {verdict.status.toUpperCase()} ({verdict.riskScore}/100)
+                                    {(verdict.status || 'unknown').toUpperCase()} ({verdict.riskScore ?? 0}/100)
                                 </span>
                             </div>
                             <ul style={{ margin: '4px 0 0 18px', fontSize: 12 }}>
@@ -154,13 +169,15 @@ export default function BrowserShieldPage() {
                         <table className="table">
                             <thead><tr><th>Provider</th><th>Domain</th><th>Category</th></tr></thead>
                             <tbody>
-                                {verifiedDomains.map((d) => (
+                                {verifiedDomains.length > 0 ? verifiedDomains.map((d) => (
                                     <tr key={d.id}>
                                         <td style={{ fontWeight: 600 }}>{d.provider_name}</td>
                                         <td><code>{d.domain}</code></td>
                                         <td><span className="badge badge-success">{d.category}</span></td>
                                     </tr>
-                                ))}
+                                )) : (
+                                    <tr><td colSpan={3} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>No verified domains found yet.</td></tr>
+                                )}
                             </tbody>
                         </table>
                     </div>
@@ -172,26 +189,32 @@ export default function BrowserShieldPage() {
                         <table className="table">
                             <thead><tr><th>Domain</th><th>Surface</th><th>Verdict</th><th>Score</th></tr></thead>
                             <tbody>
-                                {scans.map((s) => (
-                                    <tr key={s.id}>
-                                        <td><code>{s.domain}</code></td>
-                                        <td>{s.source_surface}</td>
-                                        <td>
-                                            <span className={`badge ${s.status === 'threat' ? 'badge-danger' : s.status === 'suspicious' ? 'badge-warning' : 'badge-success'}`}>
-                                                {s.status}
-                                            </span>
-                                        </td>
-                                        <td>{s.risk_score}/100</td>
-                                    </tr>
-                                ))}
-                                {scamReports.slice(0, 5).map((r) => (
-                                    <tr key={r.id}>
-                                        <td><code>{r.domain}</code></td>
-                                        <td>{r.category}</td>
-                                        <td><span className={`badge ${r.moderation_status === 'verified' ? 'badge-danger' : 'badge-warning'}`}>{r.moderation_status}</span></td>
-                                        <td>Community</td>
-                                    </tr>
-                                ))}
+                                {scans.length === 0 && scamReports.length === 0 ? (
+                                    <tr><td colSpan={4} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>No scans or community alerts recorded yet.</td></tr>
+                                ) : (
+                                    <>
+                                        {scans.map((s) => (
+                                            <tr key={s.id}>
+                                                <td><code>{s.domain}</code></td>
+                                                <td>{s.source_surface}</td>
+                                                <td>
+                                                    <span className={`badge ${s.status === 'threat' ? 'badge-danger' : s.status === 'suspicious' ? 'badge-warning' : 'badge-success'}`}>
+                                                        {s.status}
+                                                    </span>
+                                                </td>
+                                                <td>{s.risk_score}/100</td>
+                                            </tr>
+                                        ))}
+                                        {scamReports.slice(0, 5).map((r) => (
+                                            <tr key={r.id}>
+                                                <td><code>{r.domain}</code></td>
+                                                <td>{r.category}</td>
+                                                <td><span className={`badge ${r.moderation_status === 'verified' ? 'badge-danger' : 'badge-warning'}`}>{r.moderation_status}</span></td>
+                                                <td>Community</td>
+                                            </tr>
+                                        ))}
+                                    </>
+                                )}
                             </tbody>
                         </table>
                     </div>

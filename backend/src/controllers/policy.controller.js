@@ -34,7 +34,23 @@ const enrichAndMapPolicy = (row, signedUrl = null) => {
 const analyzeAndStorePolicyBuffer = async ({ userId, buffer, mimeType, originalname, body = {}, preUploadedStoragePath = null }) => {
     const magic = storageService.validateMagicBytes(buffer, mimeType);
     if (!magic.valid) {
-        throw new Error(magic.reason || 'Invalid uploaded file');
+        const err = new Error(magic.reason || 'Invalid uploaded file');
+        err.statusCode = 400;
+        throw err;
+    }
+
+    if (body.familyMemberId) {
+        const { data: famOwned } = await supabaseAdmin
+            .from('family_members')
+            .select('id')
+            .eq('id', body.familyMemberId)
+            .eq('user_id', userId)
+            .maybeSingle();
+        if (!famOwned) {
+            const err = new Error('Selected family member not found for this account');
+            err.statusCode = 403;
+            throw err;
+        }
     }
 
     let extracted;
@@ -45,7 +61,6 @@ const analyzeAndStorePolicyBuffer = async ({ userId, buffer, mimeType, originaln
         parsedPdf = await pdfParser.parsePdfWithLayout(buffer);
         if (parsedPdf.isLikelyScanned) {
             isScannedOrPartial = true;
-            // Fallback deterministic extraction without hard-failing when possible
             extracted = {
                 policyNumber: parsedPdf.hints.policyNumber || '',
                 providerName: body.providerName || 'Scanned Policy (Manual Review Recommended)',
@@ -54,7 +69,7 @@ const analyzeAndStorePolicyBuffer = async ({ userId, buffer, mimeType, originaln
                 helplineNumber: parsedPdf.hints.helplineNumber || '',
                 overview: 'This PDF appears scanned or image-based with minimal embedded text.',
                 simpleSummary:
-                    'Scanned/image-only PDF detected. Please re-upload a digital PDF or use Claim Intake multi-image OCR to parse photographed pages with Vision AI.',
+                    'Scanned/image-only PDF detected. Please re-upload a digital PDF or photograph pages as JPG/PNG for automatic Vision OCR extraction.',
                 coverage: 'Verify Policy Schedule page manually or upload clear page photos.',
                 exclusions: 'Cannot read exclusions reliably from non-selectable scanned PDF.',
                 claimProcedure: 'Contact your insurer toll-free helpline before hospitalization.',
@@ -67,7 +82,6 @@ const analyzeAndStorePolicyBuffer = async ({ userId, buffer, mimeType, originaln
             extracted = await geminiService.extractPolicyInfo(parsedPdf.fullText, parsedPdf.hints);
         }
     } else {
-        // Image upload (e.g., E-card / policy page photo) routed automatically through OpenRouter Vision!
         isScannedOrPartial = true;
         extracted = await geminiService.extractPolicyFromScannedImages([
             { mimeType: magic.detectedMime, base64: buffer.toString('base64') },
@@ -134,8 +148,8 @@ const analyzeAndStorePolicyBuffer = async ({ userId, buffer, mimeType, originaln
 
     const { data: created, error } = await supabaseAdmin.from('policies').insert(insertPayload).select().single();
     if (error) {
-        if (!preUploadedStoragePath) await storageService.deleteStorageFile(storagePath);
-        throw new Error(`Failed to save policy: ${error.message}`);
+        await storageService.deleteStorageFile(storagePath).catch(() => {});
+        throw error;
     }
 
     if (parsedPdf && parsedPdf.pages?.length) {
@@ -149,16 +163,26 @@ const analyzeAndStorePolicyBuffer = async ({ userId, buffer, mimeType, originaln
     const signedUrl = await storageService.createSignedUrl(storagePath);
     const mapped = enrichAndMapPolicy(created, signedUrl);
 
-    fraudService.analyzePolicyFraud(mapped).then(async (result) => {
-        if (result.overallScore > 0) {
-            const updatedScore = Math.max(0, Math.min(100, 100 - result.overallScore));
-            const { error: updateErr } = await supabaseAdmin
-                .from('policies')
-                .update({ verification_score: updatedScore })
-                .eq('id', created.id);
-            if (updateErr) logger.error('Failed to update fraud score:', updateErr.message);
+    // Run fraud check within a strict short window before returning so Vercel serverless doesn't freeze mid-update
+    try {
+        const fraudRes = await Promise.race([
+            fraudService.analyzePolicyFraud(mapped),
+            new Promise((resolve) => setTimeout(() => resolve(null), 2500)),
+        ]);
+        if (fraudRes && fraudRes.overallScore > 0) {
+            const fraudCeiling = Math.max(0, Math.min(100, 100 - fraudRes.overallScore));
+            const updatedScore = Math.min(verificationScore, fraudCeiling);
+            if (updatedScore !== verificationScore) {
+                const { error: updateErr } = await supabaseAdmin
+                    .from('policies')
+                    .update({ verification_score: updatedScore })
+                    .eq('id', created.id);
+                if (!updateErr) mapped.verificationScore = updatedScore;
+            }
         }
-    });
+    } catch (err) {
+        logger.warn('Non-fatal fraud check error on upload:', err.message);
+    }
 
     return mapped;
 };
@@ -182,10 +206,7 @@ const uploadPolicy = async (req, res, next) => {
 
         // Vercel >4.5 MB Signed-Storage Direct Upload fallback
         if (req.body?.storagePath) {
-            const storagePath = String(req.body.storagePath);
-            if (!storagePath.startsWith(`${req.user.id}/`)) {
-                return res.status(403).json({ error: 'Invalid storage path ownership' });
-            }
+            const storagePath = storageService.assertSafeUserStoragePath(req.user.id, req.body.storagePath);
             const buffer = await storageService.downloadBuffer(storagePath);
             const policy = await analyzeAndStorePolicyBuffer({
                 userId: req.user.id,
@@ -235,8 +256,8 @@ const getUserPolicies = async (req, res, next) => {
         const to = from + limit - 1;
 
         let query = supabaseAdmin.from('policies').select('*', { count: 'exact' }).eq('user_id', req.user.id);
-        if (status) query = query.eq('status', status);
-        if (type) query = query.eq('policy_type', type);
+        if (status && status !== 'all') query = query.eq('status', String(status));
+        if (type && type !== 'all') query = query.eq('policy_type', String(type));
 
         const { data, count, error } = await query.order('created_at', { ascending: false }).range(from, to);
         if (error) return next(error);
@@ -303,6 +324,8 @@ const getPolicyInsights = async (req, res, next) => {
     }
 };
 
+const VALID_FOLLOWUP_CHANNELS = ['agent', 'broker', 'bank', 'online', 'direct', 'other'];
+
 const compareRenewalPolicy = async (req, res, next) => {
     try {
         const { data: oldPolicy, error } = await supabaseAdmin
@@ -314,12 +337,32 @@ const compareRenewalPolicy = async (req, res, next) => {
 
         if (error) return next(error);
         if (!oldPolicy) return res.status(404).json({ error: 'Original policy not found' });
-        if (!req.file) return res.status(400).json({ error: 'Upload renewal policy PDF to compare' });
 
-        const parsed = await pdfParser.parsePdfWithLayout(req.file.buffer);
-        const renewalExtracted = parsed.isLikelyScanned
-            ? { overview: 'Scanned renewal PDF', simpleSummary: 'Scanned renewal uploaded', coverageAmount: oldPolicy.coverage_amount }
-            : await geminiService.extractPolicyInfo(parsed.fullText, parsed.hints);
+        let buffer = req.file?.buffer;
+        let originalname = req.file?.originalname || req.body?.fileName || 'renewal.pdf';
+        let mimeType = req.file?.mimetype || req.body?.mimeType || 'application/pdf';
+        let preUploadedPath = null;
+
+        if (!buffer && req.body?.storagePath) {
+            preUploadedPath = storageService.assertSafeUserStoragePath(req.user.id, req.body.storagePath);
+            buffer = await storageService.downloadBuffer(preUploadedPath);
+        }
+        if (!buffer) return res.status(400).json({ error: 'Upload renewal policy PDF to compare' });
+
+        const magic = storageService.validateMagicBytes(buffer, mimeType);
+        if (!magic.valid) return res.status(400).json({ error: magic.reason });
+
+        let renewalExtracted;
+        if (magic.detectedMime === 'application/pdf') {
+            const parsed = await pdfParser.parsePdfWithLayout(buffer);
+            renewalExtracted = parsed.isLikelyScanned
+                ? { overview: 'Scanned renewal PDF', simpleSummary: 'Scanned renewal uploaded', coverageAmount: oldPolicy.coverage_amount }
+                : await geminiService.extractPolicyInfo(parsed.fullText, parsed.hints);
+        } else {
+            renewalExtracted = await geminiService.extractPolicyFromScannedImages([
+                { mimeType: magic.detectedMime, base64: buffer.toString('base64') },
+            ]);
+        }
 
         const diffs = claimEngine.comparePolicyRenewal(
             oldPolicy.ai_summary,
@@ -330,16 +373,17 @@ const compareRenewalPolicy = async (req, res, next) => {
 
         const diffPayload = {
             comparedAt: new Date().toISOString(),
-            renewalFileName: req.file.originalname,
+            renewalFileName: originalname,
             renewalPolicyNumber: renewalExtracted.policyNumber || oldPolicy.policy_number,
             diffs,
         };
 
-        await supabaseAdmin
+        const { error: updateErr } = await supabaseAdmin
             .from('policies')
             .update({ renewal_diff: diffPayload })
             .eq('id', oldPolicy.id)
             .eq('user_id', req.user.id);
+        if (updateErr) return next(updateErr);
 
         res.json({ renewalDiff: diffPayload });
     } catch (error) {
@@ -359,7 +403,8 @@ const auditAgentFollowup = async (req, res, next) => {
         if (error) return next(error);
         if (!policy) return res.status(404).json({ error: 'Policy not found' });
 
-        const { agentName = '', intermediaryCode = '', channel = 'agent', promisedTerms = {} } = req.body;
+        const { agentName = '', intermediaryCode = '', channel = 'agent', promisedTerms = {} } = req.body || {};
+        const safeChannel = normalizeEnum(channel, VALID_FOLLOWUP_CHANNELS, 'agent');
         const mappedPolicy = enrichAndMapPolicy(policy);
         const audit = claimEngine.auditAgentPromise(promisedTerms, mappedPolicy);
 
@@ -368,9 +413,9 @@ const auditAgentFollowup = async (req, res, next) => {
             .insert({
                 user_id: req.user.id,
                 policy_id: policy.id,
-                agent_name: agentName,
-                intermediary_code: intermediaryCode,
-                channel,
+                agent_name: String(agentName || '').slice(0, 120),
+                intermediary_code: String(intermediaryCode || '').slice(0, 60),
+                channel: safeChannel,
                 promised_terms: promisedTerms,
                 discrepancy_report: audit.discrepancies,
                 status: audit.status,
@@ -381,6 +426,31 @@ const auditAgentFollowup = async (req, res, next) => {
         if (insErr) return next(insErr);
 
         res.status(201).json({ followup: record, audit });
+    } catch (error) {
+        next(error);
+    }
+};
+
+const downloadPolicyFile = async (req, res, next) => {
+    try {
+        const { data: policy, error } = await supabaseAdmin
+            .from('policies')
+            .select('id, policy_number, storage_path')
+            .eq('id', req.params.id)
+            .eq('user_id', req.user.id)
+            .maybeSingle();
+
+        if (error) return next(error);
+        if (!policy || !policy.storage_path) return res.status(404).json({ error: 'Policy file not found' });
+
+        const buffer = await storageService.downloadBuffer(policy.storage_path);
+        const magic = storageService.validateMagicBytes(buffer, '');
+        const contentType = magic.detectedMime || 'application/pdf';
+        const ext = contentType === 'application/pdf' ? 'pdf' : contentType.split('/')[1] || 'bin';
+        const safeName = String(policy.policy_number || 'Policy').replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 60);
+        res.setHeader('Content-Type', contentType);
+        res.setHeader('Content-Disposition', `inline; filename="${safeName}.${ext}"`);
+        res.send(buffer);
     } catch (error) {
         next(error);
     }
@@ -404,14 +474,16 @@ const downloadEmergencyCardPdf = async (req, res, next) => {
                 .from('family_members')
                 .select('*')
                 .eq('id', policy.family_member_id)
+                .eq('user_id', req.user.id)
                 .maybeSingle();
             member = fam;
         }
 
         const cis = claimEngine.buildCisCard(policy, policy.structured_terms || {});
         const pdfBuf = await pdfGenerator.generateEmergencyCardPdf({ policy, cis, member });
+        const safeFileNum = String(policy.policy_number || 'Policy').replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 60);
         res.setHeader('Content-Type', 'application/pdf');
-        res.setHeader('Content-Disposition', `attachment; filename="Emergency_Card_${policy.policy_number || 'Policy'}.pdf"`);
+        res.setHeader('Content-Disposition', `attachment; filename="Emergency_Card_${safeFileNum}.pdf"`);
         res.send(pdfBuf);
     } catch (error) {
         next(error);
@@ -447,6 +519,7 @@ module.exports = {
     getPolicyInsights,
     compareRenewalPolicy,
     auditAgentFollowup,
+    downloadPolicyFile,
     downloadEmergencyCardPdf,
     deletePolicy,
 };

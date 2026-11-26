@@ -20,5 +20,15 @@ export default defineConfig({
         outDir: 'dist',
         sourcemap: false,
         minify: 'esbuild',
+        chunkSizeWarningLimit: 900,
+        rollupOptions: {
+            output: {
+                manualChunks: {
+                    'react-vendor': ['react', 'react-dom', 'react-router-dom'],
+                    'three-vendor': ['three', '@react-three/fiber', '@react-three/drei'],
+                    'charts-vendor': ['recharts', 'lucide-react'],
+                },
+            },
+        },
     },
 });

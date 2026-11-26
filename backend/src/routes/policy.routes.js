@@ -6,6 +6,7 @@ const {
     getPolicyInsights,
     compareRenewalPolicy,
     auditAgentFollowup,
+    downloadPolicyFile,
     downloadEmergencyCardPdf,
     deletePolicy,
 } = require('../controllers/policy.controller');
@@ -19,9 +20,10 @@ const router = express.Router();
 router.post('/upload', authenticate, uploadLimiter, upload.singleMixed.single('file'), uploadPolicy);
 router.get('/', authenticate, getUserPolicies);
 router.get('/:id/insights', authenticate, getPolicyInsights);
-router.post('/:id/renewal-diff', authenticate, uploadLimiter, upload.single('file'), compareRenewalPolicy);
+router.post('/:id/renewal-diff', authenticate, uploadLimiter, upload.singleMixed.single('file'), compareRenewalPolicy);
 router.post('/:id/agent-audit', authenticate, auditAgentFollowup);
 router.get('/:id/emergency-card.pdf', authenticate, downloadEmergencyCardPdf);
+router.get('/:id/file', authenticate, downloadPolicyFile);
 router.get('/:id', authenticate, getPolicy);
 router.delete('/:id', authenticate, deletePolicy);
 

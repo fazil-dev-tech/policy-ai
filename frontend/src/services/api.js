@@ -16,19 +16,31 @@ export const resolveAssetUrl = (url) => {
     return `${base}${url}`;
 };
 
+const inferMimeFromFile = (file) => {
+    const raw = String(file?.type || '').trim().toLowerCase().split(';')[0];
+    if (raw === 'image/jpg') return 'image/jpeg';
+    if (['application/pdf', 'image/jpeg', 'image/png', 'image/webp'].includes(raw)) return raw;
+    const name = String(file?.name || '').toLowerCase();
+    if (name.endsWith('.jpg') || name.endsWith('.jpeg')) return 'image/jpeg';
+    if (name.endsWith('.png')) return 'image/png';
+    if (name.endsWith('.webp')) return 'image/webp';
+    return 'application/pdf';
+};
+
 /**
  * Uploads large files via Supabase Signed URL when running on Vercel (>4 MB)
  * so the 4.5 MB Serverless payload cap never blocks multi-file PDF/photo uploads.
  */
 export const uploadDirectToSignedStorage = async (file, folder = 'incidents') => {
+    const mimeType = inferMimeFromFile(file);
     const { data } = await api.post('/storage/signed-upload', {
         fileName: file.name,
-        mimeType: file.type || 'application/pdf',
+        mimeType,
         folder,
     });
     const putResp = await fetch(data.signedUrl, {
         method: 'PUT',
-        headers: { 'Content-Type': file.type || 'application/octet-stream' },
+        headers: { 'Content-Type': mimeType },
         body: file,
     });
     if (!putResp.ok) {
@@ -37,7 +49,7 @@ export const uploadDirectToSignedStorage = async (file, folder = 'incidents') =>
     return {
         storagePath: data.storagePath,
         fileName: file.name,
-        mimeType: file.type || 'application/pdf',
+        mimeType,
         fileSize: file.size,
     };
 };
@@ -63,38 +75,46 @@ api.interceptors.request.use(
     (error) => Promise.reject(error)
 );
 
+// Single-flight refresh lock prevents parallel Promise.all calls from racing single-use Supabase refresh tokens
+let refreshPromise = null;
+
+const refreshAccessTokenSingleFlight = async () => {
+    if (refreshPromise) return refreshPromise;
+    refreshPromise = (async () => {
+        if (supabase) {
+            const { data, error: refreshErr } = await supabase.auth.refreshSession();
+            if (!refreshErr && data?.session?.access_token) {
+                localStorage.setItem('accessToken', data.session.access_token);
+                if (data.session.refresh_token) {
+                    localStorage.setItem('refreshToken', data.session.refresh_token);
+                }
+                return data.session.access_token;
+            }
+        }
+        const refreshToken = localStorage.getItem('refreshToken');
+        if (!refreshToken) throw new Error('No refresh token');
+        const baseURL = import.meta.env.VITE_API_URL || '/api';
+        const { data } = await axios.post(`${baseURL}/auth/refresh`, { refreshToken });
+        localStorage.setItem('accessToken', data.accessToken);
+        localStorage.setItem('refreshToken', data.refreshToken);
+        return data.accessToken;
+    })().finally(() => {
+        refreshPromise = null;
+    });
+    return refreshPromise;
+};
+
 api.interceptors.response.use(
     (response) => response,
     async (error) => {
         const originalRequest = error.config;
+        const reqUrl = String(originalRequest?.url || '');
+        const isAuthEndpoint = /\/auth\/(login|register|send-otp|verify-otp|refresh)/i.test(reqUrl);
 
-        if (error.response?.status === 401 && !originalRequest?._retry) {
+        if (error.response?.status === 401 && !isAuthEndpoint && !originalRequest?._retry) {
             originalRequest._retry = true;
-
             try {
-                let newAccessToken = null;
-
-                if (supabase) {
-                    const { data, error: refreshErr } = await supabase.auth.refreshSession();
-                    if (!refreshErr && data?.session?.access_token) {
-                        newAccessToken = data.session.access_token;
-                        localStorage.setItem('accessToken', newAccessToken);
-                        if (data.session.refresh_token) {
-                            localStorage.setItem('refreshToken', data.session.refresh_token);
-                        }
-                    }
-                }
-
-                if (!newAccessToken) {
-                    const refreshToken = localStorage.getItem('refreshToken');
-                    if (!refreshToken) throw new Error('No refresh token');
-                    const baseURL = import.meta.env.VITE_API_URL || '/api';
-                    const { data } = await axios.post(`${baseURL}/auth/refresh`, { refreshToken });
-                    newAccessToken = data.accessToken;
-                    localStorage.setItem('accessToken', data.accessToken);
-                    localStorage.setItem('refreshToken', data.refreshToken);
-                }
-
+                const newAccessToken = await refreshAccessTokenSingleFlight();
                 originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
                 return api(originalRequest);
             } catch (refreshError) {

@@ -13,6 +13,22 @@ const ALLOWED_MIMES = [
     'image/webp',
 ];
 
+const normalizeInputMime = (mimeType = '') => {
+    const clean = String(mimeType || '').trim().toLowerCase().split(';')[0];
+    if (clean === 'image/jpg') return 'image/jpeg';
+    return clean;
+};
+
+const assertSafeUserStoragePath = (userId, storagePath) => {
+    const p = String(storagePath || '').trim();
+    if (!p || !p.startsWith(`${userId}/`) || p.includes('..') || p.includes('\\')) {
+        const err = new Error('Forbidden or malformed storage path');
+        err.statusCode = 403;
+        throw err;
+    }
+    return p;
+};
+
 const sanitizeFilename = (originalname = 'document.pdf') => {
     const ext = path.extname(originalname).toLowerCase() || '.pdf';
     const base = path
@@ -86,8 +102,24 @@ const uploadPdfBuffer = async ({ userId, folder, originalname, buffer }) => {
 };
 
 const createSignedUploadUrl = async ({ userId, folder = 'incidents', originalname, mimeType = 'application/pdf' }) => {
-    if (!ALLOWED_MIMES.includes(mimeType)) {
-        throw new Error(`Unsupported MIME type for signed upload: ${mimeType}`);
+    let normalizedMime = normalizeInputMime(mimeType);
+    if (!normalizedMime || normalizedMime === 'application/octet-stream') {
+        const ext = path.extname(originalname || '').toLowerCase();
+        if (ext === '.pdf') normalizedMime = 'application/pdf';
+        else if (ext === '.jpg' || ext === '.jpeg') normalizedMime = 'image/jpeg';
+        else if (ext === '.png') normalizedMime = 'image/png';
+        else if (ext === '.webp') normalizedMime = 'image/webp';
+    }
+    if (!ALLOWED_MIMES.includes(normalizedMime)) {
+        const err = new Error(`Unsupported MIME type for signed upload: ${mimeType}`);
+        err.statusCode = 400;
+        throw err;
+    }
+    const ext = path.extname(originalname || '').toLowerCase();
+    if (!['.pdf', '.jpg', '.jpeg', '.png', '.webp'].includes(ext)) {
+        const err = new Error('Unsupported file extension for signed upload');
+        err.statusCode = 400;
+        throw err;
     }
     const filename = sanitizeFilename(originalname);
     const storagePath = `${userId}/${folder}/${filename}`;

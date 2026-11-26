@@ -27,11 +27,11 @@ router.get('/incidents', authenticate, getUserIncidents);
 router.get('/incidents/:id/claim-guide.pdf', authenticate, downloadClaimGuidePdf);
 
 // Vehicle Damage AI
-router.post('/damage/analyze', authenticate, uploadLimiter, upload.multiEvidence.array('photos', 6), analyzeVehicleDamageEndpoint);
+router.post('/damage/analyze', authenticate, uploadLimiter, upload.imagesOnly.array('photos', 6), analyzeVehicleDamageEndpoint);
 router.get('/damage', authenticate, getVehicleDamageReports);
 
 // Settlement Shortfall Decoder & GRO Grievance Letter (accepts optional PDF/image sheet OR JSON)
-router.post('/settlements/decode', authenticate, upload.singleMixed.single('file'), decodeSettlementShortfall);
+router.post('/settlements/decode', authenticate, uploadLimiter, upload.singleMixed.single('file'), decodeSettlementShortfall);
 router.get('/settlements', authenticate, getUserSettlements);
 router.get('/settlements/:id/grievance.pdf', authenticate, downloadGrievancePdf);
 

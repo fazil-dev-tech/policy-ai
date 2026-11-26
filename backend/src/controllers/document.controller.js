@@ -8,6 +8,7 @@ const logger = require('../utils/logger');
 const VALID_DOC_TYPES = ['contract', 'invoice', 'report', 'letter', 'legal', 'general'];
 
 const uploadDocument = async (req, res, next) => {
+    let newlyUploadedPath = null;
     try {
         let buffer = req.file?.buffer;
         let originalName = req.file?.originalname || req.body?.fileName || 'document.pdf';
@@ -15,10 +16,7 @@ const uploadDocument = async (req, res, next) => {
         let preUploadedPath = null;
 
         if (!buffer && req.body?.storagePath) {
-            preUploadedPath = String(req.body.storagePath);
-            if (!preUploadedPath.startsWith(`${req.user.id}/`)) {
-                return res.status(403).json({ error: 'Invalid storage path ownership' });
-            }
+            preUploadedPath = storageService.assertSafeUserStoragePath(req.user.id, req.body.storagePath);
             buffer = await storageService.downloadBuffer(preUploadedPath);
             fileSize = fileSize || buffer.length;
         }
@@ -27,28 +25,36 @@ const uploadDocument = async (req, res, next) => {
             return res.status(400).json({ error: 'No PDF file uploaded' });
         }
 
+        const magic = storageService.validateMagicBytes(buffer, 'application/pdf');
+        if (!magic.valid) {
+            if (preUploadedPath) await storageService.deleteStorageFile(preUploadedPath).catch(() => {});
+            return res.status(400).json({ error: magic.reason || 'Only valid PDF files are allowed' });
+        }
+
         const parsed = await pdfParser.parsePdfWithLayout(buffer);
         const pdfText = parsed.fullText || '';
 
         if (pdfText.trim().length < 20) {
+            if (preUploadedPath) await storageService.deleteStorageFile(preUploadedPath).catch(() => {});
             return res.status(400).json({
                 error: 'Could not extract sufficient text from PDF. The file may be scanned or empty.',
             });
         }
 
         const extracted = await documentService.extractDocumentInfo(pdfText);
-        const storagePath =
-            preUploadedPath ||
-            (await storageService.uploadPdfBuffer({
+        if (!preUploadedPath) {
+            newlyUploadedPath = await storageService.uploadPdfBuffer({
                 userId: req.user.id,
                 folder: 'documents',
                 originalname: originalName,
                 buffer,
-            }));
+            });
+        }
+        const storagePath = preUploadedPath || newlyUploadedPath;
 
         const docType = normalizeEnum(extracted.documentType, VALID_DOC_TYPES, 'general');
         const resolvedName =
-            extracted.documentName && extracted.documentName !== 'Unknown Document'
+            extracted.documentName && !['Unknown Document', 'Document Pending Manual Review'].includes(extracted.documentName)
                 ? extracted.documentName
                 : originalName || 'Untitled Document';
 
@@ -68,14 +74,14 @@ const uploadDocument = async (req, res, next) => {
                     riskFactors: extracted.riskFactors || [],
                     entities: extracted.entities || {},
                 },
-                status: 'analyzed',
+                status: extracted._aiFailed ? 'failed' : 'analyzed',
             })
             .select()
             .single();
 
         if (error) {
-            await storageService.deleteStorageFile(storagePath);
-            throw new Error(`Failed to save document: ${error.message}`);
+            await storageService.deleteStorageFile(storagePath).catch(() => {});
+            throw error;
         }
 
         const signedUrl = await storageService.createSignedUrl(storagePath);
@@ -86,6 +92,7 @@ const uploadDocument = async (req, res, next) => {
             document: mapDocument(created, signedUrl),
         });
     } catch (error) {
+        if (newlyUploadedPath) await storageService.deleteStorageFile(newlyUploadedPath).catch(() => {});
         next(error);
     }
 };
@@ -215,4 +222,26 @@ const chatWithDocument = async (req, res, next) => {
     }
 };
 
-module.exports = { uploadDocument, getUserDocuments, getDocument, deleteDocument, chatWithDocument };
+const downloadDocumentFile = async (req, res, next) => {
+    try {
+        const { data: doc, error } = await supabaseAdmin
+            .from('documents')
+            .select('id, document_name, storage_path')
+            .eq('id', req.params.id)
+            .eq('user_id', req.user.id)
+            .maybeSingle();
+
+        if (error) return next(error);
+        if (!doc || !doc.storage_path) return res.status(404).json({ error: 'Document file not found' });
+
+        const buffer = await storageService.downloadBuffer(doc.storage_path);
+        const safeName = String(doc.document_name || 'document').replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 60);
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename="${safeName}.pdf"`);
+        res.send(buffer);
+    } catch (error) {
+        next(error);
+    }
+};
+
+module.exports = { uploadDocument, getUserDocuments, getDocument, downloadDocumentFile, deleteDocument, chatWithDocument };

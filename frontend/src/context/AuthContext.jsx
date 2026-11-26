@@ -50,6 +50,7 @@ export const AuthProvider = ({ children }) => {
                             }
                             return;
                         } catch {
+                            await supabase.auth.signOut().catch(() => {});
                             clearStoredAuth();
                         }
                     }
@@ -59,8 +60,11 @@ export const AuthProvider = ({ children }) => {
                 const token = localStorage.getItem('accessToken');
                 if (stored && token) {
                     try {
-                        const parsed = JSON.parse(stored);
-                        if (mounted) setUser(parsed);
+                        const profile = await fetchBackendProfile(token);
+                        if (mounted) {
+                            localStorage.setItem('user', JSON.stringify(profile));
+                            setUser(profile);
+                        }
                     } catch {
                         clearStoredAuth();
                     }
@@ -72,12 +76,21 @@ export const AuthProvider = ({ children }) => {
 
         initAuth();
 
-        const authSub = supabase?.auth.onAuthStateChange((event, session) => {
+        const authSub = supabase?.auth.onAuthStateChange(async (event, session) => {
             if (event === 'SIGNED_OUT') {
                 clearStoredAuth();
                 if (mounted) setUser(null);
             } else if (session?.access_token) {
                 persistSession(session, null);
+                if (event === 'SIGNED_IN') {
+                    try {
+                        const profile = await fetchBackendProfile(session.access_token);
+                        if (mounted) {
+                            persistSession(session, profile);
+                            setUser(profile);
+                        }
+                    } catch {}
+                }
             }
         });
 
@@ -165,7 +178,7 @@ export const AuthProvider = ({ children }) => {
         if (supabase) {
             const { error } = await supabase.auth.signInWithOtp({
                 email: email.trim().toLowerCase(),
-                options: { shouldCreateUser: true },
+                options: { shouldCreateUser: false },
             });
             if (error) {
                 const err = new Error(error.message);
