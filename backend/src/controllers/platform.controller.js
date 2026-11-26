@@ -1,6 +1,5 @@
 const fs = require('fs');
 const path = require('path');
-const archiver = require('archiver');
 const { supabaseAdmin } = require('../config/supabase');
 const securityService = require('../services/security.service');
 const parinidhiService = require('../services/parinidhi.service');
@@ -151,9 +150,11 @@ const downloadExtensionZip = async (req, res, next) => {
 
         const extensionDir = path.join(__dirname, '..', '..', '..', 'extension');
         if (fs.existsSync(extensionDir)) {
+            const archiverMod = await import('archiver');
+            const archiverFn = archiverMod.default || archiverMod;
             res.setHeader('Content-Type', 'application/zip');
             res.setHeader('Content-Disposition', 'attachment; filename="policyguard-extension.zip"');
-            const createArchiver = typeof archiver === 'function' ? archiver : archiver.create;
+            const createArchiver = typeof archiverFn === 'function' ? archiverFn : archiverFn.create;
             const archive = createArchiver('zip', { zlib: { level: 9 } });
             archive.on('error', (err) => next(err));
             archive.pipe(res);

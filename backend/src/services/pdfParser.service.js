@@ -1,3 +1,4 @@
+const { pathToFileURL } = require('url');
 const { supabaseAdmin } = require('../config/supabase');
 const aiService = require('./ai.service');
 const logger = require('../utils/logger');
@@ -6,7 +7,18 @@ let pdfjsLibPromise = null;
 
 const getPdfJs = async () => {
     if (!pdfjsLibPromise) {
-        pdfjsLibPromise = import('pdfjs-dist/legacy/build/pdf.mjs');
+        pdfjsLibPromise = (async () => {
+            const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+            try {
+                const workerPath = require.resolve('pdfjs-dist/legacy/build/pdf.worker.mjs');
+                if (pdfjs.GlobalWorkerOptions) {
+                    pdfjs.GlobalWorkerOptions.workerSrc = pathToFileURL(workerPath).href;
+                }
+            } catch {
+                // Bundler / legacy fallback handles default relative worker resolution
+            }
+            return pdfjs;
+        })();
     }
     return pdfjsLibPromise;
 };
@@ -112,7 +124,7 @@ const extractDeterministicHints = (fullText = '') => {
 const parsePdfWithLayout = async (pdfBuffer) => {
     const pdfjs = await getPdfJs();
     const uint8 = new Uint8Array(pdfBuffer);
-    const loadingTask = pdfjs.getDocument({ data: uint8, verbosity: 0 });
+    const loadingTask = pdfjs.getDocument({ data: uint8, verbosity: 0, isEvalSupported: false });
     const doc = await loadingTask.promise;
 
     const pages = [];
