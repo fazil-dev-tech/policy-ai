@@ -14,7 +14,7 @@
 |  - Zod Input Validation, Helmet CSP, Cors Allowlist, Rate Limiters      |
 |  - Policy Vault & Table-Aware PDF Parser (pdfjs-dist + DPDP PII mask)   |
 |  - Deterministic IRDAI Engine (claimEngine.service.js)                  |
-|  - Parinidhi RAG + Standard Chat (free-first OpenRouter / Groq / Gemini)|
+|  - Parinidhi RAG + Standard Chat (free-first NVIDIA NIM / Groq / Gemini) |
 |  - Browser Shield Inspector (localRules + RDAP + VirusTotal + cache)    |
 |  - Storage Bridge (10MB signed URLs + magic-byte validation)            |
 +---------+-------------------------+--------------------------+----------+
@@ -22,7 +22,7 @@
           v                         v                          v
 +------------------+   +-------------------------+   +-------------------+
 | Supabase Stack   |   | Free-First AI & Search  |   | Python ML Sidecar |
-| - PostgreSQL+RLS |   | - OpenRouter (:free)    |   | - FastAPI (:8000) |
+| - PostgreSQL+RLS |   | - NVIDIA NIM (Free API) |   | - FastAPI (:8000) |
 | - Supabase Auth  |   | - Groq / Gemini / Puter |   | - OpenCV/Pillow + |
 | - Storage Bucket |   | - Tavily & Serper Live  |   |   sklearn scoring |
 |   (policy-files) |   | - VirusTotal + RDAP     |   |   (motor damage)  |
@@ -49,4 +49,4 @@
 - **Zero-LLM Math Policy**: Coverage scores, moratorium checks, room-rent deductions, motor depreciation, and grievance calculations execute deterministically in `backend/src/services/claimEngine.service.js`.
 - **Supabase RLS & Ownership Scoping**: Every user query explicitly filters by `req.user.id` and validates storage object paths with `assertSafeUserStoragePath`.
 - **Magic-Byte Inspection & Temp Cleanup**: Uploads are verified by binary header (`PDF`, `JPG`, `PNG`, `WEBP`) and temporary signed-storage uploads are deleted on error or completion.
-- **Cost-Safe AI Routing**: `AI_ALLOW_PAID=false` enforces `:free` OpenRouter models (`nvidia/nemotron-3.5-lightning:free` primary) and free fallback tiers unless explicitly enabled.
+- **Cost-Safe AI Routing**: `AI_ALLOW_PAID=false` enforces free NVIDIA NIM endpoints (`nvidia/nemotron-3.5-lightning-30b-a3b` primary with multi-key rotation) and free fallback tiers unless explicitly enabled.

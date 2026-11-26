@@ -1,18 +1,19 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { UserPlus, Eye, EyeOff, Shield, Zap, Lock, ArrowLeft } from 'lucide-react';
+import { UserPlus, Eye, EyeOff, Lock, ArrowLeft } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { Canvas } from '@react-three/fiber';
-import CanvasErrorBoundary from '../components/shared/CanvasErrorBoundary';
-import CyberCore from '../components/shared/CyberCore';
-import DataStreamField from '../components/shared/DataStreamField';
-import GridFloor from '../components/shared/GridFloor';
+import AuthBrandPanel from '../components/shared/AuthBrandPanel';
 import { SpotlightCard } from '../components/shared/MotionPrimitives';
 
 export default function RegisterPage() {
     const { register, verifyOtp } = useAuth();
     const navigate = useNavigate();
+    const location = useLocation();
+    const rawFrom = location.state?.from;
+    const postRegisterPath = (typeof rawFrom === 'string' && rawFrom.startsWith('/') && !rawFrom.startsWith('//') && rawFrom !== '/login' && rawFrom !== '/register')
+        ? rawFrom
+        : '/dashboard';
     const [form, setForm] = useState({ name: '', email: '', password: '', confirmPassword: '' });
     const [otp, setOtp] = useState('');
     const [needsVerification, setNeedsVerification] = useState(false);
@@ -33,7 +34,7 @@ export default function RegisterPage() {
                 toast.success('Account created! Check your email for the verification code.');
             } else {
                 toast.success('Account created successfully!');
-                navigate('/dashboard');
+                navigate(postRegisterPath, { replace: true });
             }
         } catch (err) {
             toast.error(err.response?.data?.error || err.message || 'Registration failed');
@@ -49,7 +50,7 @@ export default function RegisterPage() {
         try {
             await verifyOtp(form.email, otp, 'signup');
             toast.success('Email verified! Welcome to PolicyGuard AI.');
-            navigate('/dashboard');
+            navigate(postRegisterPath, { replace: true });
         } catch (err) {
             toast.error(err.response?.data?.error || err.message || 'Invalid verification code');
         } finally {
@@ -60,44 +61,13 @@ export default function RegisterPage() {
     return (
         <div className="auth-split-layout auth-obsidian-shell">
             {/* Left Editorial Brand Panel with Dedicated Centered 3D Canvas */}
-            <div className="auth-brand-panel auth-brand-dark">
-                <div className="auth-panel-canvas" aria-hidden="true">
-                    <CanvasErrorBoundary fallbackTitle="PolicyGuard Sign Up">
-                        <Canvas dpr={[1, 1.5]} camera={{ position: [0, 0.15, 9.8], fov: 44 }} gl={{ alpha: true, antialias: true }}>
-                            <ambientLight intensity={1.15} />
-                            <directionalLight position={[8, 9, 8]} intensity={1.65} color="#ffffff" />
-                            <directionalLight position={[-6, 6, 4]} intensity={1.45} color="#fb7185" />
-                            <pointLight position={[-8, -6, 4]} intensity={1.2} color="#22d3ee" />
-                            <CyberCore position={[0, 1.78, -0.5]} scale={0.66} active={needsVerification} />
-                            <DataStreamField active={needsVerification} color="#22d3ee" />
-                            <GridFloor colorPrimary={needsVerification ? '#22d3ee' : '#e11d48'} colorSecondary="#1e293b" opacity={0.22} y={-3.6} />
-                            <fog attach="fog" args={['#050814', 9, 24]} />
-                        </Canvas>
-                    </CanvasErrorBoundary>
-                </div>
-
-                <div className="auth-brand-inner auth-brand-dark-inner">
-                    <div className="auth-brand-badge">
-                        <span className="hero-live-dot" aria-hidden="true" />
-                        <span>FREE POLICYHOLDER VAULT</span>
-                    </div>
-                    <div className="auth-brand-logo-row">
-                        <span className="brand-emblem-dark auth-logo-mark-wrap">
-                            <img src="/logo.png" alt="PolicyGuard AI" className="auth-logo-mark" />
-                        </span>
-                        <div>
-                            <h1 className="auth-brand-name-obsidian">PolicyGuard AI</h1>
-                            <p className="auth-brand-tagline-obsidian">Free Insurance Clarity &amp; Claim Protection</p>
-                        </div>
-                    </div>
-
-                    <div className="auth-brand-features-obsidian">
-                        <div className="auth-brand-feature-obsidian"><Zap size={15} style={{ color: '#fb7185' }} /> <span>Page-Cited Policy &amp; Room-Rent Audit</span></div>
-                        <div className="auth-brand-feature-obsidian"><Shield size={15} style={{ color: '#22d3ee' }} /> <span>7-Scenario Payout Calculator</span></div>
-                        <div className="auth-brand-feature-obsidian"><Lock size={15} style={{ color: '#10b981' }} /> <span>Private Family Emergency Vault</span></div>
-                    </div>
-                </div>
-            </div>
+            <AuthBrandPanel
+                active={needsVerification}
+                badgeText="FREE POLICYHOLDER VAULT · INDIA"
+                tagline="Free Insurance Clarity · Health, Car & 2W Claims"
+                fallbackTitle="PolicyGuard Sign Up"
+                streamColor="#22d3ee"
+            />
 
             {/* Right Floating Crystal Glass Form Panel */}
             <div className="auth-form-panel auth-form-glass-stage">
@@ -199,7 +169,7 @@ export default function RegisterPage() {
                         </form>
                     )}
 
-                    <div className="auth-footer">Already have an account? <Link to="/login">Sign in</Link></div>
+                    <div className="auth-footer">Already have an account? <Link to="/login" state={location.state}>Sign in</Link></div>
                     <div className="auth-footer auth-footer-back">
                         <Link to="/" className="auth-back-link"><ArrowLeft size={14} /> Back to home</Link>
                     </div>

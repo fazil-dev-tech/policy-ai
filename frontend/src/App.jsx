@@ -39,6 +39,20 @@ const UnauthRedirect = () => {
     return <Navigate to="/login" state={{ from: redirectTarget }} replace />;
 };
 
+const AuthSuccessRedirect = () => {
+    const location = useLocation();
+    const rawFrom = location.state?.from;
+    const target =
+        typeof rawFrom === 'string' &&
+        rawFrom.startsWith('/') &&
+        !rawFrom.startsWith('//') &&
+        rawFrom !== '/login' &&
+        rawFrom !== '/register'
+            ? rawFrom
+            : '/dashboard';
+    return <Navigate to={target} replace />;
+};
+
 function App() {
     const { user, loading } = useAuth();
     const [mobileNavOpen, setMobileNavOpen] = useState(false);
@@ -83,6 +97,8 @@ function App() {
                             <Suspense fallback={<div className="loading-spinner"><div className="spinner" /></div>}>
                                 <Routes>
                                     <Route path="/" element={<Navigate to="/dashboard" replace />} />
+                                    <Route path="/login" element={<AuthSuccessRedirect />} />
+                                    <Route path="/register" element={<AuthSuccessRedirect />} />
                                     <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
                                     <Route path="/policies" element={<ProtectedRoute><PolicyPage /></ProtectedRoute>} />
                                     <Route path="/analyzer" element={<ProtectedRoute><AnalyzerPage /></ProtectedRoute>} />

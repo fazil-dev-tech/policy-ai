@@ -19,7 +19,7 @@ const {
     getSignedUploadUrl,
 } = require('../controllers/platform.controller');
 const { authenticate } = require('../middleware/auth');
-const { chatLimiter, securityLimiter } = require('../middleware/rateLimiter');
+const { securityLimiter } = require('../middleware/rateLimiter');
 const validate = require('../middleware/validate');
 
 const checkUrlSchema = z.object({
@@ -54,6 +54,7 @@ const parinidhiChatSchema = z.object({
         sessionId: z.string().optional().nullable(),
         mode: z.string().optional(),
         language: z.string().optional(),
+        aiModel: z.string().optional().nullable(),
     }),
 });
 
@@ -109,7 +110,7 @@ securityRouter.post('/scam-reports', validate(scamReportSchema), submitScamRepor
 securityRouter.get('/extension/download', downloadExtensionZip);
 
 const platformRouter = express.Router();
-platformRouter.post('/parinidhi/chat', authenticate, chatLimiter, validate(parinidhiChatSchema), chatWithParinidhi);
+platformRouter.post('/parinidhi/chat', authenticate, validate(parinidhiChatSchema), chatWithParinidhi);
 platformRouter.post('/research/live', authenticate, validate(liveResearchSchema), runLiveResearch);
 platformRouter.post('/research/verify-insurer', authenticate, validate(verifyInsurerSchema), verifyInsurerInfo);
 platformRouter.get('/research/benchmarks', authenticate, getBenchmarks);

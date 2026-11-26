@@ -2,7 +2,7 @@ const { supabaseAdmin } = require('../config/supabase');
 const grokService = require('./grok.service');
 const logger = require('../utils/logger');
 
-const analyzePolicyFraud = async (policyData) => {
+const analyzePolicyFraud = async (policyData, { skipAi = false } = {}) => {
     try {
         const ruleBasedFlags = [];
         let ruleBasedScore = 0;
@@ -35,7 +35,7 @@ const analyzePolicyFraud = async (policyData) => {
             ruleBasedScore += 20;
         }
 
-        const aiAnalysis = await grokService.analyzeFraud(policyData);
+        const aiAnalysis = skipAi ? null : await grokService.analyzeFraud(policyData);
         const aiUnknown = !aiAnalysis || aiAnalysis.riskLevel === 'unknown';
         const combinedScore = Math.min(
             100,
@@ -46,10 +46,10 @@ const analyzePolicyFraud = async (policyData) => {
             overallScore: combinedScore,
             riskLevel: combinedScore > 70 ? 'critical' : combinedScore > 40 ? 'high' : combinedScore > 20 ? 'medium' : 'low',
             ruleBasedFlags,
-            aiFlags: aiAnalysis.indicators || [],
-            aiAnomalies: aiAnalysis.anomalies || [],
-            recommendation: aiAnalysis.recommendation || 'No AI analysis available',
-            confidence: aiAnalysis.confidence || 0,
+            aiFlags: aiAnalysis?.indicators || [],
+            aiAnomalies: aiAnalysis?.anomalies || [],
+            recommendation: aiAnalysis?.recommendation || (ruleBasedFlags.length ? ruleBasedFlags.join('; ') : 'Deterministic schedule checks passed'),
+            confidence: aiAnalysis?.confidence || (skipAi ? 85 : 0),
         };
     } catch (error) {
         logger.error('Fraud analysis error:', error.message);

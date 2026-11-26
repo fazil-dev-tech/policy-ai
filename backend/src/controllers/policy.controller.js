@@ -163,12 +163,9 @@ const analyzeAndStorePolicyBuffer = async ({ userId, buffer, mimeType, originaln
     const signedUrl = await storageService.createSignedUrl(storagePath);
     const mapped = enrichAndMapPolicy(created, signedUrl);
 
-    // Run fraud check within a strict short window before returning so Vercel serverless doesn't freeze mid-update
+    // Run deterministic rule checks cleanly on upload without wasting extra LLM quota
     try {
-        const fraudRes = await Promise.race([
-            fraudService.analyzePolicyFraud(mapped),
-            new Promise((resolve) => setTimeout(() => resolve(null), 2500)),
-        ]);
+        const fraudRes = await fraudService.analyzePolicyFraud(mapped, { skipAi: true });
         if (fraudRes && fraudRes.overallScore > 0) {
             const fraudCeiling = Math.max(0, Math.min(100, 100 - fraudRes.overallScore));
             const updatedScore = Math.min(verificationScore, fraudCeiling);

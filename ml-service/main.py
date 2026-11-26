@@ -126,7 +126,7 @@ def assess_image_quality(bgr_img) -> dict:
     }
 
 
-def infer_damaged_zones_from_box(bgr_img, box_xyxy) -> List[dict]:
+def infer_damaged_zones_from_box(bgr_img, box_xyxy, vehicle_category: str = "car") -> List[dict]:
     """Heuristic surface anomaly detector inside detected vehicle bounding box."""
     import cv2
     import numpy as np
@@ -140,12 +140,47 @@ def infer_damaged_zones_from_box(bgr_img, box_xyxy) -> List[dict]:
     edges = cv2.Canny(gray, 80, 190)
     ch, cw = edges.shape[:2]
 
-    # Split car region into upper (hood/windshield), middle (doors/fender), lower (bumper)
+    # Split detected vehicle region into upper, middle, and lower damage zones
     lower_density = float(np.mean(edges[int(ch * 0.6):, :] > 0))
     mid_density = float(np.mean(edges[int(ch * 0.28):int(ch * 0.65), :] > 0))
     upper_density = float(np.mean(edges[:int(ch * 0.35), :] > 0))
 
     zones = []
+    if vehicle_category == "two_wheeler":
+        if lower_density > 0.08:
+            sev = "severe" if lower_density > 0.16 else "moderate"
+            zones.append({
+                "partKey": "front_mudguard",
+                "partLabel": "Front Mudguard / Fork Area",
+                "severity": sev,
+                "material": "plastic",
+                "action": "Replace" if sev == "severe" else "Repair / Repaint",
+                "damageDescription": f"High surface irregularity density ({round(lower_density * 100, 1)}%) in lower mudguard / fork zone",
+                "confidence": 70,
+            })
+        if mid_density > 0.09:
+            sev = "moderate" if mid_density < 0.17 else "severe"
+            zones.append({
+                "partKey": "fuel_tank",
+                "partLabel": "Fuel Tank / Side Cowl",
+                "severity": sev,
+                "material": "metal",
+                "action": "Dent & Repaint" if sev == "moderate" else "Replace",
+                "damageDescription": "Surface crease/dent edge cluster detected in mid tank/fairing zone",
+                "confidence": 68,
+            })
+        if upper_density > 0.10:
+            zones.append({
+                "partKey": "bike_headlamp",
+                "partLabel": "Headlamp & Visor Assembly",
+                "severity": "moderate",
+                "material": "plastic",
+                "action": "Repair / Replace",
+                "damageDescription": "Upper visor / headlamp cowl edge anomaly detected",
+                "confidence": 65,
+            })
+        return zones
+
     if lower_density > 0.085:
         sev = "severe" if lower_density > 0.16 else "moderate"
         zones.append({
@@ -224,8 +259,11 @@ async def analyze_damage(
 
     ImageFile.LOAD_TRUNCATED_IMAGES = True
     model, mode = get_yolo_model()
-    segment_map = {"hatchback": 0, "hatchback_sedan": 1, "sedan": 1, "suv": 2}
-    seg_code = segment_map.get(vehicle_segment.lower(), 1)
+    segment_map = {"hatchback": 0, "hatchback_sedan": 1, "sedan": 1, "suv": 2, "two_wheeler": 0}
+    seg_key = vehicle_segment.lower()
+    seg_code = segment_map.get(seg_key, 1)
+    requested_category = "two_wheeler" if seg_key in {"two_wheeler", "2w", "bike", "motorcycle", "scooter"} else "car"
+    detected_vehicle_category = requested_category
 
     vehicle_found = False
     quality_reports = []
@@ -254,6 +292,7 @@ async def analyze_damage(
             if mode == "coco_vehicle_guard":
                 # Evaluate ONLY the largest/primary vehicle bounding box per frame so background traffic is ignored
                 primary_box = None
+                primary_cls_id = None
                 best_score = -1.0
                 for box in boxes:
                     cls_id = int(box.cls[0])
@@ -265,9 +304,13 @@ async def analyze_damage(
                     if rank > best_score:
                         best_score = rank
                         primary_box = box.xyxy[0].tolist()
+                        primary_cls_id = cls_id
                 if primary_box is not None:
                     vehicle_found = True
-                    collected_parts.extend(infer_damaged_zones_from_box(bgr_np, primary_box))
+                    frame_category = "two_wheeler" if (primary_cls_id == 3 or requested_category == "two_wheeler") else "car"
+                    if primary_cls_id == 3:
+                        detected_vehicle_category = "two_wheeler"
+                    collected_parts.extend(infer_damaged_zones_from_box(bgr_np, primary_box, frame_category))
             else:
                 for box in boxes:
                     cls_id = int(box.cls[0])
@@ -313,6 +356,7 @@ async def analyze_damage(
 
     return {
         "is_vehicle": True,
+        "detected_vehicle_category": detected_vehicle_category,
         "detection_source": f"local_yolov8_sklearn ({mode})",
         "image_quality": {
             "rating": quality_reports[0]["rating"] if quality_reports else "good",

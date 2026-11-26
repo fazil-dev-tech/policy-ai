@@ -194,7 +194,7 @@ const downloadExtensionZip = async (req, res, next) => {
 // ─── Parinidhi Voice & Research Agent Endpoints ─────────────────────────────
 const chatWithParinidhi = async (req, res, next) => {
     try {
-        const { message, policyId, sessionId, mode, language } = req.body || {};
+        const { message, policyId, sessionId, mode, language, aiModel } = req.body || {};
         if (!message || !String(message).trim()) {
             return res.status(400).json({ error: 'message is required' });
         }
@@ -205,6 +205,7 @@ const chatWithParinidhi = async (req, res, next) => {
             sessionId: sessionId || null,
             mode: mode || 'auto',
             language: language || 'English',
+            aiModel: aiModel || '',
         });
         res.json(result);
     } catch (error) {
@@ -257,7 +258,17 @@ const getBenchmarks = async (req, res, next) => {
             supabaseAdmin.from('vehicle_repair_benchmarks').select('*').order('part_label', { ascending: true }),
             supabaseAdmin.from('medical_cost_benchmarks').select('*').order('procedure_name', { ascending: true }),
         ]);
-        res.json({ vehicleBenchmarks: vehicle || [], medicalBenchmarks: medical || [] });
+
+        const normalizedVehicle = (vehicle || []).map((row) => ({
+            ...row,
+            vehicle_category: row.vehicle_category || 'car',
+        }));
+        const hasTwoWheelerRows = normalizedVehicle.some((row) => row.vehicle_category === 'two_wheeler');
+        const mergedVehicle = hasTwoWheelerRows
+            ? normalizedVehicle
+            : [...normalizedVehicle, ...claimEngine.TWO_WHEELER_FALLBACK_BENCHMARKS];
+
+        res.json({ vehicleBenchmarks: mergedVehicle, medicalBenchmarks: medical || [] });
     } catch (error) {
         next(error);
     }

@@ -7,16 +7,31 @@ import {
     Settings, LogOut, TrendingUp, Sparkles, ShieldAlert, Users, X
 } from 'lucide-react';
 
-const navItems = [
-    { path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { path: '/policies', label: 'Policies', icon: FileText },
-    { path: '/analyzer', label: 'Document AI', icon: FileSearch },
-    { path: '/chat', label: 'Policy Chat', icon: MessageSquare },
-    { path: '/terminal', label: 'Parinidhi AI', icon: Sparkles },
-    { path: '/claims', label: 'Claims', icon: Shield },
-    { path: '/shield', label: 'Browser Shield', icon: ShieldAlert },
-    { path: '/family', label: 'Family & SOS', icon: Users },
-    { path: '/market', label: 'Market', icon: TrendingUp },
+const navSections = [
+    {
+        label: 'Overview',
+        items: [
+            { path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+            { path: '/policies', label: 'Policies', icon: FileText },
+        ],
+    },
+    {
+        label: 'AI & Claims',
+        items: [
+            { path: '/analyzer', label: 'Document AI', icon: FileSearch },
+            { path: '/chat', label: 'Policy Chat', icon: MessageSquare },
+            { path: '/terminal', label: 'Parinidhi AI', icon: Sparkles },
+            { path: '/claims', label: 'Claims & Motor AI', icon: Shield },
+        ],
+    },
+    {
+        label: 'Protection & Market',
+        items: [
+            { path: '/shield', label: 'Browser Shield', icon: ShieldAlert },
+            { path: '/family', label: 'Family & SOS', icon: Users },
+            { path: '/market', label: 'Market & IRDAI', icon: TrendingUp },
+        ],
+    },
 ];
 
 const adminItems = [
@@ -72,35 +87,40 @@ export default function Sidebar({ mobileOpen = false, onClose = () => {} }) {
                 )}
             </div>
 
-            <nav className="sidebar-nav">
-                {navItems.map(({ path, label, icon: Icon }) => (
-                    <NavLink
-                        key={path}
-                        to={path}
-                        onClick={onClose}
-                        className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}
-                    >
-                        {({ isActive }) => (
-                            <>
-                                {isActive && (
-                                    <motion.span
-                                        layoutId="sidebarActivePill"
-                                        className="sidebar-active-pill"
-                                        transition={{ type: 'spring', stiffness: 420, damping: 34 }}
-                                    />
+            <nav className="sidebar-nav" aria-label="Main Navigation">
+                {navSections.map((section, idx) => (
+                    <div key={section.label} className={idx > 0 ? 'sidebar-group' : ''}>
+                        <div className="sidebar-group-label">{section.label}</div>
+                        {section.items.map(({ path, label, icon: Icon }) => (
+                            <NavLink
+                                key={path}
+                                to={path}
+                                onClick={onClose}
+                                className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}
+                            >
+                                {({ isActive }) => (
+                                    <>
+                                        {isActive && (
+                                            <motion.span
+                                                layoutId="sidebarActivePill"
+                                                className="sidebar-active-pill"
+                                                transition={{ type: 'spring', stiffness: 420, damping: 34 }}
+                                            />
+                                        )}
+                                        <span className="sidebar-link-content">
+                                            <Icon />
+                                            <span>{label}</span>
+                                        </span>
+                                    </>
                                 )}
-                                <span className="sidebar-link-content">
-                                    <Icon />
-                                    <span>{label}</span>
-                                </span>
-                            </>
-                        )}
-                    </NavLink>
+                            </NavLink>
+                        ))}
+                    </div>
                 ))}
 
                 {user?.role === 'admin' && (
-                    <>
-                        <div style={{ height: 1, background: 'var(--border-color)', margin: '12px 0' }} />
+                    <div className="sidebar-group">
+                        <div className="sidebar-group-label">Administration</div>
                         {adminItems.map(({ path, label, icon: Icon }) => (
                             <NavLink
                                 key={path}
@@ -125,7 +145,7 @@ export default function Sidebar({ mobileOpen = false, onClose = () => {} }) {
                                 )}
                             </NavLink>
                         ))}
-                    </>
+                    </div>
                 )}
             </nav>
 
@@ -141,12 +161,14 @@ export default function Sidebar({ mobileOpen = false, onClose = () => {} }) {
                     </div>
                 </div>
                 <button
-                    className="sidebar-link"
+                    type="button"
+                    className="sidebar-link sidebar-logout-btn"
                     onClick={handleLogout}
-                    style={{ marginTop: 8, color: 'var(--danger)' }}
                 >
-                    <LogOut />
-                    Logout
+                    <span className="sidebar-link-content">
+                        <LogOut />
+                        <span>Logout</span>
+                    </span>
                 </button>
             </div>
         </aside>

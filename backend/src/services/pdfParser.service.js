@@ -97,20 +97,71 @@ const extractDeterministicHints = (fullText = '') => {
     const intermediaryMatch = fullText.match(/Intermediary[ \t\|:\-]+([A-Z0-9\/\-]{6,25})/i);
     if (intermediaryMatch) hints.intermediary = intermediaryMatch[1].trim();
 
-    // Parse insured members & declared PEDs from schedule lines when present
+    const premiumMatch = fullText.match(/Total\s*Premium(?:\s*\([^\)]*\))?[ \t\|:\-]+(?:Rs\.?|INR|₹)?\s*([\d,]+(?:\.\d+)?)/i);
+    if (premiumMatch) {
+        const prem = Math.round(parseFloat(premiumMatch[1].replace(/,/g, '')));
+        if (Number.isFinite(prem) && prem > 0) hints.totalPremium = prem;
+    }
+
+    const deductibleMatch = fullText.match(/Optional\s*Cover\s*\(Deductible\)[^\n]*Deductible[ \t\|:\-]+(?:Rs\.?|INR|₹)?\s*([\d,]+)/i);
+    if (deductibleMatch) {
+        const ded = Math.round(parseFloat(deductibleMatch[1].replace(/,/g, '')));
+        if (Number.isFinite(ded)) hints.deductibleAmount = ded;
+    }
+
+    const nomineeMatch = fullText.match(/Nominee\s*Details[\s\S]{0,220}?\b\d+\s+(?:\|\s*)?([A-Za-z.\s]{2,40}?)\s+(Spouse|Husband|Wife|Son|Daughter|Father|Mother|Parent|Brother|Sister|Self)\s+(\d{1,3})\s+(\d{1,3})\b/i);
+    if (nomineeMatch) {
+        hints.nominee = {
+            name: nomineeMatch[1].trim(),
+            relationship: nomineeMatch[2].trim(),
+            age: Number(nomineeMatch[3]),
+            sharePct: Number(nomineeMatch[4]),
+        };
+    }
+
+    // Parse insured members & multi-line declared PEDs from schedule lines when present
     const insuredMembers = [];
     const lines = String(fullText || '').split('\n');
+    const memberRowRegex =
+        /^\s*(\d+)\s*(?:\|\s*)?(?:([A-Za-z.\s]{2,50}?)\s*(?:\|\s*)?)?\b(Male|Female|Other)\b\s*(?:\|\s*)?(\d{1,2}[\/\-][A-Za-z0-9]{2,3}[\/\-]\d{4})\s*(?:\|\s*)?(\d{1,3})\s*(?:\|\s*)?([A-Za-z\s_-]+?)\s*(?:\|\s*)?([A-Z0-9]{6,})\b/i;
+
     for (let i = 0; i < lines.length; i++) {
-        const m = lines[i].match(/^\s*(\d+)\s*\|\s*(Male|Female|Other)\s+(\d{2}[\/\-][A-Za-z0-9]{2,3}[\/\-]\d{4})\s+\d+\s+([A-Za-z\s_-]+?)\s+[A-Z0-9]{6,}/i);
+        const m = lines[i].match(memberRowRegex);
         if (m) {
-            const nameLine = i > 0 ? lines[i - 1].trim() : `Member ${m[1]}`;
-            const nextLine = i + 1 < lines.length && /Pre\s*Existing\s*Disease/i.test(lines[i + 1]) ? lines[i + 1] : '';
-            const pedText = nextLine.replace(/Pre\s*Existing\s*Disease\s*[:\|]*/i, '').trim();
+            const inlineName = (m[2] || '').trim();
+            const prevLine = i > 0 ? lines[i - 1].trim() : '';
+            const resolvedName =
+                inlineName ||
+                (!/^(?:Sl\.?|no\.?|Name\s*of\s*the\s*Insured|Pre\s*Existing\s*Disease|Details\s*of\s*Insured)/i.test(prevLine)
+                    ? prevLine
+                    : `Member ${m[1]}`);
+
+            const pedParts = [];
+            for (let k = i + 1; k < lines.length && k <= i + 8; k++) {
+                const l = lines[k].trim();
+                if (!l || /^(?:Nominee\s*Details|Sector\s*Classification|Important\b|Warranted\b|CONSOLIDATED\s*STAMP)/i.test(l)) {
+                    break;
+                }
+                if (memberRowRegex.test(l)) break;
+                if (k + 1 < lines.length && memberRowRegex.test(lines[k + 1]) && !/^Pre\s*Existing\s*Disease/i.test(l)) {
+                    break;
+                }
+                if (/^Pre\s*Existing\s*Disease/i.test(l)) {
+                    const cleaned = l.replace(/^Pre\s*Existing\s*Disease\s*[:\|]*/i, '').trim();
+                    if (cleaned) pedParts.push(cleaned);
+                } else if (pedParts.length > 0) {
+                    pedParts.push(l);
+                }
+            }
+
+            const pedText = pedParts.join('; ').trim();
             insuredMembers.push({
-                name: nameLine.slice(0, 60),
-                gender: m[2],
-                dob: m[3],
-                relationship: m[4].trim(),
+                name: resolvedName.slice(0, 60),
+                gender: m[3],
+                dob: m[4],
+                age: Number(m[5]),
+                relationship: m[6].trim(),
+                idCardNo: m[7].trim(),
                 ped: pedText || 'No PED Declared',
             });
         }
@@ -163,7 +214,7 @@ const parsePdfWithLayout = async (pdfBuffer) => {
 
 /**
  * OCR / Vision extraction fallback for mobile photos, E-cards, doctor scripts,
- * X-rays, garage quotes, and scanned documents via OpenRouter Vision.
+ * X-rays, garage quotes, and scanned documents via Vision AI.
  */
 const extractImageOrScannedEvidence = async ({ buffer, mimeType = 'image/jpeg', hintCategory = 'other' }) => {
     const base64 = buffer.toString('base64');
@@ -282,18 +333,30 @@ const searchPolicyClauses = async ({ policyId, userId, query, limit = 5 }) => {
         .map((w) => w.replace(/[%_]/g, '').toLowerCase())
         .filter((w) => w.length >= 4 && !STOPWORDS.has(w))
         .slice(0, 3);
-    if (keywords.length === 0) return [];
 
-    const orFilter = keywords.map((kw) => `clause_text.ilike.%${kw}%`).join(',');
-    const { data: fallback } = await supabaseAdmin
+    if (keywords.length > 0) {
+        const orFilter = keywords.map((kw) => `clause_text.ilike.%${kw}%`).join(',');
+        const { data: fallback } = await supabaseAdmin
+            .from('policy_clauses')
+            .select('id, page_number, section_title, clause_text')
+            .eq('policy_id', policyId)
+            .eq('user_id', userId)
+            .or(orFilter)
+            .limit(limit);
+
+        if (fallback && fallback.length > 0) return fallback;
+    }
+
+    // For broad queries ("summarize", "who is covered", etc.), return initial schedule pages cleanly
+    const { data: firstPages } = await supabaseAdmin
         .from('policy_clauses')
         .select('id, page_number, section_title, clause_text')
         .eq('policy_id', policyId)
         .eq('user_id', userId)
-        .or(orFilter)
-        .limit(limit);
+        .order('page_number', { ascending: true })
+        .limit(Math.min(limit, 4));
 
-    return fallback || [];
+    return firstPages || [];
 };
 
 module.exports = {

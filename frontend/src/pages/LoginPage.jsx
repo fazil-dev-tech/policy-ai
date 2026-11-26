@@ -1,18 +1,14 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { LogIn, Eye, EyeOff, Shield, Zap, Lock, Mail, KeyRound, ArrowLeft } from 'lucide-react';
+import { LogIn, Eye, EyeOff, Zap, Lock, Mail, KeyRound, ArrowLeft } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { motion } from 'framer-motion';
-import { Canvas } from '@react-three/fiber';
-import CanvasErrorBoundary from '../components/shared/CanvasErrorBoundary';
-import CyberCore from '../components/shared/CyberCore';
-import DataStreamField from '../components/shared/DataStreamField';
-import GridFloor from '../components/shared/GridFloor';
+import AuthBrandPanel from '../components/shared/AuthBrandPanel';
 import { SpotlightCard } from '../components/shared/MotionPrimitives';
 
 export default function LoginPage() {
-    const { login, sendOtp, verifyOtp } = useAuth();
+    const { login, sendOtp, resendSignupOtp, verifyOtp } = useAuth();
     const navigate = useNavigate();
     const location = useLocation();
     const rawFrom = location.state?.from;
@@ -25,31 +21,71 @@ export default function LoginPage() {
     const [showPass, setShowPass] = useState(false);
     const [loading, setLoading] = useState(false);
     const [otpSent, setOtpSent] = useState(false);
+    const [otpType, setOtpType] = useState('email');
+    const [resendCooldown, setResendCooldown] = useState(0);
+    const [needsEmailConfirm, setNeedsEmailConfirm] = useState(false);
+
+    useEffect(() => {
+        if (resendCooldown <= 0) return undefined;
+        const id = window.setInterval(() => {
+            setResendCooldown((prev) => (prev > 1 ? prev - 1 : 0));
+        }, 1000);
+        return () => window.clearInterval(id);
+    }, [resendCooldown]);
 
     const handlePasswordSubmit = async (e) => {
         e.preventDefault();
         setLoading(true);
+        setNeedsEmailConfirm(false);
         try {
             await login(form.email, form.password);
             toast.success('Welcome back!');
             navigate(postLoginPath, { replace: true });
         } catch (err) {
-            toast.error(err.response?.data?.error || err.message || 'Login failed');
+            const msg = err.response?.data?.error || err.message || 'Login failed';
+            if (msg.toLowerCase().includes('verify your email')) {
+                setNeedsEmailConfirm(true);
+            }
+            toast.error(msg);
         } finally {
             setLoading(false);
         }
     };
 
     const handleSendOtp = async (e) => {
-        e.preventDefault();
-        if (!form.email) return toast.error('Please enter your email first');
+        e?.preventDefault();
+        if (!form.email.trim()) return toast.error('Please enter your email first');
         setLoading(true);
         try {
-            await sendOtp(form.email);
+            if (otpType === 'signup') {
+                await resendSignupOtp(form.email);
+            } else {
+                await sendOtp(form.email);
+            }
             setOtpSent(true);
-            toast.success('Login code sent to your email!');
+            setResendCooldown(30);
+            toast.success('Verification code sent to your email!');
         } catch (err) {
             toast.error(err.response?.data?.error || err.message || 'Failed to send OTP');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleVerifyUnconfirmedAccount = async () => {
+        if (!form.email.trim()) return toast.error('Please enter your email first');
+        setLoading(true);
+        try {
+            await resendSignupOtp(form.email);
+            setLoginMethod('otp');
+            setOtpType('signup');
+            setOtpSent(true);
+            setNeedsEmailConfirm(false);
+            setResendCooldown(30);
+            setForm((prev) => ({ ...prev, password: '', otp: '' }));
+            toast.success('Signup verification code sent to your email!');
+        } catch (err) {
+            toast.error(err.response?.data?.error || err.message || 'Failed to resend verification code');
         } finally {
             setLoading(false);
         }
@@ -60,7 +96,7 @@ export default function LoginPage() {
         if (!/^\d{6,8}$/.test(form.otp)) return toast.error('Please enter the 6-to-8 digit verification code');
         setLoading(true);
         try {
-            await verifyOtp(form.email, form.otp);
+            await verifyOtp(form.email, form.otp, otpType);
             toast.success('Welcome back!');
             navigate(postLoginPath, { replace: true });
         } catch (err) {
@@ -73,50 +109,13 @@ export default function LoginPage() {
     return (
         <div className="auth-split-layout auth-obsidian-shell">
             {/* Left Editorial Brand Panel with Dedicated Centered 3D Canvas */}
-            <div className="auth-brand-panel auth-brand-dark">
-                <div className="auth-panel-canvas" aria-hidden="true">
-                    <CanvasErrorBoundary fallbackTitle="PolicyGuard Auth">
-                        <Canvas dpr={[1, 1.5]} camera={{ position: [0, 0.15, 9.8], fov: 44 }} gl={{ alpha: true, antialias: true }}>
-                            <ambientLight intensity={1.15} />
-                            <directionalLight position={[8, 9, 8]} intensity={1.65} color="#ffffff" />
-                            <directionalLight position={[-6, 6, 4]} intensity={1.45} color={otpSent ? '#06b6d4' : '#fb7185'} />
-                            <pointLight position={[-8, -6, 4]} intensity={1.2} color="#22d3ee" />
-                            <CyberCore position={[0, 1.78, -0.5]} scale={0.66} active={otpSent} />
-                            <DataStreamField active={otpSent} color="#f472b6" />
-                            <GridFloor colorPrimary={otpSent ? '#22d3ee' : '#e11d48'} colorSecondary="#1e293b" opacity={0.22} y={-3.6} />
-                            <fog attach="fog" args={['#050814', 9, 24]} />
-                        </Canvas>
-                    </CanvasErrorBoundary>
-                </div>
-
-                <div className="auth-brand-inner auth-brand-dark-inner">
-                    <div className="auth-brand-badge">
-                        <span className="hero-live-dot" aria-hidden="true" />
-                        <span>IRDAI COMPLIANCE ENGINE</span>
-                    </div>
-                    <div className="auth-brand-logo-row">
-                        <span className="brand-emblem-dark auth-logo-mark-wrap">
-                            <img src="/logo.png" alt="PolicyGuard AI" className="auth-logo-mark" />
-                        </span>
-                        <div>
-                            <h1 className="auth-brand-name-obsidian">PolicyGuard AI</h1>
-                            <p className="auth-brand-tagline-obsidian">IRDAI-Aligned Insurance &amp; Claims Engine</p>
-                        </div>
-                    </div>
-
-                    <div className="auth-brand-features-obsidian">
-                        <div className="auth-brand-feature-obsidian">
-                            <Zap size={15} style={{ color: '#fb7185' }} /> <span>Clause-Cited Policy Analysis</span>
-                        </div>
-                        <div className="auth-brand-feature-obsidian">
-                            <Shield size={15} style={{ color: '#22d3ee' }} /> <span>3-Surface Anti-Phishing Shield</span>
-                        </div>
-                        <div className="auth-brand-feature-obsidian">
-                            <Lock size={15} style={{ color: '#10b981' }} /> <span>User-Scoped Encrypted Policy Vault</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
+            <AuthBrandPanel
+                active={otpSent}
+                badgeText="IRDAI POLICYHOLDER SHIELD · INDIA"
+                tagline="Clause Clarity · Claim Math · Scam Defense"
+                fallbackTitle="PolicyGuard Auth"
+                streamColor="#f472b6"
+            />
 
             {/* Right Floating Crystal Glass Form Panel */}
             <div className="auth-form-panel auth-form-glass-stage">
@@ -137,7 +136,13 @@ export default function LoginPage() {
                     <div className="auth-method-tabs">
                         <button
                             type="button"
-                            onClick={() => { setLoginMethod('password'); setOtpSent(false); }}
+                            onClick={() => {
+                                setLoginMethod('password');
+                                setOtpSent(false);
+                                setOtpType('email');
+                                setResendCooldown(0);
+                                setForm((prev) => ({ ...prev, otp: '' }));
+                            }}
                             className={`auth-method-tab ${loginMethod === 'password' ? 'active' : ''}`}
                         >
                             {loginMethod === 'password' && (
@@ -151,7 +156,11 @@ export default function LoginPage() {
                         </button>
                         <button
                             type="button"
-                            onClick={() => { setLoginMethod('otp'); setForm((prev) => ({ ...prev, password: '' })); }}
+                            onClick={() => {
+                                setLoginMethod('otp');
+                                setNeedsEmailConfirm(false);
+                                setForm((prev) => ({ ...prev, password: '' }));
+                            }}
                             className={`auth-method-tab ${loginMethod === 'otp' ? 'active' : ''}`}
                         >
                             {loginMethod === 'otp' && (
@@ -218,6 +227,15 @@ export default function LoginPage() {
                                     : <><LogIn size={18} /> Authenticate</>
                                 }
                             </button>
+
+                            {needsEmailConfirm && (
+                                <div className="auth-confirm-banner">
+                                    <span>Account email not verified yet.</span>
+                                    <button type="button" onClick={handleVerifyUnconfirmedAccount} disabled={loading}>
+                                        Send verification code
+                                    </button>
+                                </div>
+                            )}
                         </form>
                     ) : (
                         <form onSubmit={otpSent ? handleVerifyOtp : handleSendOtp}>
@@ -270,11 +288,24 @@ export default function LoginPage() {
                             </button>
 
                             {otpSent && (
-                                <div style={{ textAlign: 'center', marginTop: 16 }}>
+                                <div className="auth-otp-actions">
                                     <button
                                         type="button"
-                                        onClick={() => { setOtpSent(false); setForm({ ...form, otp: '' }); }}
-                                        style={{ background: 'none', border: 'none', color: '#64748b', fontSize: 13, cursor: 'pointer', fontWeight: 600, textDecoration: 'underline' }}
+                                        onClick={handleSendOtp}
+                                        disabled={loading || resendCooldown > 0}
+                                    >
+                                        {resendCooldown > 0 ? `Resend code (${resendCooldown}s)` : 'Resend code'}
+                                    </button>
+                                    <span aria-hidden="true">·</span>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setOtpSent(false);
+                                            setOtpType('email');
+                                            setResendCooldown(0);
+                                            setForm({ ...form, otp: '' });
+                                        }}
+                                        disabled={loading}
                                     >
                                         Change Email Address
                                     </button>
@@ -284,7 +315,7 @@ export default function LoginPage() {
                     )}
 
                     <div className="auth-footer">
-                        Don&apos;t have an account? <Link to="/register">Create Account</Link>
+                        Don&apos;t have an account? <Link to="/register" state={location.state}>Create Account</Link>
                     </div>
                     <div className="auth-footer auth-footer-back">
                         <Link to="/" className="auth-back-link"><ArrowLeft size={14} /> Back to home</Link>

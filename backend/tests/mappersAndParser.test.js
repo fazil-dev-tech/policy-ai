@@ -71,6 +71,32 @@ describe('mappers, pdfParser hints & storage path guards', () => {
         expect(hints.helplineNumber).toBe('1800-266-5844');
     });
 
+    test('extractDeterministicHints parses multi-row insured members (including Female) and multi-line PEDs cleanly', () => {
+        const scheduleText = [
+            'Total Premium : Rs. 20,143/-',
+            'Optional Cover (Deductible) : No | Deductible : Rs. 0/-',
+            'SACHIN S .',
+            '1 | Male 07-Sep-1997 27 | Self PI0008893356 23-May-2025',
+            'Pre Existing Disease : All complications related to surgeries',
+            'Hyperuricemia(Gout) and its complications',
+            'KAVITHA T',
+            '2 | Female 24-Aug-2000 24 | Spouse ME0471009281 23-May-2025',
+            'Pre Existing Disease : No PED Declared',
+            'Nominee Details :',
+            '1 KAVITHA T Spouse 24 100',
+        ].join('\n');
+        const hints = extractDeterministicHints(scheduleText);
+        expect(hints.totalPremium).toBe(20143);
+        expect(hints.deductibleAmount).toBe(0);
+        expect(hints.nominee).toEqual({ name: 'KAVITHA T', relationship: 'Spouse', age: 24, sharePct: 100 });
+        expect(hints.insuredMembers).toHaveLength(2);
+        expect(hints.insuredMembers[0].name).toBe('SACHIN S .');
+        expect(hints.insuredMembers[0].ped).toContain('Hyperuricemia(Gout)');
+        expect(hints.insuredMembers[1].name).toBe('KAVITHA T');
+        expect(hints.insuredMembers[1].gender).toBe('Female');
+        expect(hints.insuredMembers[1].ped).toBe('No PED Declared');
+    });
+
     test('storageService exports assertSafeUserStoragePath and enforces ownership prefix', () => {
         expect(typeof storageService.assertSafeUserStoragePath).toBe('function');
         expect(storageService.assertSafeUserStoragePath('user-1', 'user-1/policies/doc.pdf')).toBe('user-1/policies/doc.pdf');

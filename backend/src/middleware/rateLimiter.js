@@ -26,15 +26,11 @@ const authLimiter = createRateLimiter(
 
 const apiLimiter = createRateLimiter(
     15 * 60 * 1000,
-    100,
+    2000,
     'Too many API requests. Please try again later.'
 );
 
-const chatLimiter = createRateLimiter(
-    60 * 1000,
-    30,
-    'Too many chat messages. Please slow down.'
-);
+const chatLimiter = (req, res, next) => next();
 
 const uploadLimiter = createRateLimiter(
     60 * 60 * 1000,

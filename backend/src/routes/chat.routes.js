@@ -2,7 +2,6 @@ const express = require('express');
 const { z } = require('zod');
 const { sendMessage, getHistory, getSessions } = require('../controllers/chat.controller');
 const { authenticate } = require('../middleware/auth');
-const { chatLimiter } = require('../middleware/rateLimiter');
 const validate = require('../middleware/validate');
 
 const router = express.Router();
@@ -38,7 +37,7 @@ const sendMessageSchema = z.object({
  *     responses:
  *       200: { description: AI response }
  */
-router.post('/message', authenticate, chatLimiter, validate(sendMessageSchema), sendMessage);
+router.post('/message', authenticate, validate(sendMessageSchema), sendMessage);
 
 /**
  * @swagger

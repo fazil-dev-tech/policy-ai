@@ -5,98 +5,52 @@ const logger = require('../utils/logger');
 
 let puterClient = null;
 
-// Permanently $0 OpenRouter free-tier models (excludes paid-per-use / audio-gen / preview models)
-const OPENROUTER_TEXT_FALLBACKS = [
-    'nvidia/nemotron-3.5-lightning:free',
-    'google/gemma-4-26b-a4b-it:free',
-    'nvidia/nemotron-3-ultra-550b-a55b:free',
-    'google/gemma-4-31b-it:free',
-    'particle-ai/particle-1:free',
-    'inclusionai/ling-3.2-flash:free',
-    'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free',
-    'openrouter/free',
+// Verified live NVIDIA NIM endpoints (https://integrate.api.nvidia.com/v1)
+const NVIDIA_NIM_TEXT_FALLBACKS = [
+    'nvidia/nemotron-3.5-lightning-30b-a3b',
+    'nvidia/nemotron-3-ultra-550b-a55b',
+    'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning',
+    'nvidia/nemotron-3.5-bolt-e4b',
+    'mistralai/mistral-large-4-1t-a52b',
 ];
 
-const OPENROUTER_VISION_FALLBACKS = [
-    'nvidia/nemotron-3.5-super-vl:free',
-    'google/gemma-4-26b-a4b-it:free',
-    'google/gemma-4-31b-it:free',
-    'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free',
-    'inclusionai/ling-3.2-flash:free',
-    'particle-ai/particle-1:free',
-    'openrouter/free',
+const NVIDIA_NIM_VISION_FALLBACKS = [
+    'nvidia/nemotron-3.5-super-vl-120b-a12b',
+    'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning',
 ];
 
-const FREE_FIRST_ORDER = ['openrouter', 'groq', 'puter', 'gemini'];
+const getNvidiaKeys = () => {
+    const raw = [env.NVIDIA_API_KEY, env.NVIDIA_API_KEYS].filter(Boolean).join(',');
+    return raw
+        .split(',')
+        .map((k) => k.trim())
+        .filter((v, i, arr) => v && arr.indexOf(v) === i);
+};
+
+const FREE_FIRST_ORDER = ['nvidia', 'groq', 'puter', 'gemini'];
 const PAID_PROVIDERS = ['openai', 'grok'];
-
-let liveFreeCatalogCache = {
-    fetchedAt: 0,
-    textModels: [],
-    visionModels: [],
-};
-const LIVE_CATALOG_TTL_MS = 6 * 60 * 60 * 1000;
-
-const discoverOpenRouterFreeModels = async ({ vision = false } = {}) => {
-    const now = Date.now();
-    if (liveFreeCatalogCache.fetchedAt && now - liveFreeCatalogCache.fetchedAt < LIVE_CATALOG_TTL_MS) {
-        return vision ? liveFreeCatalogCache.visionModels : liveFreeCatalogCache.textModels;
-    }
-
-    try {
-        const resp = await fetch('https://openrouter.ai/api/v1/models', {
-            signal: AbortSignal.timeout(4500),
-            headers: { Accept: 'application/json' },
-        });
-        if (!resp.ok) return [];
-        const json = await resp.json();
-        const models = (json.data || []).filter((m) => {
-            const id = String(m.id || '');
-            const isZeroCost = String(m.pricing?.prompt) === '0' && String(m.pricing?.completion) === '0';
-            const isFreeSlug = id.endsWith(':free') || id === 'openrouter/free';
-            const outMods = m.architecture?.output_modalities || ['text'];
-            const notAudioOrPreview = !/lyria|preview/i.test(id) && outMods.includes('text');
-            const notExpired = !m.expiration_date || new Date(m.expiration_date).getTime() > now;
-            return isZeroCost && isFreeSlug && notAudioOrPreview && notExpired;
-        });
-
-        const scoreModel = (m) => {
-            const id = String(m.id || '').toLowerCase();
-            let rank = 0;
-            if (id.startsWith('nvidia/nemotron')) rank += 400;
-            else if (id.startsWith('google/gemma')) rank += 320;
-            else if (id.startsWith('qwen/') || id.startsWith('deepseek/') || id.startsWith('meta-llama/')) rank += 280;
-            else if (id.startsWith('particle-ai/') || id.startsWith('inclusionai/')) rank += 220;
-            else if (id === 'openrouter/free') rank -= 100; // keep auto-router as final fallback
-            rank += Math.min(80, Math.round((Number(m.context_length) || 0) / 32768));
-            return rank;
-        };
-
-        const sorted = [...models].sort((a, b) => scoreModel(b) - scoreModel(a));
-        const textModels = sorted.map((m) => m.id);
-        const visionModels = sorted
-            .filter((m) => Array.isArray(m.architecture?.input_modalities) && m.architecture.input_modalities.includes('image'))
-            .map((m) => m.id);
-
-        liveFreeCatalogCache = { fetchedAt: now, textModels, visionModels };
-        return vision ? visionModels : textModels;
-    } catch {
-        return [];
-    }
-};
+const keyQuotaCooldowns = new Map();
 
 const uniqueModels = (list) =>
     list.filter(Boolean).filter((v, i, arr) => arr.indexOf(v) === i);
 
-const isFreeOpenRouterModel = (modelName = '') => {
-    const m = String(modelName || '').trim();
-    return m.endsWith(':free') || m === 'openrouter/free';
-};
-
 const buildProviderMap = () => ({
+    nvidia: () => {
+        const keys = getNvidiaKeys();
+        if (keys.length === 0) return null;
+        const requested = env.AI_MODEL && !env.AI_MODEL.endsWith(':free') ? env.AI_MODEL : NVIDIA_NIM_TEXT_FALLBACKS[0];
+        return {
+            provider: 'nvidia',
+            apiKey: keys[0],
+            apiKeys: keys,
+            baseURL: env.AI_PROVIDER === 'nvidia' && env.AI_BASE_URL ? env.AI_BASE_URL : 'https://integrate.api.nvidia.com/v1',
+            model: requested,
+            supportsVision: true,
+        };
+    },
     gemini: () =>
         env.GEMINI_API_KEY
-            ? { provider: 'gemini', apiKey: env.GEMINI_API_KEY, model: env.AI_MODEL || 'gemini-2.0-flash', supportsVision: true }
+            ? { provider: 'gemini', apiKey: env.GEMINI_API_KEY, model: env.AI_MODEL || 'gemini-2.5-flash', supportsVision: true }
             : null,
     openai: () =>
         env.OPENAI_API_KEY
@@ -108,19 +62,6 @@ const buildProviderMap = () => ({
                   supportsVision: true,
               }
             : null,
-    openrouter: () => {
-        if (!env.OPENROUTER_API_KEY) return null;
-        const preferred = env.AI_MODEL && (!env.AI_ALLOW_PAID ? isFreeOpenRouterModel(env.AI_MODEL) : true)
-            ? env.AI_MODEL
-            : OPENROUTER_TEXT_FALLBACKS[0];
-        return {
-            provider: 'openrouter',
-            apiKey: env.OPENROUTER_API_KEY,
-            baseURL: env.AI_PROVIDER === 'openrouter' && env.AI_BASE_URL ? env.AI_BASE_URL : 'https://openrouter.ai/api/v1',
-            model: preferred,
-            supportsVision: true,
-        };
-    },
     groq: () =>
         env.GROQ_API_KEY
             ? {
@@ -164,7 +105,6 @@ const resolveCandidateConfigs = ({ vision = false } = {}) => {
         if (!primary) {
             throw new Error(`AI_PROVIDER is set to '${requested}', but its API key is not configured.`);
         }
-        // Only fall back to free providers unless paid failover is explicitly permitted
         const fallbackOrder = env.AI_ALLOW_PAID ? [...FREE_FIRST_ORDER, ...PAID_PROVIDERS] : FREE_FIRST_ORDER;
         const rest = fallbackOrder.filter((k) => k !== requested).map((k) => providerMap[k]?.()).filter(Boolean);
         const combined = [primary, ...rest];
@@ -178,7 +118,7 @@ const resolveCandidateConfigs = ({ vision = false } = {}) => {
     throw new Error(
         vision
             ? 'No multimodal vision AI provider is configured.'
-            : 'No AI API key configured. Set OPENROUTER_API_KEY (free models), GROQ_API_KEY, GEMINI_API_KEY, or PUTER_AUTH_TOKEN.'
+            : 'No AI API key configured. Set NVIDIA_API_KEY (recommended), GROQ_API_KEY, GEMINI_API_KEY, or PUTER_AUTH_TOKEN.'
     );
 };
 
@@ -190,10 +130,11 @@ const getActiveAiMetadata = () => {
         return {
             provider: cfg.provider,
             model: cfg.model,
-            fallbackChain: cfg.provider === 'openrouter' ? uniqueModels([cfg.model, ...OPENROUTER_TEXT_FALLBACKS]) : [cfg.model],
+            configuredKeys: Array.isArray(cfg.apiKeys) ? cfg.apiKeys.length : 1,
+            fallbackChain: cfg.provider === 'nvidia' ? uniqueModels([cfg.model, ...NVIDIA_NIM_TEXT_FALLBACKS]) : [cfg.model],
         };
     } catch {
-        return { provider: env.AI_PROVIDER || 'unconfigured', model: env.AI_MODEL || 'none', fallbackChain: [] };
+        return { provider: env.AI_PROVIDER || 'unconfigured', model: env.AI_MODEL || 'none', configuredKeys: 0, fallbackChain: [] };
     }
 };
 
@@ -201,7 +142,7 @@ const getPuterClient = async (token) => {
     if (puterClient) return puterClient;
     if (!token) {
         throw new Error(
-            'No AI API key configured. Set OPENROUTER_API_KEY, GEMINI_API_KEY, OPENAI_API_KEY, GROQ_API_KEY, GROK_API_KEY, or PUTER_AUTH_TOKEN in backend/.env.'
+            'No AI API key configured. Set NVIDIA_API_KEY, GEMINI_API_KEY, GROQ_API_KEY, PUTER_AUTH_TOKEN, OPENAI_API_KEY, or GROK_API_KEY in backend/.env.'
         );
     }
     const { init } = require('@heyputer/puter.js/src/init.cjs');
@@ -239,57 +180,71 @@ const extractMessageText = (completion) => {
     return '';
 };
 
+const mapModelForProvider = (requestedModel = '', provider = 'nvidia') => {
+    const raw = String(requestedModel || '').trim();
+    if (!raw) return '';
+    if (provider === 'nvidia') {
+        const legacyMap = {
+            'nvidia/nemotron-3.5-lightning:free': 'nvidia/nemotron-3.5-lightning-30b-a3b',
+            'nvidia/nemotron-3-ultra-550b-a55b:free': 'nvidia/nemotron-3-ultra-550b-a55b',
+            'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free': 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning',
+            'nvidia/nemotron-3.5-super-vl:free': 'nvidia/nemotron-3.5-super-vl-120b-a12b',
+        };
+        if (legacyMap[raw]) return legacyMap[raw];
+        return raw.endsWith(':free') ? '' : raw;
+    }
+    if (provider === 'gemini') {
+        if (raw.includes('gemma')) return 'gemma-3-27b-it';
+        if (raw.startsWith('gemini')) return raw.replace(/:free$/i, '');
+        return '';
+    }
+    if (provider === 'groq') {
+        return /llama|qwen|mixtral|deepseek/i.test(raw) && !raw.includes('/') ? raw : '';
+    }
+    return raw.endsWith(':free') ? '' : raw;
+};
+
 const callOpenAiCompatibleWithFallback = async ({ cfg, messages, temperature = 0.3, maxTokens = 2048, vision = false, model: optionsModel = '' }) => {
     const startTime = Date.now();
-    const isOpenRouter = cfg.provider === 'openrouter';
-    const defaultHeaders = isOpenRouter
-        ? {
-              'HTTP-Referer': env.FRONTEND_URL || 'http://localhost:5173',
-              'X-Title': 'PolicyGuard Insurance Intelligence',
-          }
-        : undefined;
+    const isNvidia = cfg.provider === 'nvidia';
+    const candidateKeys = Array.isArray(cfg.apiKeys) && cfg.apiKeys.length > 0 ? cfg.apiKeys : [cfg.apiKey];
+    const mappedOption = mapModelForProvider(optionsModel, cfg.provider);
 
-    const client = new OpenAI({
-        apiKey: cfg.apiKey,
-        timeout: 15000,
-        maxRetries: 0,
-        ...(cfg.baseURL ? { baseURL: cfg.baseURL } : {}),
-        ...(defaultHeaders ? { defaultHeaders } : {}),
-    });
-
-    const curatedModels = isOpenRouter
+    const curatedModels = isNvidia
         ? uniqueModels(
               vision
-                  ? [
-                        ...(optionsModel && !OPENROUTER_TEXT_FALLBACKS.includes(optionsModel) && (!env.AI_ALLOW_PAID ? isFreeOpenRouterModel(optionsModel) : true)
-                            ? [optionsModel]
-                            : env.AI_MODEL && !OPENROUTER_TEXT_FALLBACKS.includes(env.AI_MODEL) && isFreeOpenRouterModel(env.AI_MODEL)
-                              ? [env.AI_MODEL]
-                              : []),
-                        ...OPENROUTER_VISION_FALLBACKS,
-                    ]
-                  : [
-                        ...(optionsModel && (!env.AI_ALLOW_PAID ? isFreeOpenRouterModel(optionsModel) : true) ? [optionsModel] : []),
-                        cfg.model,
-                        ...OPENROUTER_TEXT_FALLBACKS,
-                    ]
+                  ? NVIDIA_NIM_VISION_FALLBACKS
+                  : [mappedOption, cfg.model, ...NVIDIA_NIM_TEXT_FALLBACKS]
           )
-        : [optionsModel || cfg.model];
+        : cfg.provider === 'groq'
+          ? uniqueModels([mappedOption, cfg.model, 'llama-3.3-70b-versatile', 'llama-3.1-8b-instant'])
+          : [mappedOption || cfg.model];
 
-    // Enforce >= 4096 tokens so reasoning :free models never exhaust output budget before emitting content
     const safeMaxTokens = Math.max(4096, Number(maxTokens) || 4096);
-    const totalDeadlineMs = startTime + 35000;
+    const totalDeadlineMs = startTime + 45000;
 
     let lastError = null;
-    let quotaExhausted = false;
-    const runModelLoop = async (models) => {
-        for (const modelName of models) {
+    for (const apiKey of candidateKeys) {
+        const cooldownUntil = keyQuotaCooldowns.get(apiKey) || 0;
+        if (cooldownUntil > Date.now()) {
+            lastError = lastError || new Error(`${cfg.provider} key temporarily in cooldown; rotating to backup.`);
+            continue;
+        }
+        const client = new OpenAI({
+            apiKey,
+            timeout: 22000,
+            maxRetries: 0,
+            ...(cfg.baseURL ? { baseURL: cfg.baseURL } : {}),
+        });
+
+        for (const modelName of curatedModels) {
             const remainingMs = totalDeadlineMs - Date.now();
             if (remainingMs < 3500) {
-                logger.warn(`${cfg.provider} fallback budget exhausted (35s); aborting remaining model retries.`);
+                logger.warn(`${cfg.provider} fallback budget exhausted (45s); aborting remaining model retries.`);
                 break;
             }
-            const perAttemptMs = Math.min(15000, remainingMs);
+            const perAttemptMs = Math.min(22000, remainingMs);
+            const isNemotronInteractive = isNvidia && modelName.startsWith('nvidia/nemotron-3');
             try {
                 const completion = await client.chat.completions.create(
                     {
@@ -297,6 +252,7 @@ const callOpenAiCompatibleWithFallback = async ({ cfg, messages, temperature = 0
                         messages,
                         temperature,
                         max_tokens: safeMaxTokens,
+                        ...(isNemotronInteractive ? { chat_template_kwargs: { enable_thinking: false } } : {}),
                     },
                     { signal: AbortSignal.timeout(perAttemptMs) }
                 );
@@ -314,26 +270,12 @@ const callOpenAiCompatibleWithFallback = async ({ cfg, messages, temperature = 0
             } catch (err) {
                 lastError = err;
                 logger.warn(`AI model '${modelName}' (${cfg.provider}) failed: ${err.message}. Trying next fallback...`);
-                if (isOpenRouter && /free-models-per-day/i.test(String(err.message || ''))) {
-                    quotaExhausted = true;
+                if (err.status === 401 || err.status === 402 || err.status === 429) {
+                    // Rotate immediately to next configured NVIDIA key on auth or per-minute limit
+                    keyQuotaCooldowns.set(apiKey, Date.now() + 60 * 1000);
                     break;
                 }
             }
-        }
-        return null;
-    };
-
-    const primaryRes = await runModelLoop(curatedModels);
-    if (primaryRes) return primaryRes;
-
-    // If curated models failed due to retired slugs/upstream downtime (not account daily quota),
-    // dynamically discover live $0 :free models from OpenRouter catalog
-    if (isOpenRouter && !quotaExhausted && totalDeadlineMs - Date.now() > 4500) {
-        const discovered = await discoverOpenRouterFreeModels({ vision });
-        const unseen = discovered.filter((m) => !curatedModels.includes(m));
-        if (unseen.length > 0) {
-            const dynamicRes = await runModelLoop(unseen.slice(0, 4));
-            if (dynamicRes) return dynamicRes;
         }
     }
 
@@ -342,30 +284,40 @@ const callOpenAiCompatibleWithFallback = async ({ cfg, messages, temperature = 0
 
 const runProviderText = async (cfg, prompt, { systemPrompt = '', temperature = 0.3, maxTokens = 2048, model: requestedModel = '' } = {}) => {
     const startTime = Date.now();
-    const effectiveModel = requestedModel && (!env.AI_ALLOW_PAID && cfg.provider === 'openrouter' ? isFreeOpenRouterModel(requestedModel) : true)
-        ? requestedModel
-        : cfg.model;
+    const effectiveModel = mapModelForProvider(requestedModel, cfg.provider) || cfg.model;
 
     if (cfg.provider === 'gemini') {
         const genAI = new GoogleGenerativeAI(cfg.apiKey);
-        const model = genAI.getGenerativeModel({
-            model: effectiveModel,
-            ...(systemPrompt ? { systemInstruction: systemPrompt } : {}),
-        });
-        const result = await withTimeoutPromise(
-            model.generateContent({
-                contents: [{ role: 'user', parts: [{ text: prompt }] }],
-                generationConfig: { temperature, maxOutputTokens: Math.max(2048, maxTokens) },
-            }),
-            15000,
-            'Gemini generateContent'
-        );
-        const text = String(result.response.text() || '').trim();
-        if (!text) throw new Error('Gemini returned empty response');
-        return { text, tokensUsed: 0, model: effectiveModel, provider: cfg.provider, responseTimeMs: Date.now() - startTime };
+        const geminiChain = uniqueModels([effectiveModel, 'gemini-2.5-flash', 'gemini-2.0-flash', 'gemma-3-27b-it']);
+        let gemErr = null;
+        for (const gemModelName of geminiChain) {
+            try {
+                const isGemma = gemModelName.startsWith('gemma');
+                const model = genAI.getGenerativeModel({
+                    model: gemModelName,
+                    ...(!isGemma && systemPrompt ? { systemInstruction: systemPrompt } : {}),
+                });
+                const finalPrompt = isGemma && systemPrompt ? `${systemPrompt}\n\n${prompt}` : prompt;
+                const result = await withTimeoutPromise(
+                    model.generateContent({
+                        contents: [{ role: 'user', parts: [{ text: finalPrompt }] }],
+                        generationConfig: { temperature, maxOutputTokens: Math.max(2048, maxTokens) },
+                    }),
+                    20000,
+                    `Gemini (${gemModelName})`
+                );
+                const text = String(result.response.text() || '').trim();
+                if (!text) throw new Error(`${gemModelName} returned empty response`);
+                return { text, tokensUsed: 0, model: gemModelName, provider: cfg.provider, responseTimeMs: Date.now() - startTime };
+            } catch (err) {
+                gemErr = err;
+                logger.warn(`Gemini model '${gemModelName}' failed: ${err.message}`);
+            }
+        }
+        throw gemErr || new Error('Gemini provider failed');
     }
 
-    if (['openai', 'openrouter', 'groq', 'grok'].includes(cfg.provider)) {
+    if (['nvidia', 'openai', 'groq', 'grok'].includes(cfg.provider)) {
         const messages = [];
         if (systemPrompt) messages.push({ role: 'system', content: systemPrompt });
         messages.push({ role: 'user', content: prompt });
@@ -442,7 +394,7 @@ const generateVisionText = async ({ prompt, images = [], systemPrompt = '', temp
                 return { text, tokensUsed: 0, model: cfg.model, provider: 'gemini', responseTimeMs: Date.now() - startTime };
             }
 
-            if (['openai', 'openrouter'].includes(cfg.provider)) {
+            if (['nvidia', 'openai'].includes(cfg.provider)) {
                 const contentParts = [{ type: 'text', text: prompt }];
                 for (const img of safeImages) {
                     const normalizedMime = img.mimeType === 'image/jpg' ? 'image/jpeg' : img.mimeType || 'image/jpeg';
@@ -475,7 +427,6 @@ const parseJsonResponse = (rawText) => {
         try {
             return JSON.parse(candidate);
         } catch {
-            // Only normalize smart quotes / trailing commas as a fallback so valid strings containing quotes aren't broken
             const sanitized = candidate
                 .replace(/[\u201C\u201D]/g, '"')
                 .replace(/[\u2018\u2019]/g, "'")
@@ -533,4 +484,5 @@ module.exports = {
     generateVisionJson,
     parseJsonResponse,
     getActiveAiMetadata,
+    mapModelForProvider,
 };

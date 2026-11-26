@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useContext, useState, useEffect, useRef } from 'react';
 import api from '../services/api';
 import { supabase } from '../services/supabase';
 
@@ -25,6 +25,7 @@ const persistSession = (session, userObj) => {
 export const AuthProvider = ({ children }) => {
     const [user, setUser] = useState(null);
     const [loading, setLoading] = useState(true);
+    const explicitAuthRef = useRef(false);
 
     const fetchBackendProfile = async (accessToken) => {
         const { data } = await api.get('/auth/me', {
@@ -83,7 +84,12 @@ export const AuthProvider = ({ children }) => {
                 if (mounted) setUser(null);
             } else if (session?.access_token) {
                 persistSession(session, null);
-                if (event === 'SIGNED_IN' && !localStorage.getItem('user') && !inFlightProfileRef.active) {
+                if (
+                    event === 'SIGNED_IN' &&
+                    !explicitAuthRef.current &&
+                    !localStorage.getItem('user') &&
+                    !inFlightProfileRef.active
+                ) {
                     inFlightProfileRef.active = true;
                     try {
                         const profile = await fetchBackendProfile(session.access_token);
@@ -108,23 +114,28 @@ export const AuthProvider = ({ children }) => {
 
     const login = async (email, password) => {
         if (supabase) {
-            const { data, error } = await supabase.auth.signInWithPassword({
-                email: email.trim().toLowerCase(),
-                password,
-            });
-            if (error) {
-                const msg = error.message.toLowerCase().includes('email not confirmed')
-                    ? 'Please verify your email address before signing in.'
-                    : error.message;
-                const err = new Error(msg);
-                err.response = { data: { error: msg } };
-                throw err;
+            explicitAuthRef.current = true;
+            try {
+                const { data, error } = await supabase.auth.signInWithPassword({
+                    email: email.trim().toLowerCase(),
+                    password,
+                });
+                if (error) {
+                    const msg = error.message.toLowerCase().includes('email not confirmed')
+                        ? 'Please verify your email address before signing in.'
+                        : error.message;
+                    const err = new Error(msg);
+                    err.response = { data: { error: msg } };
+                    throw err;
+                }
+                persistSession(data.session, null);
+                const profile = await fetchBackendProfile(data.session.access_token);
+                persistSession(data.session, profile);
+                setUser(profile);
+                return { user: profile, accessToken: data.session.access_token };
+            } finally {
+                explicitAuthRef.current = false;
             }
-            persistSession(data.session, null);
-            const profile = await fetchBackendProfile(data.session.access_token);
-            persistSession(data.session, profile);
-            setUser(profile);
-            return { user: profile, accessToken: data.session.access_token };
         }
 
         const { data } = await api.post('/auth/login', { email, password });
@@ -137,29 +148,34 @@ export const AuthProvider = ({ children }) => {
 
     const register = async (name, email, password) => {
         if (supabase) {
-            const { data, error } = await supabase.auth.signUp({
-                email: email.trim().toLowerCase(),
-                password,
-                options: { data: { name: name.trim() } },
-            });
-            if (error) {
-                const err = new Error(error.message);
-                err.response = { data: { error: error.message } };
-                throw err;
+            explicitAuthRef.current = true;
+            try {
+                const { data, error } = await supabase.auth.signUp({
+                    email: email.trim().toLowerCase(),
+                    password,
+                    options: { data: { name: name.trim() } },
+                });
+                if (error) {
+                    const err = new Error(error.message);
+                    err.response = { data: { error: error.message } };
+                    throw err;
+                }
+                if (Array.isArray(data.user?.identities) && data.user.identities.length === 0) {
+                    const err = new Error('Email already registered');
+                    err.response = { data: { error: 'Email already registered' } };
+                    throw err;
+                }
+                if (data.session) {
+                    persistSession(data.session, null);
+                    const profile = await fetchBackendProfile(data.session.access_token);
+                    persistSession(data.session, profile);
+                    setUser(profile);
+                    return { requiresVerification: false, user: profile };
+                }
+                return { requiresVerification: true, user: data.user };
+            } finally {
+                explicitAuthRef.current = false;
             }
-            if (Array.isArray(data.user?.identities) && data.user.identities.length === 0) {
-                const err = new Error('Email already registered');
-                err.response = { data: { error: 'Email already registered' } };
-                throw err;
-            }
-            if (data.session) {
-                persistSession(data.session, null);
-                const profile = await fetchBackendProfile(data.session.access_token);
-                persistSession(data.session, profile);
-                setUser(profile);
-                return { requiresVerification: false, user: profile };
-            }
-            return { requiresVerification: true, user: data.user };
         }
 
         const { data } = await api.post('/auth/register', { name, email, password });
@@ -187,8 +203,12 @@ export const AuthProvider = ({ children }) => {
                 options: { shouldCreateUser: false },
             });
             if (error) {
-                const err = new Error(error.message);
-                err.response = { data: { error: error.message } };
+                const raw = error.message || '';
+                const msg = raw.toLowerCase().includes('signups not allowed')
+                    ? 'No account found for this email. Please create a free account first.'
+                    : raw;
+                const err = new Error(msg);
+                err.response = { data: { error: msg } };
                 throw err;
             }
             return { message: 'Verification code sent to your email' };
@@ -198,24 +218,47 @@ export const AuthProvider = ({ children }) => {
         return data;
     };
 
-    const verifyOtp = async (email, otp, type = 'email') => {
+    const resendSignupOtp = async (email) => {
         if (supabase) {
-            const { data, error } = await supabase.auth.verifyOtp({
+            const { error } = await supabase.auth.resend({
+                type: 'signup',
                 email: email.trim().toLowerCase(),
-                token: otp.trim(),
-                type,
             });
-            if (error || !data?.session) {
-                const msg = error?.message || 'Invalid or expired OTP';
-                const err = new Error(msg);
-                err.response = { data: { error: msg } };
+            if (error) {
+                const err = new Error(error.message);
+                err.response = { data: { error: error.message } };
                 throw err;
             }
-            persistSession(data.session, null);
-            const profile = await fetchBackendProfile(data.session.access_token);
-            persistSession(data.session, profile);
-            setUser(profile);
-            return { user: profile, accessToken: data.session.access_token };
+            return { message: 'Signup verification code re-sent to your email' };
+        }
+
+        const { data } = await api.post('/auth/send-otp', { email });
+        return data;
+    };
+
+    const verifyOtp = async (email, otp, type = 'email') => {
+        if (supabase) {
+            explicitAuthRef.current = true;
+            try {
+                const { data, error } = await supabase.auth.verifyOtp({
+                    email: email.trim().toLowerCase(),
+                    token: otp.trim(),
+                    type,
+                });
+                if (error || !data?.session) {
+                    const msg = error?.message || 'Invalid or expired OTP';
+                    const err = new Error(msg);
+                    err.response = { data: { error: msg } };
+                    throw err;
+                }
+                persistSession(data.session, null);
+                const profile = await fetchBackendProfile(data.session.access_token);
+                persistSession(data.session, profile);
+                setUser(profile);
+                return { user: profile, accessToken: data.session.access_token };
+            } finally {
+                explicitAuthRef.current = false;
+            }
         }
 
         const { data } = await api.post('/auth/verify-otp', { email, otp, type });
@@ -227,7 +270,7 @@ export const AuthProvider = ({ children }) => {
     };
 
     return (
-        <AuthContext.Provider value={{ user, loading, login, register, logout, sendOtp, verifyOtp }}>
+        <AuthContext.Provider value={{ user, loading, login, register, logout, sendOtp, resendSignupOtp, verifyOtp }}>
             {children}
         </AuthContext.Provider>
     );

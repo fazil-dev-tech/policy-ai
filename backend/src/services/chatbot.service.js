@@ -3,6 +3,7 @@ const { supabaseAdmin } = require('../config/supabase');
 const { getRedisClient } = require('../config/redis');
 const geminiService = require('./gemini.service');
 const pdfParser = require('./pdfParser.service');
+const searchService = require('./search.service');
 const { mapChatMessage } = require('../utils/mappers');
 const logger = require('../utils/logger');
 
@@ -85,28 +86,76 @@ const cacheConversation = async (userId, sessionId, history) => {
     });
 };
 
-const buildOfflinePolicyChatFallback = (userMessage, policySummary, matchedClauses = []) => {
-    const parts = [];
-    if (matchedClauses.length > 0) {
-        parts.push('Live LLM synthesis is temporarily rate-limited, so here are the exact matching clauses from your policy:');
-        for (const c of matchedClauses.slice(0, 4)) {
-            parts.push(`• [Page ${c.page_number} · ${c.section_title}]: ${String(c.clause_text || '').slice(0, 320)}`);
-        }
-    } else if (policySummary && Object.keys(policySummary).length > 0) {
-        parts.push(
-            `Live LLM synthesis is temporarily rate-limited. Summary for ${policySummary.providerName || 'your policy'} (${policySummary.policyNumber || 'N/A'}, Cover ₹${Number(policySummary.coverageAmount || 0).toLocaleString('en-IN')}):`
+const buildOfflinePolicyChatFallback = async ({ userMessage, policySummary = {}, matchedClauses = [] }) => {
+    const startTime = Date.now();
+    const isPolicyQuestion =
+        Boolean(policySummary && Object.keys(policySummary).length > 0) &&
+        /\b(my\s+policy|this\s+policy|policy\s*#?|sum\s*insured|cover(?:age)?|insured|member|nominee|ped|pre-?existing|exclusion|waiting|room\s*rent|deductible|co-?pay|helpline|claim|premium|moratorium|page|clause)\b/i.test(
+            userMessage
         );
-        if (policySummary.simpleSummary) parts.push(policySummary.simpleSummary);
-        if (policySummary.exclusions) parts.push(`Exclusions / Waiting Periods: ${policySummary.exclusions}`);
-        if (policySummary.claimProcedure) parts.push(`Claim Procedure: ${policySummary.claimProcedure}`);
-    } else {
-        parts.push(`Live LLM synthesis is temporarily rate-limited for "${userMessage.slice(0, 120)}". Please upload/select a policy for instant clause search or retry in a moment.`);
+
+    const parts = [];
+    if (isPolicyQuestion && matchedClauses.length > 0) {
+        parts.push('Live LLM quota is currently saturated, so here are exact grounded sections directly from your uploaded policy:');
+        for (const c of matchedClauses.slice(0, 4)) {
+            parts.push(`• **[Page ${c.page_number} · ${c.section_title || 'Clause'}]**\n${String(c.clause_text || '').slice(0, 360)}`);
+        }
     }
+    if (isPolicyQuestion && policySummary && Object.keys(policySummary).length > 0) {
+        const members = Array.isArray(policySummary.structuredTerms?.insuredMembers)
+            ? policySummary.structuredTerms.insuredMembers
+            : [];
+        const declaredPeds = Array.isArray(policySummary.structuredTerms?.declaredPeds)
+            ? policySummary.structuredTerms.declaredPeds
+            : [];
+        parts.push(
+            `**Schedule Snapshot — ${policySummary.providerName || 'Policy'} (#${policySummary.policyNumber || 'N/A'})**\n` +
+                `• Sum Insured: ₹${Number(policySummary.coverageAmount || 0).toLocaleString('en-IN')}` +
+                (policySummary.startDate ? ` · Period: ${String(policySummary.startDate).slice(0, 10)} to ${String(policySummary.endDate || '').slice(0, 10)}` : '') +
+                (members.length ? `\n• Insured Members: ${members.map((m) => `${m.name} (${m.relationship || 'Insured'}, Age ${m.age || '?'})`).join(', ')}` : '') +
+                (declaredPeds.length ? `\n• Declared PEDs: ${declaredPeds.join(' | ')}` : '')
+        );
+        if (policySummary.exclusions && matchedClauses.length === 0) {
+            parts.push(`**Key Exclusions / Waiting Periods**: ${policySummary.exclusions}`);
+        }
+    }
+
+    if (parts.length > 0) {
+        return {
+            response: parts.join('\n\n'),
+            tokensUsed: 0,
+            responseTimeMs: Date.now() - startTime,
+            model: 'offline:policy-clauses',
+            provider: 'offline',
+        };
+    }
+
+    // General-purpose query when LLM key hits upstream quota -> run live Tavily/Serper search fallback
+    try {
+        const searchRes = await searchService.liveSearch(userMessage, { prefix: 'chat_general', maxResults: 4 });
+        const sources = (searchRes.results || []).slice(0, 4);
+        if (searchRes.answer || sources.length > 0) {
+            const bullets = sources
+                .map((r, i) => `- **[${i + 1}] ${r.title}** (${r.url}): ${String(r.snippet || '').slice(0, 220)}`)
+                .join('\n');
+            const msg = `${searchRes.answer ? `${searchRes.answer}\n\n` : ''}${bullets}`;
+            return {
+                response: msg,
+                tokensUsed: 0,
+                responseTimeMs: Date.now() - startTime,
+                model: `search:${searchRes.engine || 'web'}`,
+                provider: searchRes.engine || 'search',
+            };
+        }
+    } catch {
+        // Ignore search errors cleanly
+    }
+
     return {
-        response: parts.join('\n\n'),
+        response: `Live AI text models have reached the temporary upstream quota for "${userMessage.slice(0, 100)}". Upload or select a policy to query exact [Page X] clauses instantly, or add another NVIDIA_API_KEY / GROQ_API_KEY / GEMINI_API_KEY.`,
         tokensUsed: 0,
-        responseTimeMs: 0,
-        model: 'offline:clauses-fallback',
+        responseTimeMs: Date.now() - startTime,
+        model: 'offline:quota-notice',
         provider: 'offline',
     };
 };
@@ -123,7 +172,7 @@ const processMessage = async ({ userId, policyId, message, sessionId, aiModel })
     if (policyId) {
         const { data: policy } = await supabaseAdmin
             .from('policies')
-            .select('ai_summary, policy_number, provider_name, policy_type, coverage_amount')
+            .select('ai_summary, cis_summary, structured_terms, start_date, end_date, inception_date, policy_number, provider_name, policy_type, coverage_amount')
             .eq('id', policyId)
             .eq('user_id', userId)
             .maybeSingle();
@@ -131,6 +180,11 @@ const processMessage = async ({ userId, policyId, message, sessionId, aiModel })
         if (policy) {
             policySummary = {
                 ...(policy.ai_summary || {}),
+                cisSummary: policy.cis_summary || {},
+                structuredTerms: policy.structured_terms || {},
+                startDate: policy.start_date || null,
+                endDate: policy.end_date || null,
+                inceptionDate: policy.inception_date || null,
                 policyNumber: policy.policy_number,
                 providerName: policy.provider_name,
                 policyType: policy.policy_type,
@@ -169,8 +223,12 @@ const processMessage = async ({ userId, policyId, message, sessionId, aiModel })
     try {
         aiResult = await geminiService.chatAboutPolicy(sanitizedMessage, policySummary, conversationHistory, matchedClauses, { aiModel });
     } catch (error) {
-        logger.warn('AI chat unavailable, returning Postgres clause fallback:', error.message);
-        aiResult = buildOfflinePolicyChatFallback(sanitizedMessage, policySummary, matchedClauses);
+        logger.warn('AI chat unavailable, returning Postgres/Search fallback:', error.message);
+        aiResult = await buildOfflinePolicyChatFallback({
+            userMessage: sanitizedMessage,
+            policySummary,
+            matchedClauses,
+        });
     }
 
     const { data: chatEntry, error: insertError } = await supabaseAdmin

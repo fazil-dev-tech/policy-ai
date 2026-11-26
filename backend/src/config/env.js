@@ -17,8 +17,8 @@ const envSchema = z.object({
     // Optional Legacy / Cache
     REDIS_URL: z.string().optional().default(''),
 
-    // AI Provider Configuration (free OpenRouter :free models prioritized by default)
-    AI_PROVIDER: z.enum(['auto', 'gemini', 'openai', 'openrouter', 'groq', 'grok', 'puter']).default('auto'),
+    // AI Provider Configuration (NVIDIA NIM / Groq / Gemini prioritized by default)
+    AI_PROVIDER: z.enum(['auto', 'nvidia', 'gemini', 'openai', 'groq', 'grok', 'puter']).default('auto'),
     AI_MODEL: z.string().optional().default(''),
     AI_BASE_URL: z.string().optional().default(''),
     AI_ALLOW_PAID: z
@@ -28,7 +28,8 @@ const envSchema = z.object({
         .transform((v) => v === 'true'),
     GEMINI_API_KEY: z.string().optional().default(''),
     OPENAI_API_KEY: z.string().optional().default(''),
-    OPENROUTER_API_KEY: z.string().optional().default(''),
+    NVIDIA_API_KEY: z.string().optional().default(''),
+    NVIDIA_API_KEYS: z.string().optional().default(''),
     GROQ_API_KEY: z.string().optional().default(''),
     GROK_API_KEY: z.string().optional().default(''),
     GROK_API_BASE_URL: z.string().optional().default('https://api.x.ai/v1'),

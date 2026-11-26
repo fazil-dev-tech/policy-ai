@@ -73,9 +73,18 @@ function CopyBtn({ text }) {
 
 const QUICK_PROMPTS = [
     'What does my policy cover?',
-    'How do I file a claim?',
-    'What are the main exclusions?',
-    'What documents do I need?',
+    'How do I file a cashless claim?',
+    'Explain IRDAI 60-month PED moratorium',
+    'Draft a reimbursement appeal email',
+];
+
+const AI_MODEL_OPTIONS = [
+    { value: '', label: 'Auto (NVIDIA Nemotron 3.5 / Ultra)' },
+    { value: 'nvidia/nemotron-3.5-lightning-30b-a3b', label: 'NVIDIA Nemotron 3.5 Lightning (30B Fast)' },
+    { value: 'nvidia/nemotron-3-ultra-550b-a55b', label: 'NVIDIA Nemotron 3 Ultra (550B 1M)' },
+    { value: 'nvidia/nemotron-3.5-super-vl-120b-a12b', label: 'NVIDIA Nemotron 3.5 Super VL (120B)' },
+    { value: 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning', label: 'NVIDIA Nemotron 3 Nano Omni (30B)' },
+    { value: 'mistralai/mistral-large-4-1t-a52b', label: 'Mistral Large 4 (NIM)' },
 ];
 
 export default function ChatPage() {
@@ -87,6 +96,7 @@ export default function ChatPage() {
     const [sessions, setSessions] = useState([]);
     const [policies, setPolicies] = useState([]);
     const [selectedPolicy, setSelectedPolicy] = useState(searchParams.get('policyId') || '');
+    const [selectedModel, setSelectedModel] = useState('');
     const messagesEndRef = useRef(null);
     const textareaRef = useRef(null);
 
@@ -136,6 +146,7 @@ export default function ChatPage() {
                 message: userMsg,
                 policyId: selectedPolicy || undefined,
                 sessionId: sessionId || undefined,
+                aiModel: selectedModel || undefined,
             });
             setSessionId(data.sessionId);
             if (data.sessionId) sessionStorage.setItem('pg_standard_session', data.sessionId);
@@ -178,9 +189,16 @@ export default function ChatPage() {
                     <label className="form-label">Policy Context</label>
                     <select className="form-input form-input-sm" value={selectedPolicy}
                         onChange={e => setSelectedPolicy(e.target.value)}>
-                        <option value="">General (No Policy)</option>
+                        <option value="">General AI + Live Web Mode</option>
                         {policies.map(p => (
                             <option key={p._id} value={p._id}>{p.providerName} · {p.policyNumber}</option>
+                        ))}
+                    </select>
+                    <label className="form-label" style={{ marginTop: 10 }}>AI Engine / Model</label>
+                    <select className="form-input form-input-sm" value={selectedModel}
+                        onChange={e => setSelectedModel(e.target.value)} aria-label="AI Model">
+                        {AI_MODEL_OPTIONS.map(opt => (
+                            <option key={opt.value || 'auto'} value={opt.value}>{opt.label}</option>
                         ))}
                     </select>
                     {selectedPolicy && (
@@ -254,7 +272,8 @@ export default function ChatPage() {
                                 </div>
                                 <div className="msg-meta">
                                     <span className="msg-time">{fmtTime(msg.timestamp)}</span>
-                                    {msg.responseTime && <span className="msg-time">{msg.responseTime}ms</span>}
+                                    {msg.model && <span className="msg-time" style={{ fontWeight: 600 }}>{msg.model}</span>}
+                                    {msg.responseTime > 0 && <span className="msg-time">{msg.responseTime}ms</span>}
                                     {msg.role === 'ai' && <CopyBtn text={msg.content} />}
                                 </div>
                             </div>
@@ -274,12 +293,12 @@ export default function ChatPage() {
                     <div ref={messagesEndRef} />
                 </div>
 
-                <div className="chat-input-area" style={{ padding: '24px', borderTop: '1px solid rgba(255,255,255,0.05)', background: 'var(--bg-card)' }}>
+                <div className="chat-input-area" style={{ padding: '20px 24px', borderTop: '1px solid rgba(255,255,255,0.65)', background: 'rgba(255,255,255,0.52)', backdropFilter: 'blur(18px) saturate(170%)' }}>
                     <div className="chat-input-wrapper">
                         <textarea
                             ref={textareaRef}
                             className="chat-textarea"
-                            placeholder="Ask about your insurance policy... (Shift+Enter for new line)"
+                            placeholder="Ask a general question OR ask about your uploaded policy clauses... (Shift+Enter for new line)"
                             value={input}
                             onChange={autoGrow}
                             onKeyDown={handleKeyDown}

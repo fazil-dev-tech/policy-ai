@@ -13,7 +13,7 @@
 cd backend
 cp .env.example .env
 # Populate SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY,
-# and free OpenRouter / Groq / Tavily / VirusTotal keys as needed.
+# and free NVIDIA NIM / Groq / Tavily / VirusTotal keys as needed.
 npm ci
 npm run lint
 npm test
@@ -56,7 +56,7 @@ Default local ports:
 
 ## 3. Docker Compose Deployment
 
-Configure root environment variables referenced in `docker-compose.yml` (`SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `OPENROUTER_API_KEY`, `AI_ALLOW_PAID=false`, etc.), then start all three services (`backend`, `ml-service`, `frontend`):
+Configure root environment variables referenced in `docker-compose.yml` (`SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `NVIDIA_API_KEY`, `NVIDIA_API_KEYS`, `AI_ALLOW_PAID=false`, etc.), then start all three services (`backend`, `ml-service`, `frontend`):
 
 ```bash
 docker compose up -d --build
@@ -66,7 +66,7 @@ docker compose up -d --build
 
 ## 4. Vercel + Supabase Deployment
 
-`vercel.json` routes `/api/(.*)` directly to `api/index.js` and builds the static bundle from `frontend/dist`. Set `SUPABASE_*`, `AI_PROVIDER=openrouter`, `AI_MODEL=nvidia/nemotron-3.5-lightning:free`, `AI_ALLOW_PAID=false`, and `CORS_ORIGIN` in Vercel project environment variables. Files exceeding 3.8 MB bypass serverless body limits automatically via `POST /api/storage/signed-upload`.
+`vercel.json` routes `/api/(.*)` directly to `api/index.js` and builds the static bundle from `frontend/dist`. Set `SUPABASE_*`, `AI_PROVIDER=nvidia`, `AI_MODEL=nvidia/nemotron-3.5-lightning-30b-a3b`, `NVIDIA_API_KEY`, `NVIDIA_API_KEYS`, `AI_ALLOW_PAID=false`, and `CORS_ORIGIN` in Vercel project environment variables. Files exceeding 3.8 MB bypass serverless body limits automatically via `POST /api/storage/signed-upload`.
 
 ---
 

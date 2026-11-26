@@ -17,5 +17,5 @@
 
 ## Cost-Control Guardrails
 
-- Free-first OpenRouter routing (`AI_ALLOW_PAID=false`) prevents unintended paid model fallback unless explicitly enabled.
+- Free-first NVIDIA NIM routing (`AI_ALLOW_PAID=false`) prevents unintended paid model fallback unless explicitly enabled.
 - Deterministic calculators (`claimEngine.service.js`) handle all financial arithmetic, moratorium dates, and readiness checklists without consuming LLM tokens.

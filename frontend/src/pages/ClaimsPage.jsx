@@ -2,10 +2,38 @@ import { useState, useEffect, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import api, { uploadDirectToSignedStorage } from '../services/api';
 import {
-    Shield, FileText, Upload, Car, Calculator, Scale, Download,
+    Shield, FileText, Upload, Car, Bike, Calculator, Scale, Download,
     AlertTriangle, Clock, Sliders, Plus, Trash2, Sparkles, CheckSquare, Square, PhoneCall
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+
+const TWO_WHEELER_KEY_SET = new Set([
+    'bike_fairing',
+    'fuel_tank',
+    'front_mudguard',
+    'rear_mudguard',
+    'handlebar_levers',
+    'front_fork',
+    'exhaust_silencer',
+    'bike_headlamp',
+    'bike_taillight',
+    'bike_mirror',
+    'bike_wheel_tyre',
+]);
+
+const FALLBACK_TWO_WHEELER_PARTS = [
+    { part_key: 'bike_fairing', part_label: 'Fairing / Side Cowl', vehicle_category: 'two_wheeler' },
+    { part_key: 'fuel_tank', part_label: 'Fuel Tank', vehicle_category: 'two_wheeler' },
+    { part_key: 'front_mudguard', part_label: 'Front Mudguard / Fender', vehicle_category: 'two_wheeler' },
+    { part_key: 'rear_mudguard', part_label: 'Rear Mudguard / Tail Cowl', vehicle_category: 'two_wheeler' },
+    { part_key: 'handlebar_levers', part_label: 'Handlebar & Clutch/Brake Levers', vehicle_category: 'two_wheeler' },
+    { part_key: 'front_fork', part_label: 'Front Fork Assembly', vehicle_category: 'two_wheeler' },
+    { part_key: 'exhaust_silencer', part_label: 'Exhaust / Silencer Assembly', vehicle_category: 'two_wheeler' },
+    { part_key: 'bike_headlamp', part_label: 'Headlamp & Visor Assembly', vehicle_category: 'two_wheeler' },
+    { part_key: 'bike_taillight', part_label: 'Tail Light / Indicator Assembly', vehicle_category: 'two_wheeler' },
+    { part_key: 'bike_mirror', part_label: 'Rear-View Mirror(s)', vehicle_category: 'two_wheeler' },
+    { part_key: 'bike_wheel_tyre', part_label: 'Wheel Rim / Alloy & Tyre', vehicle_category: 'two_wheeler' },
+];
 
 const SCENARIOS = [
     { value: 'medical_claim', label: 'Medical / Hospitalization Packet (Policy + Script + X-Ray + Estimate)' },
@@ -50,7 +78,15 @@ export default function ClaimsPage() {
     const [slaDraft, setSlaDraft] = useState('');
 
     // Vehicle Damage AI State (strictly real uploads OR explicit benchmark parts picked by user)
-    const [vehicleInfo, setVehicleInfo] = useState({ make: '', model: '', year: new Date().getFullYear() - 2, idv: 500000, zeroDep: false });
+    const [vehicleInfo, setVehicleInfo] = useState({
+        vehicleCategory: 'car',
+        bikeTier: 'commuter',
+        make: '',
+        model: '',
+        year: new Date().getFullYear() - 2,
+        idv: 500000,
+        zeroDep: false,
+    });
     const [garageQuoteTotal, setGarageQuoteTotal] = useState(0);
     const [motorPhotos, setMotorPhotos] = useState([]);
     const [selectedManualParts, setSelectedManualParts] = useState([]);
@@ -249,6 +285,35 @@ export default function ClaimsPage() {
             return [...prev, { partKey: part.part_key, partLabel: part.part_label, severity: 'moderate' }];
         });
     };
+
+    const handleVehicleCategoryChange = (nextCategory) => {
+        if (vehicleInfo.vehicleCategory === nextCategory) return;
+        setSelectedManualParts([]);
+        setVehicleInfo((prev) => {
+            const nextIdv =
+                nextCategory === 'two_wheeler' && prev.idv === 500000
+                    ? 75000
+                    : nextCategory === 'car' && prev.idv === 75000
+                      ? 500000
+                      : prev.idv;
+            return {
+                ...prev,
+                vehicleCategory: nextCategory,
+                bikeTier: prev.bikeTier || 'commuter',
+                idv: nextIdv,
+            };
+        });
+    };
+
+    const filteredVehicleBenchmarks = (() => {
+        const isTwoWheeler = vehicleInfo.vehicleCategory === 'two_wheeler';
+        const filtered = vehicleBenchmarks.filter((b) => {
+            const cat = b.vehicle_category || (TWO_WHEELER_KEY_SET.has(b.part_key) ? 'two_wheeler' : 'car');
+            return cat === (isTwoWheeler ? 'two_wheeler' : 'car');
+        });
+        if (isTwoWheeler && filtered.length === 0) return FALLBACK_TWO_WHEELER_PARTS;
+        return filtered;
+    })();
 
     const updateManualPartSeverity = (partKey, severity) => {
         setSelectedManualParts((prev) => prev.map((p) => (p.partKey === partKey ? { ...p, severity } : p)));
@@ -701,16 +766,72 @@ export default function ClaimsPage() {
                 <div>
                     <div className="grid-2" style={{ marginBottom: 24 }}>
                         <form className="card" style={{ padding: 22 }} onSubmit={handleMotorAnalyze}>
-                            <h3 style={{ marginBottom: 14 }}><Car size={17} /> Motor Accident Photo & Benchmark Estimator</h3>
+                            <h3 style={{ marginBottom: 12 }}>
+                                {vehicleInfo.vehicleCategory === 'two_wheeler' ? <Bike size={17} /> : <Car size={17} />} Motor Accident Photo & Benchmark Estimator
+                            </h3>
+
+                            <div className="motor-cat-toggle" role="tablist" aria-label="Vehicle Category">
+                                <button
+                                    type="button"
+                                    className={`motor-cat-btn ${vehicleInfo.vehicleCategory === 'car' ? 'active' : ''}`}
+                                    onClick={() => handleVehicleCategoryChange('car')}
+                                >
+                                    <Car size={14} /> Car (4-Wheeler)
+                                </button>
+                                <button
+                                    type="button"
+                                    className={`motor-cat-btn ${vehicleInfo.vehicleCategory === 'two_wheeler' ? 'active' : ''}`}
+                                    onClick={() => handleVehicleCategoryChange('two_wheeler')}
+                                >
+                                    <Bike size={14} /> Bike & Scooter (2-Wheeler)
+                                </button>
+                            </div>
+
+                            {vehicleInfo.vehicleCategory === 'two_wheeler' && (
+                                <div className="motor-tier-box">
+                                    <div className="motor-tier-pills">
+                                        <button
+                                            type="button"
+                                            className={`btn btn-sm ${vehicleInfo.bikeTier !== 'premium_ev' ? 'btn-primary' : 'btn-secondary'}`}
+                                            style={{ fontSize: 11.5 }}
+                                            onClick={() => setVehicleInfo((v) => ({ ...v, bikeTier: 'commuter' }))}
+                                        >
+                                            Commuter (100–160cc)
+                                        </button>
+                                        <button
+                                            type="button"
+                                            className={`btn btn-sm ${vehicleInfo.bikeTier === 'premium_ev' ? 'btn-primary' : 'btn-secondary'}`}
+                                            style={{ fontSize: 11.5 }}
+                                            onClick={() => setVehicleInfo((v) => ({ ...v, bikeTier: 'premium_ev' }))}
+                                        >
+                                            Premium / EV (350cc+ · Ather / Ola)
+                                        </button>
+                                    </div>
+                                    <div className="motor-tier-note">
+                                        IRDAI 2-Wheeler compulsory deductible: ₹100 applied automatically.
+                                    </div>
+                                </div>
+                            )}
+
                             <div className="claims-two-col" style={{ marginBottom: 10 }}>
-                                <input className="form-input" placeholder="Make (e.g. Hyundai)" value={vehicleInfo.make} onChange={(e) => setVehicleInfo({ ...vehicleInfo, make: e.target.value })} />
-                                <input className="form-input" placeholder="Model (e.g. i20)" value={vehicleInfo.model} onChange={(e) => setVehicleInfo({ ...vehicleInfo, model: e.target.value })} />
+                                <input
+                                    className="form-input"
+                                    placeholder={vehicleInfo.vehicleCategory === 'two_wheeler' ? 'Make (e.g. Royal Enfield / Honda)' : 'Make (e.g. Hyundai)'}
+                                    value={vehicleInfo.make}
+                                    onChange={(e) => setVehicleInfo({ ...vehicleInfo, make: e.target.value })}
+                                />
+                                <input
+                                    className="form-input"
+                                    placeholder={vehicleInfo.vehicleCategory === 'two_wheeler' ? 'Model (e.g. Classic 350 / Activa)' : 'Model (e.g. i20)'}
+                                    value={vehicleInfo.model}
+                                    onChange={(e) => setVehicleInfo({ ...vehicleInfo, model: e.target.value })}
+                                />
                                 <input className="form-input" type="number" placeholder="Year" value={vehicleInfo.year} onChange={(e) => setVehicleInfo({ ...vehicleInfo, year: Number(e.target.value) })} />
                                 <input className="form-input" type="number" placeholder="Policy IDV (₹)" value={vehicleInfo.idv} onChange={(e) => setVehicleInfo({ ...vehicleInfo, idv: Number(e.target.value) })} />
                             </div>
                             <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13, marginBottom: 10 }}>
                                 <input type="checkbox" checked={vehicleInfo.zeroDep} onChange={(e) => setVehicleInfo({ ...vehicleInfo, zeroDep: e.target.checked })} />
-                                Zero-Depreciation (Bumper-to-Bumper) Add-on Active
+                                Zero-Depreciation (Bumper-to-Bumper / Nil-Dep) Add-on Active
                             </label>
                             <label className="form-label">Garage Quote Total (Optional ₹ — detects overcharge)</label>
                             <input className="form-input" type="number" value={garageQuoteTotal} onChange={(e) => setGarageQuoteTotal(Number(e.target.value))} style={{ marginBottom: 10 }} />
@@ -727,9 +848,11 @@ export default function ClaimsPage() {
                                     }
                                 }} />
 
-                            <label className="form-label">Or Select Specific Damaged Parts Manually (from Supabase Repair Matrix)</label>
+                            <label className="form-label">
+                                Or Select Damaged Parts Manually ({vehicleInfo.vehicleCategory === 'two_wheeler' ? '2-Wheeler' : 'Car'} Repair Matrix)
+                            </label>
                             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10, maxHeight: 130, overflowY: 'auto' }}>
-                                {vehicleBenchmarks.map((b) => {
+                                {filteredVehicleBenchmarks.map((b) => {
                                     const active = selectedManualParts.find((p) => p.partKey === b.part_key);
                                     return (
                                         <button type="button" key={b.part_key}
@@ -766,7 +889,17 @@ export default function ClaimsPage() {
                             <h3 style={{ marginBottom: 14 }}>Repair Cost vs Motor Payout</h3>
                             {motorResult ? (
                                 <div>
-                                    <span className="badge badge-purple" style={{ marginBottom: 12 }}>Source: {motorResult.detectionSource}</span>
+                                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+                                        <span className="badge badge-purple">Source: {motorResult.detectionSource}</span>
+                                        <span className="badge badge-green">
+                                            {(motorResult.vehicleCategory || motorResult.insurancePayout?.vehicleCategory) === 'two_wheeler'
+                                                ? '2-Wheeler (Bike / Scooter)'
+                                                : '4-Wheeler (Car)'}
+                                        </span>
+                                        {motorResult.bikeTier === 'premium_ev' && (
+                                            <span className="badge badge-yellow">Premium / EV Tier (1.75x)</span>
+                                        )}
+                                    </div>
                                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
                                         <div style={{ padding: 12, borderRadius: 10, background: 'var(--bg-secondary)', border: '1px solid var(--border-color)' }}>
                                             <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Garage Repair Range</div>
@@ -779,7 +912,12 @@ export default function ClaimsPage() {
                                             <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--success)' }}>
                                                 ₹{motorResult.insurancePayout.estimatedPayout.toLocaleString('en-IN')}
                                             </div>
-                                            <div style={{ fontSize: 11, color: 'var(--danger)' }}>Out-of-pocket: ₹{motorResult.insurancePayout.outOfPocket.toLocaleString('en-IN')}</div>
+                                            <div style={{ fontSize: 11, color: 'var(--danger)' }}>
+                                                Out-of-pocket: ₹{motorResult.insurancePayout.outOfPocket.toLocaleString('en-IN')}
+                                            </div>
+                                            <div style={{ fontSize: 10.5, color: 'var(--text-muted)', marginTop: 2 }}>
+                                                Excess: ₹{Number(motorResult.insurancePayout.compulsoryDeductible || 0).toLocaleString('en-IN')} · Dep: ₹{Number(motorResult.insurancePayout.totalDepreciation || 0).toLocaleString('en-IN')}
+                                            </div>
                                         </div>
                                     </div>
                                     {motorResult.repairEstimate.quoteOverchargeWarning && (
@@ -796,7 +934,10 @@ export default function ClaimsPage() {
                                     <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 12 }}>{motorResult.disclaimer}</p>
                                 </div>
                             ) : (
-                                <div className="empty-state" style={{ padding: 36 }}><Car size={40} /><p>Upload car damage photos or pick damaged parts to compare OEM repair cost vs net motor payout.</p></div>
+                                <div className="empty-state" style={{ padding: 36 }}>
+                                    {vehicleInfo.vehicleCategory === 'two_wheeler' ? <Bike size={40} /> : <Car size={40} />}
+                                    <p>Upload car or 2-wheeler damage photos or pick damaged parts to compare OEM repair cost vs net motor payout.</p>
+                                </div>
                             )}
                         </div>
                     </div>
@@ -810,7 +951,12 @@ export default function ClaimsPage() {
                                     <tbody>
                                         {damageHistory.map((d) => (
                                             <tr key={d.id}>
-                                                <td>{[d.vehicle_info?.make, d.vehicle_info?.model, d.vehicle_info?.year].filter(Boolean).join(' ') || 'Vehicle'}</td>
+                                                <td>
+                                                    {[d.vehicle_info?.make, d.vehicle_info?.model, d.vehicle_info?.year].filter(Boolean).join(' ') || 'Vehicle'}
+                                                    {d.vehicle_info?.vehicleCategory === 'two_wheeler' && (
+                                                        <span className="badge badge-green" style={{ marginLeft: 6, fontSize: 10, padding: '2px 6px' }}>2W</span>
+                                                    )}
+                                                </td>
                                                 <td><span className="badge badge-purple">{d.detection_source}</span></td>
                                                 <td>₹{Number(d.estimated_repair_min || 0).toLocaleString('en-IN')} – ₹{Number(d.estimated_repair_max || 0).toLocaleString('en-IN')}</td>
                                                 <td style={{ color: 'var(--success)', fontWeight: 700 }}>₹{Number(d.estimated_payout || 0).toLocaleString('en-IN')}</td>

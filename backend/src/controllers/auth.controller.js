@@ -156,7 +156,11 @@ const sendOtp = async (req, res, next) => {
         });
 
         if (error) {
-            return res.status(400).json({ error: error.message });
+            const raw = error.message || '';
+            if (raw.toLowerCase().includes('signups not allowed')) {
+                return res.status(404).json({ error: 'No account found for this email. Please create an account first.' });
+            }
+            return res.status(400).json({ error: raw });
         }
 
         logger.info(`OTP email requested via Supabase Auth for ${normalizedEmail}`);

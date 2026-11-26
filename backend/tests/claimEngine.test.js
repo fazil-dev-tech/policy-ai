@@ -25,6 +25,31 @@ describe('claimEngine deterministic math and IRDAI compliance', () => {
         });
     });
 
+    describe('calculateHealthScore', () => {
+        test('does not false-flag 10% senior co-pay or room cap on Any-Room ₹10L policy when coPayPct is 0', () => {
+            const evalRes = claimEngine.calculateHealthScore(
+                {
+                    policyType: 'health',
+                    coverageAmount: 1000000,
+                    aiSummary: {
+                        coverage: 'Any room (Except suite or above category). Automatic restoration up to 100%.',
+                        exclusions: 'Proportionate deductions are not applied where differential billing is not adopted. 10% co-pay applies for entry age 61 years and above.',
+                        helplineNumber: '1800-425-2255',
+                    },
+                },
+                {
+                    coPayPct: 0,
+                    roomRentCapPct: null,
+                    roomRentLabel: 'Any room (Except suite or above category)',
+                    restoration: true,
+                }
+            );
+            expect(evalRes.detectedTerms.noRoomCap).toBe(true);
+            expect(evalRes.detectedTerms.copayPct).toBe(0);
+            expect(evalRes.healthScore).toBe(100);
+        });
+    });
+
     describe('computeHealthClaimEstimate & proportionate room rent', () => {
         test('calculates deterministic payout waterfall with proportionate room rent deduction', () => {
             const result = claimEngine.computeHealthClaimEstimate(
@@ -88,6 +113,49 @@ describe('claimEngine deterministic math and IRDAI compliance', () => {
             expect(res.insurancePayout.zeroDepApplied).toBe(true);
             expect(res.insurancePayout.totalDepreciation).toBe(0);
             expect(res.repairEstimate.quoteOverchargeWarning).toBeTruthy();
+        });
+
+        test('applies ₹100 IRDAI compulsory deductible and fallback bike parts for two_wheeler', () => {
+            const currentYear = new Date().getFullYear();
+            const res = claimEngine.computeMotorClaimEstimate({
+                damagedParts: [
+                    { partKey: 'fuel_tank', severity: 'moderate' },
+                    { partKey: 'front_mudguard', severity: 'severe' },
+                ],
+                benchmarks: [],
+                vehicleInfo: {
+                    vehicleCategory: 'two_wheeler',
+                    bikeTier: 'commuter',
+                    year: currentYear - 2,
+                    zeroDep: false,
+                },
+            });
+            expect(res.vehicleCategory).toBe('two_wheeler');
+            expect(res.insurancePayout.vehicleCategory).toBe('two_wheeler');
+            expect(res.insurancePayout.compulsoryDeductible).toBe(100);
+            expect(res.insurancePayout.idv).toBe(75000);
+            expect(res.itemizedParts[0].partLabel).toBe('Fuel Tank');
+            expect(res.itemizedParts[0].depreciationPct).toBe(10);
+            expect(res.itemizedParts[1].depreciationPct).toBe(50);
+            expect(res.insurancePayout.estimatedPayout).toBeGreaterThan(0);
+        });
+
+        test('scales two_wheeler repair estimates for premium_ev tier and waives depreciation with zeroDep', () => {
+            const currentYear = new Date().getFullYear();
+            const commuter = claimEngine.computeMotorClaimEstimate({
+                damagedParts: [{ partKey: 'bike_fairing', severity: 'severe' }],
+                benchmarks: [],
+                vehicleInfo: { vehicleCategory: 'two_wheeler', bikeTier: 'commuter', year: currentYear - 2, idv: 90000 },
+            });
+            const premiumEv = claimEngine.computeMotorClaimEstimate({
+                damagedParts: [{ partKey: 'bike_fairing', severity: 'severe' }],
+                benchmarks: [],
+                vehicleInfo: { vehicleCategory: 'two_wheeler', bikeTier: 'premium_ev', year: currentYear - 2, idv: 180000, zeroDep: true },
+            });
+            expect(premiumEv.bikeTier).toBe('premium_ev');
+            expect(premiumEv.repairEstimate.mid).toBeGreaterThan(commuter.repairEstimate.mid * 1.6);
+            expect(premiumEv.insurancePayout.compulsoryDeductible).toBe(100);
+            expect(premiumEv.insurancePayout.totalDepreciation).toBe(0);
         });
     });
 

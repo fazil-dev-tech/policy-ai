@@ -14,6 +14,37 @@ const INDIAN_MOTOR_DEPRECIATION = {
     electrical: 0.5,
 };
 
+const TWO_WHEELER_FALLBACK_BENCHMARKS = [
+    { part_key: 'bike_fairing', part_label: 'Fairing / Side Cowl', vehicle_category: 'two_wheeler', material_type: 'plastic', std_depreciation_pct: 50, minor_min: 600, minor_max: 1800, moderate_min: 1800, moderate_max: 4500, severe_min: 4500, severe_max: 9500, labor_paint_avg: 900 },
+    { part_key: 'fuel_tank', part_label: 'Fuel Tank', vehicle_category: 'two_wheeler', material_type: 'metal', std_depreciation_pct: 10, minor_min: 1500, minor_max: 3500, moderate_min: 3500, moderate_max: 7500, severe_min: 7000, severe_max: 14000, labor_paint_avg: 1500 },
+    { part_key: 'front_mudguard', part_label: 'Front Mudguard / Fender', vehicle_category: 'two_wheeler', material_type: 'plastic', std_depreciation_pct: 50, minor_min: 400, minor_max: 1100, moderate_min: 1000, moderate_max: 2400, severe_min: 2200, severe_max: 4500, labor_paint_avg: 500 },
+    { part_key: 'rear_mudguard', part_label: 'Rear Mudguard / Tail Cowl', vehicle_category: 'two_wheeler', material_type: 'plastic', std_depreciation_pct: 50, minor_min: 450, minor_max: 1200, moderate_min: 1200, moderate_max: 2800, severe_min: 2500, severe_max: 5200, labor_paint_avg: 600 },
+    { part_key: 'handlebar_levers', part_label: 'Handlebar & Clutch/Brake Levers', vehicle_category: 'two_wheeler', material_type: 'metal', std_depreciation_pct: 10, minor_min: 400, minor_max: 1200, moderate_min: 1200, moderate_max: 3200, severe_min: 3000, severe_max: 6500, labor_paint_avg: 600 },
+    { part_key: 'front_fork', part_label: 'Front Fork Assembly', vehicle_category: 'two_wheeler', material_type: 'metal', std_depreciation_pct: 10, minor_min: 1500, minor_max: 3500, moderate_min: 3500, moderate_max: 7500, severe_min: 7500, severe_max: 16000, labor_paint_avg: 1200 },
+    { part_key: 'exhaust_silencer', part_label: 'Exhaust / Silencer Assembly', vehicle_category: 'two_wheeler', material_type: 'metal', std_depreciation_pct: 10, minor_min: 900, minor_max: 2200, moderate_min: 2500, moderate_max: 5500, severe_min: 5500, severe_max: 12500, labor_paint_avg: 700 },
+    { part_key: 'bike_headlamp', part_label: 'Headlamp & Visor Assembly', vehicle_category: 'two_wheeler', material_type: 'plastic', std_depreciation_pct: 50, minor_min: 600, minor_max: 1600, moderate_min: 1600, moderate_max: 4200, severe_min: 4200, severe_max: 9500, labor_paint_avg: 500 },
+    { part_key: 'bike_taillight', part_label: 'Tail Light / Indicator Assembly', vehicle_category: 'two_wheeler', material_type: 'plastic', std_depreciation_pct: 50, minor_min: 350, minor_max: 900, moderate_min: 900, moderate_max: 2200, severe_min: 2000, severe_max: 4500, labor_paint_avg: 400 },
+    { part_key: 'bike_mirror', part_label: 'Rear-View Mirror(s)', vehicle_category: 'two_wheeler', material_type: 'glass', std_depreciation_pct: 0, minor_min: 200, minor_max: 500, moderate_min: 500, moderate_max: 1200, severe_min: 1000, severe_max: 2200, labor_paint_avg: 200 },
+    { part_key: 'bike_wheel_tyre', part_label: 'Wheel Rim / Alloy & Tyre', vehicle_category: 'two_wheeler', material_type: 'rubber', std_depreciation_pct: 50, minor_min: 1200, minor_max: 2500, moderate_min: 2500, moderate_max: 5200, severe_min: 5000, severe_max: 9500, labor_paint_avg: 600 },
+];
+
+const TWO_WHEELER_BENCHMARK_MAP = new Map(TWO_WHEELER_FALLBACK_BENCHMARKS.map((b) => [b.part_key, b]));
+
+const MOTOR_FALLBACK_BANDS = {
+    car: {
+        minor: [2000, 5000],
+        moderate: [5500, 14000],
+        severe: [12000, 28000],
+        labor: 3000,
+    },
+    two_wheeler: {
+        minor: [500, 1400],
+        moderate: [1400, 3800],
+        severe: [3500, 8500],
+        labor: 600,
+    },
+};
+
 const getMetalDepreciationRate = (vehicleAgeYears = 2) => {
     const age = Number(vehicleAgeYears) || 0;
     if (age <= 0.5) return 0;
@@ -90,16 +121,39 @@ const calculateHealthScore = (policy = {}, terms = {}) => {
 
     const hasZeroDep = Boolean(mergedTerms.zeroDep) || /zero\s*dep/i.test(combinedText);
     const hasRestoration = Boolean(mergedTerms.restoration) || /restor|refill|recharge/i.test(combinedText);
+    const roomLabelLow = String(mergedTerms.roomRentLabel || '').toLowerCase();
+    const explicitNoRoomCapLabel = /any\s*room|single\s*(?:private|standard)|at\s*actuals|no\s*(?:room\s*(?:rent\s*)?)?(?:cap|capping|limit)/i.test(
+        roomLabelLow
+    );
     const hasRoomPerDayCap = toNum(mergedTerms.roomRentPerDayCap, 0) > 0;
+    const explicitPctCap =
+        mergedTerms.roomRentCapPct !== undefined && mergedTerms.roomRentCapPct !== null && toNum(mergedTerms.roomRentCapPct, 0) > 0;
+    const hasRoomPctCap = explicitPctCap && toNum(mergedTerms.roomRentCapPct, 0) < 100;
+    const textShowsRoomCap =
+        !explicitNoRoomCapLabel &&
+        (/\broom\s*rent\s*(?:cap|limit|sub-?limit|1%|2%)/i.test(combinedText) ||
+            (/\bproportionate\s*deduction/i.test(combinedText) &&
+                !/proportionate\s*deductions?\s*(?:are\s*)?not\s*applied/i.test(combinedText)));
     const noRoomCap =
         !hasRoomPerDayCap &&
-        ((mergedTerms.roomRentCapPct === null && !/proportionate|room\s*rent\s*(?:cap|limit|1%)/i.test(combinedText)) ||
+        !hasRoomPctCap &&
+        (explicitNoRoomCapLabel ||
             toNum(mergedTerms.roomRentCapPct, 0) >= 100 ||
-            (/(?<!not\s)at actuals|\bno capping\b|\bno room rent limit\b/i.test(combinedText) &&
-                !/room\s*rent\s*limit/i.test(combinedText)));
-    const copayMatch = combinedText.match(/\b(\d{1,2})%\s*co-?pay/i);
+            (mergedTerms.roomRentCapPct === null && !textShowsRoomCap) ||
+            /(?<!not\s)at actuals|\bno capping\b|\bno room rent limit\b|\bany room\b/i.test(combinedText));
+
+    const hasExplicitCopay =
+        mergedTerms.coPayPct !== undefined && mergedTerms.coPayPct !== null && mergedTerms.coPayPct !== '';
+    const conditionalSeniorCopayOnly =
+        /entry\s*age\s*(?:6[01]|65|above\s*60)|for\s*insured\s*person\s*whose\s*age\s*(?:at\s*the\s*time\s*of\s*entry\s*)?is\s*61/i.test(
+            combinedText
+        );
+    const copayMatch = conditionalSeniorCopayOnly ? null : combinedText.match(/\b(\d{1,2})%\s*co-?pay/i);
     const termCopay = toNum(mergedTerms.coPayPct, 0);
-    const copayPct = Math.min(80, Math.max(0, termCopay > 0 ? termCopay : copayMatch ? Number(copayMatch[1]) : 0));
+    const copayPct = Math.min(
+        80,
+        Math.max(0, hasExplicitCopay ? termCopay : copayMatch ? Number(copayMatch[1]) : 0)
+    );
     const initialWaitDays = Math.max(0, toNum(mergedTerms.initialWaitingDays, 30));
     const pedMatch = combinedText.match(/\b(12|24|36|48)\s*months?\b/i);
     const termPed = toNum(mergedTerms.pedWaitingMonths, 0);
@@ -388,12 +442,33 @@ const computeMotorClaimEstimate = ({
     garageQuoteTotal = 0,
 }) => {
     const benchmarkMap = new Map((benchmarks || []).map((b) => [b.part_key, b]));
+    const rawCat = String(vehicleInfo.vehicleCategory || vehicleInfo.category || '').trim().toLowerCase();
+    const isTwoWheeler =
+        ['two_wheeler', 'bike', '2w', 'scooter', 'motorcycle'].includes(rawCat) ||
+        (rawCat === '' &&
+            (damagedParts || []).some((p) => TWO_WHEELER_BENCHMARK_MAP.has(String(p.partKey || p.part_key || '').toLowerCase())));
+    const vehicleCategory = isTwoWheeler ? 'two_wheeler' : 'car';
+    const bikeTier = isTwoWheeler
+        ? String(vehicleInfo.bikeTier || 'commuter').trim().toLowerCase() === 'premium_ev'
+            ? 'premium_ev'
+            : 'commuter'
+        : null;
+    const costScale = isTwoWheeler && bikeTier === 'premium_ev' ? 1.75 : 1;
+
     const vehicleAgeYears = Math.max(0, new Date().getFullYear() - (Number(vehicleInfo.year) || new Date().getFullYear() - 2));
     const zeroDep = Boolean(vehicleInfo.zeroDep ?? policy.structured_terms?.zeroDep);
-    const engineCc = Number(vehicleInfo.engineCc || 1200);
-    const compulsoryDeductible = Number(vehicleInfo.compulsoryDeductible || (engineCc > 1500 ? 2000 : 1000));
-    const idv = Number(vehicleInfo.idv || policy.coverageAmount || 500000);
+    const engineCc = Number(vehicleInfo.engineCc || (isTwoWheeler ? 125 : 1200));
+    const defaultCompulsoryDeductible = isTwoWheeler ? 100 : engineCc > 1500 ? 2000 : 1000;
+    const hasExplicitDeductible =
+        vehicleInfo.compulsoryDeductible !== undefined &&
+        vehicleInfo.compulsoryDeductible !== null &&
+        vehicleInfo.compulsoryDeductible !== '';
+    const compulsoryDeductible = hasExplicitDeductible
+        ? Number(vehicleInfo.compulsoryDeductible)
+        : defaultCompulsoryDeductible;
+    const idv = Number(vehicleInfo.idv || policy.coverageAmount || (isTwoWheeler ? 75000 : 500000));
 
+    const fallbackTable = MOTOR_FALLBACK_BANDS[vehicleCategory];
     let repairMin = 0;
     let repairMax = 0;
     let totalDepreciation = 0;
@@ -402,29 +477,15 @@ const computeMotorClaimEstimate = ({
     for (const part of damagedParts) {
         const key = String(part.partKey || part.part_key || '').toLowerCase();
         const severity = String(part.severity || 'moderate').toLowerCase();
-        const bench = benchmarkMap.get(key);
+        const bench = benchmarkMap.get(key) || (isTwoWheeler ? TWO_WHEELER_BENCHMARK_MAP.get(key) : null);
 
-        const sevMin = Number(
-            part.repairMin ??
-                (bench
-                    ? bench[`${severity}_min`] ?? bench.moderate_min
-                    : severity === 'severe'
-                      ? 12000
-                      : severity === 'minor'
-                        ? 2000
-                        : 5500)
-        );
-        const sevMax = Number(
-            part.repairMax ??
-                (bench
-                    ? bench[`${severity}_max`] ?? bench.moderate_max
-                    : severity === 'severe'
-                      ? 28000
-                      : severity === 'minor'
-                        ? 5000
-                        : 14000)
-        );
-        const laborPaint = Number(bench?.labor_paint_avg ?? 3000);
+        const [fallbackMin, fallbackMax] = fallbackTable[severity] || fallbackTable.moderate;
+        const baseMin = bench ? Number(bench[`${severity}_min`] ?? bench.moderate_min) : fallbackMin;
+        const baseMax = bench ? Number(bench[`${severity}_max`] ?? bench.moderate_max) : fallbackMax;
+
+        const sevMin = Number(part.repairMin ?? Math.round(baseMin * costScale));
+        const sevMax = Number(part.repairMax ?? Math.round(baseMax * costScale));
+        const laborPaint = Math.round(Number(bench?.labor_paint_avg ?? fallbackTable.labor) * costScale);
         const partAvg = Math.round((sevMin + sevMax) / 2);
         const material = part.material || bench?.material_type || 'plastic';
         const depRate = zeroDep
@@ -470,6 +531,8 @@ const computeMotorClaimEstimate = ({
             : null;
 
     return {
+        vehicleCategory,
+        bikeTier,
         itemizedParts,
         repairEstimate: {
             min: repairMin,
@@ -479,6 +542,8 @@ const computeMotorClaimEstimate = ({
             quoteOverchargeWarning,
         },
         insurancePayout: {
+            vehicleCategory,
+            bikeTier,
             idv,
             zeroDepApplied: zeroDep,
             vehicleAgeYears,
@@ -679,6 +744,7 @@ const auditAgentPromise = (promisedTerms = {}, policy = {}) => {
 };
 
 module.exports = {
+    TWO_WHEELER_FALLBACK_BENCHMARKS,
     checkMoratorium60Months,
     calculateHealthScore,
     buildCisCard,

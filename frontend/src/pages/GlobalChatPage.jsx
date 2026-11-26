@@ -67,6 +67,15 @@ function MarkdownText({ content }) {
     return <div className="markdown-content">{elements}</div>;
 }
 
+const AI_MODEL_OPTIONS = [
+    { value: '', label: 'Auto (NVIDIA Nemotron 3.5 / Ultra)' },
+    { value: 'nvidia/nemotron-3.5-lightning-30b-a3b', label: 'NVIDIA Nemotron 3.5 Lightning (30B Fast)' },
+    { value: 'nvidia/nemotron-3-ultra-550b-a55b', label: 'NVIDIA Nemotron 3 Ultra (550B 1M)' },
+    { value: 'nvidia/nemotron-3.5-super-vl-120b-a12b', label: 'NVIDIA Nemotron 3.5 Super VL (120B)' },
+    { value: 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning', label: 'NVIDIA Nemotron 3 Nano Omni (30B)' },
+    { value: 'mistralai/mistral-large-4-1t-a52b', label: 'Mistral Large 4 (NIM)' },
+];
+
 export default function GlobalChatPage() {
     const [searchParams] = useSearchParams();
     const [messages, setMessages] = useState([]);
@@ -78,6 +87,7 @@ export default function GlobalChatPage() {
     const [selectedPolicyId, setSelectedPolicyId] = useState(searchParams.get('policyId') || '');
     const [mode, setMode] = useState('auto');
     const [language, setLanguage] = useState('English');
+    const [selectedModel, setSelectedModel] = useState('');
 
     // Voice & 3D Avatar states
     const [avatarState, setAvatarState] = useState('idle');
@@ -303,6 +313,7 @@ export default function GlobalChatPage() {
                 sessionId: sessionId || undefined,
                 mode,
                 language,
+                aiModel: selectedModel || undefined,
             });
 
             if (!mountedRef.current) return;
@@ -410,13 +421,24 @@ export default function GlobalChatPage() {
                     </select>
                     <select
                         className="form-input"
-                        style={{ padding: '6px 10px', fontSize: 12, marginBottom: 8 }}
+                        style={{ padding: '6px 10px', fontSize: 12, marginBottom: 6 }}
                         value={language}
                         onChange={(e) => setLanguage(e.target.value)}
                         aria-label="Response language"
                     >
                         {LANGUAGE_OPTIONS.map((l) => (
                             <option key={l.label} value={l.label}>Language: {l.label}</option>
+                        ))}
+                    </select>
+                    <select
+                        className="form-input"
+                        style={{ padding: '6px 10px', fontSize: 12, marginBottom: 8 }}
+                        value={selectedModel}
+                        onChange={(e) => setSelectedModel(e.target.value)}
+                        aria-label="Parinidhi AI model"
+                    >
+                        {AI_MODEL_OPTIONS.map((opt) => (
+                            <option key={opt.value || 'auto'} value={opt.value}>{opt.label}</option>
                         ))}
                     </select>
                     <div style={{ display: 'flex', gap: 4 }}>
@@ -470,7 +492,11 @@ export default function GlobalChatPage() {
             {/* Right Panel: Conversation + Live Policy Research Cards */}
             <div className="chat-container" style={{
                 flex: 1, display: 'flex', flexDirection: 'column',
-                background: 'var(--bg-card)', border: '1px solid var(--border-color)',
+                background: 'linear-gradient(155deg, rgba(255,255,255,0.72), rgba(255,255,255,0.48))',
+                backdropFilter: 'blur(24px) saturate(185%)',
+                WebkitBackdropFilter: 'blur(24px) saturate(185%)',
+                border: '1px solid rgba(255,255,255,0.85)',
+                boxShadow: 'inset 0 1.5px 0 rgba(255,255,255,0.96), 0 14px 36px -14px rgba(15,23,42,0.08)',
                 borderRadius: 'var(--border-radius-lg)', overflow: 'hidden',
             }}>
                 <div className="chat-header" style={{ padding: '16px 22px', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -588,6 +614,12 @@ export default function GlobalChatPage() {
                                         </div>
                                     )}
                                 </div>
+                                {(msg.model || msg.responseTime > 0) && (
+                                    <div className="msg-meta" style={{ marginTop: 4 }}>
+                                        {msg.model && <span className="msg-time" style={{ fontWeight: 600 }}>{msg.model}</span>}
+                                        {msg.responseTime > 0 && <span className="msg-time">{msg.responseTime}ms</span>}
+                                    </div>
+                                )}
                             </div>
                         </div>
                     ))}
@@ -608,7 +640,7 @@ export default function GlobalChatPage() {
                     <div ref={messagesEndRef} />
                 </div>
 
-                <div className="chat-input-area" style={{ padding: '16px 22px', borderTop: '1px solid var(--border-color)', background: 'var(--bg-card)' }}>
+                <div className="chat-input-area" style={{ padding: '16px 22px', borderTop: '1px solid rgba(255,255,255,0.65)', background: 'rgba(255,255,255,0.52)', backdropFilter: 'blur(18px) saturate(170%)' }}>
                     <div className="chat-input-wrapper">
                         <textarea
                             ref={textareaRef}

@@ -38,7 +38,9 @@ const allowedOrigins = [
     process.env.FRONTEND_URL,
     'https://policyguard-ai-ecru.vercel.app',
     'http://localhost:5173',
+    'http://127.0.0.1:5173',
     'http://localhost:5174',
+    'http://127.0.0.1:5174',
     'http://localhost:3000',
 ]
     .filter(Boolean)
@@ -73,7 +75,11 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 // Mount Chrome Extension threat shield BEFORE global apiLimiter so DOM scans never throttle user dashboard
 app.use('/api/security', securityRouter);
 
-app.use('/api', apiLimiter);
+// Keep Policy Chat and Parinidhi AI unthrottled for uninterrupted dual-mode usage
+app.use('/api', (req, res, next) => {
+    if (req.path.startsWith('/chat') || req.path.startsWith('/parinidhi')) return next();
+    return apiLimiter(req, res, next);
+});
 
 app.use((req, res, next) => {
     const start = Date.now();

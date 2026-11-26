@@ -5,7 +5,43 @@ const searchService = require('./search.service');
 const claimEngine = require('./claimEngine.service');
 const logger = require('../utils/logger');
 
-const NON_VEHICLE_MESSAGE = 'Uploaded image does not appear to contain a vehicle or car damage. Please upload clear exterior accident photos.';
+const NON_VEHICLE_MESSAGE = 'Uploaded image does not appear to contain a car, motorcycle, scooter, or vehicle damage. Please upload clear exterior accident photos.';
+
+const CAR_TO_BIKE_PART_KEY_MAP = {
+    front_bumper: 'bike_fairing',
+    rear_bumper: 'rear_mudguard',
+    headlight: 'bike_headlamp',
+    taillight: 'bike_taillight',
+    windshield: 'bike_headlamp',
+    bonnet_hood: 'fuel_tank',
+    fender: 'front_mudguard',
+    door_panel: 'bike_fairing',
+    side_mirror: 'bike_mirror',
+    grille: 'bike_fairing',
+    boot_lid: 'rear_mudguard',
+    alloy_wheel_tyre: 'bike_wheel_tyre',
+};
+
+const normalizeVehicleCategory = (value) => {
+    const raw = String(value || '').trim().toLowerCase();
+    if (['two_wheeler', '2w', 'bike', 'motorcycle', 'scooter'].includes(raw)) return 'two_wheeler';
+    if (['car', '4w', 'four_wheeler', 'sedan', 'hatchback', 'suv'].includes(raw)) return 'car';
+    return '';
+};
+
+const normalizeDamagedPartsForCategory = (parts = [], vehicleCategory = 'car') => {
+    if (!Array.isArray(parts)) return [];
+    if (vehicleCategory !== 'two_wheeler') return parts;
+    const dedup = new Map();
+    for (const part of parts) {
+        const rawKey = String(part.partKey || part.part_key || '').trim().toLowerCase();
+        const mappedKey = CAR_TO_BIKE_PART_KEY_MAP[rawKey] || rawKey;
+        if (!dedup.has(mappedKey)) {
+            dedup.set(mappedKey, { ...part, partKey: mappedKey });
+        }
+    }
+    return Array.from(dedup.values());
+};
 
 const callLocalMlSidecar = async ({ files = [], vehicleInfo = {} }) => {
     const mlUrl = env.ML_SERVICE_URL;
@@ -20,8 +56,9 @@ const callLocalMlSidecar = async ({ files = [], vehicleInfo = {} }) => {
             const blob = new Blob([f.buffer], { type: safeMime });
             form.append('files', blob, f.originalname || `photo_${idx}.jpg`);
         });
+        const isBike = normalizeVehicleCategory(vehicleInfo.vehicleCategory || vehicleInfo.category) === 'two_wheeler';
         form.append('vehicle_age', String(Math.max(0, new Date().getFullYear() - (Number(vehicleInfo.year) || 2022))));
-        form.append('vehicle_segment', String(vehicleInfo.segment || 'hatchback_sedan'));
+        form.append('vehicle_segment', isBike ? 'two_wheeler' : String(vehicleInfo.segment || 'hatchback_sedan'));
 
         const resp = await fetch(`${mlUrl.replace(/\/$/, '')}/analyze-damage`, {
             method: 'POST',
@@ -49,11 +86,20 @@ const analyzeVehicleWithVision = async ({ imageFiles = [], vehicleInfo = {} }) =
 
     if (images.length === 0) return null;
 
-    const vehicleDesc = [vehicleInfo.make, vehicleInfo.model, vehicleInfo.year].filter(Boolean).join(' ') || 'Indian passenger car';
+    const explicitCategory = normalizeVehicleCategory(vehicleInfo.vehicleCategory || vehicleInfo.category);
+    const isExplicitBike = explicitCategory === 'two_wheeler';
+    const vehicleDesc =
+        [vehicleInfo.make, vehicleInfo.model, vehicleInfo.year].filter(Boolean).join(' ') ||
+        (isExplicitBike ? 'Indian two-wheeler (motorcycle / scooter)' : 'Indian motor vehicle (car / two-wheeler)');
+    const partKeysHint = isExplicitBike
+        ? 'one of: bike_fairing, fuel_tank, front_mudguard, rear_mudguard, handlebar_levers, front_fork, exhaust_silencer, bike_headlamp, bike_taillight, bike_mirror, bike_wheel_tyre'
+        : 'car: [front_bumper, rear_bumper, headlight, taillight, windshield, bonnet_hood, fender, door_panel, side_mirror, grille, boot_lid, alloy_wheel_tyre] OR two-wheeler: [bike_fairing, fuel_tank, front_mudguard, rear_mudguard, handlebar_levers, front_fork, exhaust_silencer, bike_headlamp, bike_taillight, bike_mirror, bike_wheel_tyre]';
+
     const prompt = `You are a certified Indian Motor Insurance Surveyor & Automotive Damage Estimator.
-Analyze these exterior accident photo(s) for vehicle "${vehicleDesc}". Respond ONLY with valid JSON:
+Analyze these exterior accident photo(s) for vehicle "${vehicleDesc}"${isExplicitBike ? ' (Motorcycle / Scooter)' : ''}. If the photo shows a motorcycle, scooter, or moped, set "vehicleCategory" to "two_wheeler" and use the two-wheeler partKeys. Respond ONLY with valid JSON:
 {
   "isVehicle": true,
+  "vehicleCategory": "car | two_wheeler",
   "vehicleDetected": "make/model/body type observed or empty string",
   "imageQuality": {
     "rating": "good | fair | poor",
@@ -61,7 +107,7 @@ Analyze these exterior accident photo(s) for vehicle "${vehicleDesc}". Respond O
   },
   "damagedParts": [
     {
-      "partKey": "one of: front_bumper, rear_bumper, headlight, taillight, windshield, bonnet_hood, fender, door_panel, side_mirror, grille, boot_lid, alloy_wheel_tyre",
+      "partKey": "${partKeysHint}",
       "partLabel": "Human readable part name",
       "severity": "minor | moderate | severe",
       "material": "plastic | metal | glass | rubber",
@@ -108,10 +154,12 @@ const analyzeMotorAccident = async ({
     let damagedParts = Array.isArray(manualParts) ? manualParts : [];
     let overallSummary = '';
     let isVehicle = true;
+    const explicitCategory = normalizeVehicleCategory(vehicleInfo.vehicleCategory || vehicleInfo.category);
+    let effectiveCategory = explicitCategory;
 
     const onlyPhotos = imageFiles.filter((f) => String(f.mimetype || '').startsWith('image/'));
 
-    // Tier 1: OpenRouter Vision (Primary)
+    // Tier 1: Multimodal Vision AI (Primary — NVIDIA NIM Super VL / Omni)
     if (onlyPhotos.length > 0) {
         try {
             const visionRes = await analyzeVehicleWithVision({ imageFiles: onlyPhotos, vehicleInfo });
@@ -126,20 +174,24 @@ const analyzeMotorAccident = async ({
                         imageQuality,
                     };
                 }
+                const visionCat = normalizeVehicleCategory(visionRes.vehicleCategory);
+                if (visionCat === 'two_wheeler' || (!effectiveCategory && visionCat)) {
+                    effectiveCategory = visionCat;
+                }
                 if (Array.isArray(visionRes.damagedParts) && visionRes.damagedParts.length > 0) {
                     damagedParts = visionRes.damagedParts;
-                    detectionSource = `openrouter_vision (${visionRes.aiModel || 'vision'})`;
+                    detectionSource = `nvidia_vision (${visionRes.aiModel || visionRes.aiProvider || 'vision'})`;
                 }
             }
         } catch (err) {
-            logger.warn(`Tier 1 OpenRouter Vision failed (${err.message}), trying Tier 2 ml-service...`);
+            logger.warn(`Tier 1 Vision AI failed (${err.message}), trying Tier 2 ml-service...`);
         }
     }
 
     let mlCostMultiplier = null;
     // Tier 2: Local ml-service/ (FastAPI + YOLOv8 + scikit-learn) fallback
     if ((detectionSource === 'benchmark_manual' || damagedParts.length === 0) && onlyPhotos.length > 0) {
-        const mlRes = await callLocalMlSidecar({ files: onlyPhotos, vehicleInfo });
+        const mlRes = await callLocalMlSidecar({ files: onlyPhotos, vehicleInfo: { ...vehicleInfo, vehicleCategory: effectiveCategory || vehicleInfo.vehicleCategory } });
         if (mlRes) {
             if (mlRes.is_vehicle === false) {
                 return {
@@ -147,6 +199,10 @@ const analyzeMotorAccident = async ({
                     error: NON_VEHICLE_MESSAGE,
                     imageQuality: mlRes.image_quality || imageQuality,
                 };
+            }
+            const mlCat = normalizeVehicleCategory(mlRes.detected_vehicle_category);
+            if (mlCat === 'two_wheeler' || (!effectiveCategory && mlCat)) {
+                effectiveCategory = mlCat;
             }
             if (Number.isFinite(Number(mlRes.sklearnCostMultiplier))) {
                 mlCostMultiplier = Number(mlRes.sklearnCostMultiplier);
@@ -159,6 +215,13 @@ const analyzeMotorAccident = async ({
         }
     }
 
+    const finalCategory = effectiveCategory || 'car';
+    damagedParts = normalizeDamagedPartsForCategory(damagedParts, finalCategory);
+    const effectiveVehicleInfo = {
+        ...vehicleInfo,
+        vehicleCategory: finalCategory,
+    };
+
     if (damagedParts.length === 0 && onlyPhotos.length > 0 && detectionSource === 'benchmark_manual') {
         detectionSource = 'vision_unavailable_manual_recommended';
         overallSummary =
@@ -168,16 +231,16 @@ const analyzeMotorAccident = async ({
 
     // Optional live OEM repair context from Tavily/Serper
     let oemLookup = null;
-    if (damagedParts.length > 0 && (vehicleInfo.make || vehicleInfo.model)) {
+    if (damagedParts.length > 0 && (effectiveVehicleInfo.make || effectiveVehicleInfo.model)) {
         oemLookup = await searchService
-            .lookupOemRepairCosts(vehicleInfo, damagedParts.map((p) => p.partLabel || p.partKey))
+            .lookupOemRepairCosts(effectiveVehicleInfo, damagedParts.map((p) => p.partLabel || p.partKey))
             .catch(() => null);
     }
 
     const estimate = claimEngine.computeMotorClaimEstimate({
         damagedParts,
         benchmarks: benchmarks || [],
-        vehicleInfo,
+        vehicleInfo: effectiveVehicleInfo,
         policy,
         garageQuoteTotal,
     });
@@ -189,7 +252,7 @@ const analyzeMotorAccident = async ({
         user_id: userId,
         incident_id: incidentId || null,
         policy_id: policy.id || null,
-        vehicle_info: vehicleInfo,
+        vehicle_info: effectiveVehicleInfo,
         detection_source: detectionSource,
         image_quality: imageQuality,
         damaged_parts: estimate.itemizedParts,
@@ -220,6 +283,8 @@ const analyzeMotorAccident = async ({
     return {
         rejected: false,
         analysisUnavailable: detectionSource === 'vision_unavailable_manual_recommended',
+        vehicleCategory: finalCategory,
+        bikeTier: estimate.bikeTier,
         report: savedReport || insertPayload,
         ...estimate,
         detectionSource,
