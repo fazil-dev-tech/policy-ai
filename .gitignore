@@ -32,3 +32,6 @@ ml-service/.venv/
 ml-service/models/
 ml-service/*.pt
 ml-service/__pycache__/
+
+.vercel
+.env*
