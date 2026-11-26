@@ -303,6 +303,8 @@ export default function LandingPage() {
                             </div>
                         </div>
 
+                        <div className="hero-center-spacer" aria-hidden="true" />
+
                         {/* Structured Frosted Specimen Console */}
                         <SpotlightCard className="hero-diagnostic-card" hoverLift={false}>
                             <div className="hero-diag-header">

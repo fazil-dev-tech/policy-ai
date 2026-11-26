@@ -1519,11 +1519,12 @@ select.form-input {
   min-height: auto;
   display: flex;
   align-items: center;
-  padding: 44px 40px 48px;
+  padding: 36px 28px 42px;
   background:
-    radial-gradient(ellipse 56% 52% at 72% 44%, rgba(225, 29, 72, 0.14) 0%, transparent 66%),
-    radial-gradient(ellipse 48% 42% at 18% 72%, rgba(99, 102, 241, 0.085) 0%, transparent 64%),
-    #060913;
+    radial-gradient(ellipse 46% 52% at 50% 42%, rgba(225, 29, 72, 0.14) 0%, transparent 66%),
+    radial-gradient(ellipse 42% 40% at 84% 48%, rgba(56, 189, 248, 0.065) 0%, transparent 64%),
+    radial-gradient(ellipse 44% 40% at 16% 72%, rgba(99, 102, 241, 0.08) 0%, transparent 64%),
+    #050811;
   overflow: hidden;
 }
 
@@ -1573,17 +1574,22 @@ select.form-input {
 .landing-hero-inner {
   position: relative;
   z-index: 2;
-  max-width: 1200px;
+  max-width: 1360px;
   width: 100%;
   margin: 0 auto;
 }
 
 .hero-split-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.12fr) minmax(350px, 0.92fr);
-  gap: 38px;
+  grid-template-columns: minmax(0, 425px) minmax(250px, 1fr) minmax(350px, 398px);
+  gap: 18px;
   align-items: center;
-  margin-bottom: 30px;
+  margin-bottom: 28px;
+}
+
+.hero-center-spacer {
+  min-height: 340px;
+  pointer-events: none;
 }
 
 .hero-copy-col {
@@ -1596,7 +1602,7 @@ select.form-input {
   position: absolute;
   inset: -24px -32px;
   border-radius: 28px;
-  background: radial-gradient(ellipse 75% 70% at 42% 48%, rgba(6, 9, 19, 0.72) 0%, rgba(6, 9, 19, 0.28) 60%, transparent 100%);
+  background: radial-gradient(ellipse 75% 70% at 42% 48%, rgba(5, 8, 17, 0.84) 0%, rgba(5, 8, 17, 0.34) 60%, transparent 100%);
   pointer-events: none;
   z-index: -1;
 }
@@ -1855,12 +1861,12 @@ select.form-input {
 }
 
 .hero-title-obsidian {
-  font-size: clamp(2.15rem, 4.35vw, 3.65rem);
+  font-size: clamp(1.9rem, 2.75vw, 2.9rem);
   font-weight: 800;
   line-height: 1.09;
   letter-spacing: -0.03em;
   color: #f8fafc;
-  max-width: 610px;
+  max-width: 445px;
   margin-bottom: 14px;
 }
 
@@ -1874,10 +1880,10 @@ select.form-input {
 }
 
 .hero-subtitle-obsidian {
-  font-size: clamp(0.98rem, 1.55vw, 1.1rem);
-  line-height: 1.62;
+  font-size: clamp(0.94rem, 1.15vw, 1.04rem);
+  line-height: 1.6;
   color: #cbd5e1;
-  max-width: 560px;
+  max-width: 430px;
   margin-bottom: 22px;
 }
 
@@ -4017,6 +4023,17 @@ select.form-input {
   border-radius: 4px;
   font-family: var(--font-mono);
   font-size: 13px;
+}
+
+@media (max-width: 1120px) {
+  .hero-split-grid {
+    grid-template-columns: minmax(0, 1.08fr) minmax(335px, 0.92fr);
+    gap: 28px;
+  }
+
+  .hero-center-spacer {
+    display: none;
+  }
 }
 
 @media (max-width: 960px) {
