@@ -2488,6 +2488,22 @@ select.form-input {
   display: block;
 }
 
+.svg-interactive-node {
+  cursor: pointer;
+  outline: none;
+  transition: filter 0.2s ease, opacity 0.2s ease;
+}
+
+.svg-interactive-node:hover {
+  filter: brightness(1.03);
+}
+
+.svg-interactive-node:focus-visible rect,
+.svg-interactive-node:focus-visible circle {
+  stroke: #e11d48;
+  stroke-width: 2;
+}
+
 @keyframes svgScanLoop {
   0% { transform: translateX(-100%); }
   100% { transform: translateX(100%); }
