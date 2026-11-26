@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { UserPlus, Eye, EyeOff, Shield, Zap, Lock } from 'lucide-react';
+import { UserPlus, Eye, EyeOff, Shield, Zap, Lock, ArrowLeft } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { Canvas } from '@react-three/fiber';
 import CanvasErrorBoundary from '../components/shared/CanvasErrorBoundary';
@@ -17,6 +17,7 @@ export default function RegisterPage() {
     const [otp, setOtp] = useState('');
     const [needsVerification, setNeedsVerification] = useState(false);
     const [showPass, setShowPass] = useState(false);
+    const [showConfirmPass, setShowConfirmPass] = useState(false);
     const [loading, setLoading] = useState(false);
 
     const handleSubmit = async (e) => {
@@ -62,14 +63,14 @@ export default function RegisterPage() {
             <div className="auth-brand-panel auth-brand-dark">
                 <div className="auth-panel-canvas" aria-hidden="true">
                     <CanvasErrorBoundary fallbackTitle="PolicyGuard Sign Up">
-                        <Canvas dpr={[1, 1.5]} camera={{ position: [0, 0.25, 9.2], fov: 46 }} gl={{ alpha: true, antialias: true }}>
+                        <Canvas dpr={[1, 1.5]} camera={{ position: [0, 0.15, 9.8], fov: 44 }} gl={{ alpha: true, antialias: true }}>
                             <ambientLight intensity={1.15} />
-                            <directionalLight position={[8, 9, 8]} intensity={2.0} color="#ffffff" />
-                            <directionalLight position={[-6, 6, 4]} intensity={1.5} color="#fb7185" />
+                            <directionalLight position={[8, 9, 8]} intensity={1.65} color="#ffffff" />
+                            <directionalLight position={[-6, 6, 4]} intensity={1.45} color="#fb7185" />
                             <pointLight position={[-8, -6, 4]} intensity={1.2} color="#22d3ee" />
-                            <CyberCore position={[0, 1.35, -0.4]} active={needsVerification} />
+                            <CyberCore position={[0, 1.78, -0.5]} scale={0.66} active={needsVerification} />
                             <DataStreamField active={needsVerification} color="#22d3ee" />
-                            <GridFloor colorPrimary={needsVerification ? '#22d3ee40' : '#e11d4840'} colorSecondary="#33415532" y={-3.6} />
+                            <GridFloor colorPrimary={needsVerification ? '#22d3ee' : '#e11d48'} colorSecondary="#1e293b" opacity={0.22} y={-3.6} />
                             <fog attach="fog" args={['#050814', 9, 24]} />
                         </Canvas>
                     </CanvasErrorBoundary>
@@ -81,7 +82,9 @@ export default function RegisterPage() {
                         <span>FREE POLICYHOLDER VAULT</span>
                     </div>
                     <div className="auth-brand-logo-row">
-                        <img src="/logo.png" alt="PolicyGuard AI" className="auth-logo-mark" />
+                        <span className="brand-emblem-dark auth-logo-mark-wrap">
+                            <img src="/logo.png" alt="PolicyGuard AI" className="auth-logo-mark" />
+                        </span>
                         <div>
                             <h1 className="auth-brand-name-obsidian">PolicyGuard AI</h1>
                             <p className="auth-brand-tagline-obsidian">Free Insurance Clarity &amp; Claim Protection</p>
@@ -100,7 +103,13 @@ export default function RegisterPage() {
             <div className="auth-form-panel auth-form-glass-stage">
                 <SpotlightCard className="auth-card auth-card-clean" hoverLift={false}>
                     <div className="auth-logo">
-                        <img src="/logo.png" alt="PolicyGuard AI" style={{ width: 42, height: 42, borderRadius: 11, objectFit: 'cover', marginBottom: 6 }} />
+                        <div className="auth-card-mobile-pill">
+                            <span className="hero-live-dot" aria-hidden="true" />
+                            <span>Free Policyholder Vault</span>
+                        </div>
+                        <div className="auth-card-logo-badge">
+                            <img src="/logo.png" alt="PolicyGuard AI" />
+                        </div>
                         <h1>{needsVerification ? 'Verify Email' : 'Create Account'}</h1>
                         <p>{needsVerification ? `Enter the verification code sent to ${form.email}` : 'Join PolicyGuard AI — completely free'}</p>
                     </div>
@@ -155,21 +164,30 @@ export default function RegisterPage() {
                                 <div style={{ position: 'relative' }}>
                                     <input id="register-password" type={showPass ? 'text' : 'password'}
                                         className="form-input" placeholder="Min. 6 characters"
-                                        value={form.password} required style={{ paddingRight: 48 }}
+                                        value={form.password} required style={{ paddingRight: 44 }}
                                         autoComplete="new-password"
                                         onChange={(e) => setForm({ ...form, password: e.target.value })} />
-                                    <button type="button" aria-label={showPass ? 'Hide password' : 'Show password'} onClick={() => setShowPass(!showPass)}
-                                        style={{ position: 'absolute', right: 14, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex' }}>
+                                    <button type="button" className="auth-password-toggle" aria-label={showPass ? 'Hide password' : 'Show password'} onClick={() => setShowPass(!showPass)}>
                                         {showPass ? <EyeOff size={18} /> : <Eye size={18} />}
                                     </button>
                                 </div>
                             </div>
                             <div className="form-group">
                                 <label className="form-label">Confirm Password</label>
-                                <input id="register-confirm" type="password" className="form-input"
-                                    placeholder="Repeat your password" value={form.confirmPassword} required
-                                    autoComplete="new-password"
-                                    onChange={(e) => setForm({ ...form, confirmPassword: e.target.value })} />
+                                <div style={{ position: 'relative' }}>
+                                    <input id="register-confirm" type={showConfirmPass ? 'text' : 'password'} className="form-input"
+                                        placeholder="Repeat your password" value={form.confirmPassword} required style={{ paddingRight: 44 }}
+                                        autoComplete="new-password"
+                                        onChange={(e) => setForm({ ...form, confirmPassword: e.target.value })} />
+                                    <button type="button" className="auth-password-toggle" aria-label={showConfirmPass ? 'Hide confirm password' : 'Show confirm password'} onClick={() => setShowConfirmPass(!showConfirmPass)}>
+                                        {showConfirmPass ? <EyeOff size={18} /> : <Eye size={18} />}
+                                    </button>
+                                </div>
+                                {form.confirmPassword.length > 0 && (
+                                    <span className={`auth-field-hint ${form.password === form.confirmPassword ? 'ok' : 'err'}`}>
+                                        {form.password === form.confirmPassword ? 'Passwords match' : 'Passwords do not match yet'}
+                                    </span>
+                                )}
                             </div>
                             <button id="register-submit" type="submit" className="btn btn-primary btn-lg"
                                 style={{ width: '100%', marginTop: 8 }} disabled={loading}>
@@ -182,8 +200,8 @@ export default function RegisterPage() {
                     )}
 
                     <div className="auth-footer">Already have an account? <Link to="/login">Sign in</Link></div>
-                    <div className="auth-footer" style={{ marginTop: 6 }}>
-                        <Link to="/" style={{ color: '#64748b', fontSize: 13 }}>← Back to home</Link>
+                    <div className="auth-footer auth-footer-back">
+                        <Link to="/" className="auth-back-link"><ArrowLeft size={14} /> Back to home</Link>
                     </div>
                 </SpotlightCard>
             </div>

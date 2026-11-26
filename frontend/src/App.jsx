@@ -63,7 +63,9 @@ function App() {
                             <Menu size={20} />
                         </button>
                         <div className="mobile-brand">
-                            <img src="/logo.png" alt="PolicyGuard AI" />
+                            <span className="mobile-brand-badge">
+                                <img src="/logo.png" alt="PolicyGuard AI" />
+                            </span>
                             <span>PolicyGuard AI</span>
                         </div>
                     </header>

@@ -250,7 +250,9 @@ export default function LandingPage() {
                         }
                     }}
                 >
-                    <img src="/logo.png" alt="PolicyGuard AI" width={34} height={34} className="landing-nav-img" />
+                    <span className="brand-emblem-dark landing-nav-emblem">
+                        <img src="/logo.png" alt="PolicyGuard AI" width={26} height={26} className="landing-nav-img" />
+                    </span>
                     <span>PolicyGuard <span className="landing-logo-badge">AI</span></span>
                 </div>
                 <nav className="landing-nav-links" aria-label="Landing Navigation">
@@ -632,33 +634,59 @@ export default function LandingPage() {
 
             <footer className="landing-footer-dark">
                 <div className="landing-footer-inner">
-                    <div>
+                    <div className="landing-footer-brand-col">
                         <div className="landing-footer-brand">
-                            <img src="/logo.png" alt="" width={24} height={24} style={{ borderRadius: 6 }} />
-                            <span>PolicyGuard AI</span>
+                            <span className="brand-emblem-dark landing-footer-emblem">
+                                <img src="/logo.png" alt="PolicyGuard AI" width={28} height={28} className="landing-footer-logo" />
+                            </span>
+                            <div>
+                                <span className="landing-footer-title">PolicyGuard <span className="landing-logo-badge">AI</span></span>
+                                <span className="landing-footer-sub">IRDAI-Aligned Policy &amp; Claim Intelligence</span>
+                            </div>
                         </div>
                         <p className="landing-footer-note">
-                            Clear policy intelligence, transparent claim simulations, vehicle damage checks, and real-time scam defense.
+                            Clear policy decoding, rule-checked hospital &amp; motor payout math, family emergency cards, and real-time scam defense across Web, WhatsApp &amp; Gmail.
                         </p>
+                        <div className="landing-footer-badges">
+                            <span><Lock size={11} /> PAN &amp; Aadhaar Masked</span>
+                            <span><ShieldCheck size={11} /> Rule-Checked Payouts</span>
+                        </div>
                     </div>
+
                     <div className="landing-footer-cols">
-                        <div>
+                        <div className="landing-footer-col">
                             <h3>Platform</h3>
                             <button type="button" onClick={() => scrollTo('capabilities')}>Six Core Tools</button>
-                            <button type="button" onClick={() => scrollTo('architecture')}>How It Works</button>
-                            <button type="button" onClick={() => scrollTo('workflow')}>Claim Math</button>
+                            <button type="button" onClick={() => scrollTo('architecture')}>3D Architecture</button>
+                            <button type="button" onClick={() => scrollTo('workflow')}>Transparent Claim Math</button>
                             <button type="button" onClick={() => scrollTo('security')}>Privacy &amp; FAQ</button>
                         </div>
-                        <div>
-                            <h3>Access</h3>
+                        <div className="landing-footer-col">
+                            <h3>Modules</h3>
+                            <button type="button" onClick={() => navigate('/policies')}>Policy Vault <ArrowUpRight size={12} /></button>
+                            <button type="button" onClick={() => navigate('/claims')}>Claims &amp; Motor AI <ArrowUpRight size={12} /></button>
+                            <button type="button" onClick={() => navigate('/shield')}>Browser Scam Shield <ArrowUpRight size={12} /></button>
+                            <button type="button" onClick={() => navigate('/terminal')}>Parinidhi Voice AI <ArrowUpRight size={12} /></button>
+                            <button type="button" onClick={() => navigate('/family')}>Family &amp; SOS Cards <ArrowUpRight size={12} /></button>
+                        </div>
+                        <div className="landing-footer-col">
+                            <h3>Account &amp; SOS</h3>
                             <button type="button" onClick={() => navigate('/login')}>Workspace Sign In</button>
                             <button type="button" onClick={() => navigate('/register')}>Create Free Account</button>
+                            <div className="landing-footer-sos">
+                                <span className="landing-footer-sos-label">India Helplines</span>
+                                <div className="landing-footer-sos-pills">
+                                    <span>112 SOS</span>
+                                    <span>1930 Cyber</span>
+                                    <span>155255 IRDAI</span>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
                 <div className="landing-footer-bottom">
                     <span>© {new Date().getFullYear()} PolicyGuard AI · Clear Policy &amp; Claim Intelligence</span>
-                    <span>Built by Mohamed Fazil Pasha</span>
+                    <span className="landing-footer-credit">Built by Mohamed Fazil Pasha</span>
                 </div>
             </footer>
         </div>

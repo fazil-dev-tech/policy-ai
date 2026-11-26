@@ -58,8 +58,8 @@ export default function Sidebar({ mobileOpen = false, onClose = () => {} }) {
     return (
         <aside className={`sidebar ${mobileOpen ? 'open' : ''}`}>
             <div className="sidebar-logo">
-                <div className="logo-icon" style={{ padding: 0, overflow: 'hidden', background: 'transparent' }}>
-                    <img src="/logo.png" alt="PolicyGuard AI" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                <div className="logo-icon logo-emblem-light">
+                    <img src="/logo.png" alt="PolicyGuard AI" />
                 </div>
                 <div style={{ flex: 1 }}>
                     <h1>PolicyGuard AI</h1>

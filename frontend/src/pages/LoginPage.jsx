@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { LogIn, Eye, EyeOff, Shield, Zap, Lock, Mail, Key } from 'lucide-react';
+import { LogIn, Eye, EyeOff, Shield, Zap, Lock, Mail, KeyRound, ArrowLeft } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { motion } from 'framer-motion';
 import { Canvas } from '@react-three/fiber';
@@ -76,14 +76,14 @@ export default function LoginPage() {
             <div className="auth-brand-panel auth-brand-dark">
                 <div className="auth-panel-canvas" aria-hidden="true">
                     <CanvasErrorBoundary fallbackTitle="PolicyGuard Auth">
-                        <Canvas dpr={[1, 1.5]} camera={{ position: [0, 0.25, 9.2], fov: 46 }} gl={{ alpha: true, antialias: true }}>
+                        <Canvas dpr={[1, 1.5]} camera={{ position: [0, 0.15, 9.8], fov: 44 }} gl={{ alpha: true, antialias: true }}>
                             <ambientLight intensity={1.15} />
-                            <directionalLight position={[8, 9, 8]} intensity={2.0} color="#ffffff" />
-                            <directionalLight position={[-6, 6, 4]} intensity={1.5} color={otpSent ? '#06b6d4' : '#fb7185'} />
+                            <directionalLight position={[8, 9, 8]} intensity={1.65} color="#ffffff" />
+                            <directionalLight position={[-6, 6, 4]} intensity={1.45} color={otpSent ? '#06b6d4' : '#fb7185'} />
                             <pointLight position={[-8, -6, 4]} intensity={1.2} color="#22d3ee" />
-                            <CyberCore position={[0, 1.35, -0.4]} active={otpSent} />
+                            <CyberCore position={[0, 1.78, -0.5]} scale={0.66} active={otpSent} />
                             <DataStreamField active={otpSent} color="#f472b6" />
-                            <GridFloor colorPrimary={otpSent ? '#22d3ee40' : '#e11d4840'} colorSecondary="#33415532" y={-3.6} />
+                            <GridFloor colorPrimary={otpSent ? '#22d3ee' : '#e11d48'} colorSecondary="#1e293b" opacity={0.22} y={-3.6} />
                             <fog attach="fog" args={['#050814', 9, 24]} />
                         </Canvas>
                     </CanvasErrorBoundary>
@@ -95,7 +95,9 @@ export default function LoginPage() {
                         <span>IRDAI COMPLIANCE ENGINE</span>
                     </div>
                     <div className="auth-brand-logo-row">
-                        <img src="/logo.png" alt="PolicyGuard AI" className="auth-logo-mark" />
+                        <span className="brand-emblem-dark auth-logo-mark-wrap">
+                            <img src="/logo.png" alt="PolicyGuard AI" className="auth-logo-mark" />
+                        </span>
                         <div>
                             <h1 className="auth-brand-name-obsidian">PolicyGuard AI</h1>
                             <p className="auth-brand-tagline-obsidian">IRDAI-Aligned Insurance &amp; Claims Engine</p>
@@ -120,7 +122,13 @@ export default function LoginPage() {
             <div className="auth-form-panel auth-form-glass-stage">
                 <SpotlightCard className="auth-card auth-card-clean" hoverLift={false}>
                     <div className="auth-logo">
-                        <img src="/logo.png" alt="PolicyGuard AI" style={{ width: 44, height: 44, borderRadius: 11, objectFit: 'cover', marginBottom: 8 }} />
+                        <div className="auth-card-mobile-pill">
+                            <span className="hero-live-dot" aria-hidden="true" />
+                            <span>IRDAI-Aligned · Free Vault</span>
+                        </div>
+                        <div className="auth-card-logo-badge">
+                            <img src="/logo.png" alt="PolicyGuard AI" />
+                        </div>
                         <h1>{otpSent ? 'Verify Email Code' : 'Welcome Back'}</h1>
                         <p>{otpSent ? 'Enter the code sent to your inbox' : 'Sign in to your PolicyGuard AI workspace'}</p>
                     </div>
@@ -139,7 +147,7 @@ export default function LoginPage() {
                                     transition={{ type: 'spring', stiffness: 420, damping: 32 }}
                                 />
                             )}
-                            <span className="auth-method-tab-label"><Key size={14} /> Password</span>
+                            <span className="auth-method-tab-label"><KeyRound size={14} /> Password</span>
                         </button>
                         <button
                             type="button"
@@ -160,7 +168,7 @@ export default function LoginPage() {
                     {loginMethod === 'password' ? (
                         <form onSubmit={handlePasswordSubmit}>
                             <div className="form-group">
-                                <label className="form-label" style={{ color: '#475569' }}>Email Address</label>
+                                <label className="form-label">Email Address</label>
                                 <input
                                     id="login-email"
                                     type="email"
@@ -170,12 +178,11 @@ export default function LoginPage() {
                                     onChange={(e) => setForm({ ...form, email: e.target.value })}
                                     required
                                     autoComplete="email"
-                                    style={{ background: '#ffffff' }}
                                 />
                             </div>
 
                             <div className="form-group">
-                                <label className="form-label" style={{ color: '#475569' }}>Password</label>
+                                <label className="form-label">Password</label>
                                 <div style={{ position: 'relative' }}>
                                     <input
                                         id="login-password"
@@ -185,20 +192,14 @@ export default function LoginPage() {
                                         value={form.password}
                                         onChange={(e) => setForm({ ...form, password: e.target.value })}
                                         required
-                                        style={{ paddingRight: 48, background: '#ffffff' }}
+                                        style={{ paddingRight: 44 }}
                                         autoComplete="current-password"
                                     />
                                     <button
                                         type="button"
+                                        className="auth-password-toggle"
                                         aria-label={showPass ? 'Hide password' : 'Show password'}
                                         onClick={() => setShowPass(!showPass)}
-                                        style={{
-                                            position: 'absolute', right: 14, top: '50%',
-                                            transform: 'translateY(-50%)',
-                                            background: 'none', border: 'none',
-                                            color: '#94a3b8', cursor: 'pointer',
-                                            display: 'flex', alignItems: 'center',
-                                        }}
                                     >
                                         {showPass ? <EyeOff size={18} /> : <Eye size={18} />}
                                     </button>
@@ -221,7 +222,7 @@ export default function LoginPage() {
                     ) : (
                         <form onSubmit={otpSent ? handleVerifyOtp : handleSendOtp}>
                             <div className="form-group">
-                                <label className="form-label" style={{ color: '#475569' }}>Email Address</label>
+                                <label className="form-label">Email Address</label>
                                 <input
                                     type="email"
                                     className="form-input"
@@ -231,7 +232,6 @@ export default function LoginPage() {
                                     required
                                     disabled={otpSent}
                                     autoComplete="email"
-                                    style={{ background: '#ffffff' }}
                                 />
                             </div>
 
@@ -283,11 +283,11 @@ export default function LoginPage() {
                         </form>
                     )}
 
-                    <div className="auth-footer" style={{ color: '#64748b' }}>
-                        Don&apos;t have an account? <Link to="/register" style={{ color: 'var(--accent-primary)' }}>Create Account</Link>
+                    <div className="auth-footer">
+                        Don&apos;t have an account? <Link to="/register">Create Account</Link>
                     </div>
-                    <div className="auth-footer" style={{ marginTop: 8 }}>
-                        <Link to="/" style={{ color: '#64748b', fontSize: 13 }}>← Back to home</Link>
+                    <div className="auth-footer auth-footer-back">
+                        <Link to="/" className="auth-back-link"><ArrowLeft size={14} /> Back to home</Link>
                     </div>
                 </SpotlightCard>
             </div>

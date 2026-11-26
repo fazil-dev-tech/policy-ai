@@ -75,15 +75,53 @@ export const ARCHITECTURE_NODES = [
     },
 ];
 
-function OrbitCameraFrame() {
+function createOrbitSpriteTexture(soft = false) {
+    if (typeof document === 'undefined') return null;
+    const size = soft ? 128 : 64;
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+
+    const half = size / 2;
+    const grad = ctx.createRadialGradient(half, half, 0, half, half, half);
+    if (soft) {
+        grad.addColorStop(0, 'rgba(255, 255, 255, 0.9)');
+        grad.addColorStop(0.25, 'rgba(255, 255, 255, 0.42)');
+        grad.addColorStop(0.55, 'rgba(255, 255, 255, 0.12)');
+        grad.addColorStop(1, 'rgba(255, 255, 255, 0)');
+    } else {
+        grad.addColorStop(0, 'rgba(255, 255, 255, 1)');
+        grad.addColorStop(0.25, 'rgba(255, 255, 255, 0.88)');
+        grad.addColorStop(0.6, 'rgba(255, 255, 255, 0.24)');
+        grad.addColorStop(1, 'rgba(255, 255, 255, 0)');
+    }
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, size, size);
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.needsUpdate = true;
+    return texture;
+}
+
+function OrbitCameraFrame({ reducedMotion }) {
     const { camera } = useThree();
     useEffect(() => {
         camera.lookAt(0, -0.05, 0);
     }, [camera]);
+
+    useFrame(({ pointer }) => {
+        if (reducedMotion) return;
+        camera.position.x = THREE.MathUtils.lerp(camera.position.x, pointer.x * 0.42, 0.04);
+        camera.position.y = THREE.MathUtils.lerp(camera.position.y, 2.15 + pointer.y * 0.24, 0.04);
+        camera.lookAt(0, -0.05, 0);
+    });
+
     return null;
 }
 
-function OrbitStarfield({ reducedMotion }) {
+function OrbitStarfield({ reducedMotion, spriteMap }) {
     const ref = useRef();
     const positions = useMemo(() => {
         const count = 560;
@@ -106,18 +144,45 @@ function OrbitStarfield({ reducedMotion }) {
             <bufferGeometry>
                 <bufferAttribute attach="attributes-position" args={[positions, 3]} />
             </bufferGeometry>
-            <pointsMaterial size={0.075} color="#e2e8f0" transparent opacity={0.78} sizeAttenuation depthWrite={false} />
+            <pointsMaterial
+                map={spriteMap || undefined}
+                size={0.14}
+                color="#e2e8f0"
+                transparent
+                opacity={0.78}
+                sizeAttenuation
+                depthWrite={false}
+                blending={THREE.AdditiveBlending}
+            />
         </points>
     );
 }
 
-function ActiveNodeGlow({ activePos, activeColor = '#ffffff' }) {
+function ActiveNodeGlow({ activePos, activeColor = '#ffffff', auraMap }) {
     if (!activePos) return null;
     return (
-        <mesh position={activePos} renderOrder={2}>
-            <sphereGeometry args={[1.08, 24, 24]} />
-            <meshBasicMaterial color={activeColor} transparent opacity={0.16} blending={THREE.AdditiveBlending} side={THREE.BackSide} depthWrite={false} />
-        </mesh>
+        <group position={activePos}>
+            <sprite scale={[2.9, 2.9, 1]} renderOrder={1}>
+                <spriteMaterial
+                    map={auraMap || undefined}
+                    color={activeColor}
+                    transparent
+                    opacity={0.38}
+                    blending={THREE.AdditiveBlending}
+                    depthWrite={false}
+                />
+            </sprite>
+            <sprite scale={[1.65, 1.65, 1]} renderOrder={2}>
+                <spriteMaterial
+                    map={auraMap || undefined}
+                    color="#ffffff"
+                    transparent
+                    opacity={0.16}
+                    blending={THREE.AdditiveBlending}
+                    depthWrite={false}
+                />
+            </sprite>
+        </group>
     );
 }
 
@@ -266,7 +331,7 @@ function NodeGeometry({ shape, color, active }) {
             )}
             {/* Equator ring around each node with depthWrite={false} */}
             <mesh rotation={[Math.PI / 2.2, 0, 0]} renderOrder={3}>
-                <torusGeometry args={[0.72, 0.018, 12, 48]} />
+                <torusGeometry args={[0.72, 0.022, 12, 56]} />
                 <meshBasicMaterial color={color} transparent opacity={active ? 0.92 : 0.56} depthWrite={false} />
             </mesh>
         </group>
@@ -328,9 +393,18 @@ export default function ArchitectureOrbit3D() {
     const [autoCycle, setAutoCycle] = useState(true);
     const [isHovered, setIsHovered] = useState(false);
 
-    useEffect(() => () => {
-        document.body.style.cursor = 'default';
-    }, []);
+    const spriteMap = useMemo(() => createOrbitSpriteTexture(false), []);
+    const auraMap = useMemo(() => createOrbitSpriteTexture(true), []);
+
+    useEffect(() => {
+        if (spriteMap) spriteMap.needsUpdate = true;
+        if (auraMap) auraMap.needsUpdate = true;
+        return () => {
+            document.body.style.cursor = 'default';
+            if (spriteMap) spriteMap.dispose();
+            if (auraMap) auraMap.dispose();
+        };
+    }, [spriteMap, auraMap]);
     const reducedMotion = useMemo(
         () => typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches,
         []
@@ -386,12 +460,12 @@ export default function ArchitectureOrbit3D() {
                         camera={{ position: [0, 2.15, 11.4], fov: 39 }}
                         gl={{ alpha: true, antialias: true }}
                     >
-                        <OrbitCameraFrame />
+                        <OrbitCameraFrame reducedMotion={reducedMotion} />
                         <ambientLight intensity={0.95} />
                         <directionalLight position={[6, 8, 6]} intensity={2.1} color="#ffffff" />
                         <pointLight position={[-6, -3, 4]} intensity={1.35} color="#ec4899" />
-                        <OrbitStarfield reducedMotion={reducedMotion} />
-                        <ActiveNodeGlow activePos={activeNode.pos} activeColor={activeNode.color} />
+                        <OrbitStarfield reducedMotion={reducedMotion} spriteMap={spriteMap} />
+                        <ActiveNodeGlow activePos={activeNode.pos} activeColor={activeNode.color} auraMap={auraMap} />
                         <TelemetryPackets reducedMotion={reducedMotion} />
                         {ARCHITECTURE_NODES.map((node, i) => (
                             <InteractiveNode
