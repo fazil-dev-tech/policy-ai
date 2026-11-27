@@ -37,3 +37,4 @@ ml-service/__pycache__/
 
 .vercel
 .env*
+POLICYGUARD_KEYS_AND_DETAILS.txt
