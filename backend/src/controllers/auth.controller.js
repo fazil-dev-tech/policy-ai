@@ -265,11 +265,12 @@ const verifyOtp = async (req, res, next) => {
         }
 
         const normalizedEmail = email.trim().toLowerCase();
-        const preferredType = type === 'signup' ? 'signup' : type === 'magiclink' ? 'magiclink' : 'email';
-        const candidateTypes = Array.from(new Set([preferredType, 'email', 'signup', 'magiclink']));
+        const preferredType = type === 'signup' ? 'signup' : 'email';
+        const candidateTypes = Array.from(new Set([preferredType, 'email', 'signup']));
         const authClient = createAuthClient();
 
         let data = null;
+        let verifiedType = preferredType;
         let lastError = null;
         for (const t of candidateTypes) {
             const resOtp = await authClient.auth.verifyOtp({
@@ -279,6 +280,7 @@ const verifyOtp = async (req, res, next) => {
             });
             if (!resOtp.error && resOtp.data?.session && resOtp.data?.user) {
                 data = resOtp.data;
+                verifiedType = t;
                 break;
             }
             lastError = resOtp.error;
@@ -294,7 +296,7 @@ const verifyOtp = async (req, res, next) => {
             .update({ last_login: new Date().toISOString() })
             .eq('id', data.user.id);
 
-        logger.info(`User verified OTP (${otpType}): ${normalizedEmail}`);
+        logger.info(`User verified OTP (${verifiedType}): ${normalizedEmail}`);
 
         res.json({
             message: 'Login successful',

@@ -15,6 +15,9 @@ const mockAuthState = {
 const createMockChain = (result = { data: null, error: null }) => {
     const chain = {
         select: jest.fn(() => chain),
+        update: jest.fn(() => chain),
+        insert: jest.fn(() => chain),
+        upsert: jest.fn(() => chain),
         eq: jest.fn(() => chain),
         order: jest.fn(() => chain),
         limit: jest.fn(() => chain),
@@ -127,6 +130,49 @@ describe('Express app route auth, Zod validation, CORS & SLA checks', () => {
         expect(breached.body.isBreached).toBe(true);
         expect(breached.body.elapsedMinutes).toBe(195);
         expect(breached.body.draft).toContain('URGENT – Breach of IRDAI');
+    });
+
+    test('POST /api/auth/verify-otp verifies OTP cleanly and returns session without server errors', async () => {
+        const { createAuthClient } = require('../src/config/supabase');
+        const verifyOtpMock = jest.fn(async ({ email, token, type }) => {
+            if (email === 'tester@example.com' && token === '761933' && type === 'email') {
+                return {
+                    data: {
+                        user: mockAuthState.authUser,
+                        session: {
+                            access_token: 'mock-access-token',
+                            refresh_token: 'mock-refresh-token',
+                        },
+                    },
+                    error: null,
+                };
+            }
+            return { data: { user: null, session: null }, error: { message: 'Token has expired or is invalid' } };
+        });
+        createAuthClient.mockReturnValueOnce({ auth: { verifyOtp: verifyOtpMock } });
+
+        const okRes = await request(app)
+            .post('/api/auth/verify-otp')
+            .send({ email: 'tester@example.com', otp: '761933', type: 'email' });
+
+        expect(okRes.statusCode).toBe(200);
+        expect(okRes.body.message).toBe('Login successful');
+        expect(okRes.body.accessToken).toBe('mock-access-token');
+        expect(okRes.body.refreshToken).toBe('mock-refresh-token');
+        expect(okRes.body.user.email).toBe('tester@example.com');
+        expect(verifyOtpMock).toHaveBeenCalledWith({
+            email: 'tester@example.com',
+            token: '761933',
+            type: 'email',
+        });
+
+        createAuthClient.mockReturnValueOnce({ auth: { verifyOtp: verifyOtpMock } });
+        const badRes = await request(app)
+            .post('/api/auth/verify-otp')
+            .send({ email: 'tester@example.com', otp: '000000', type: 'magiclink' });
+
+        expect(badRes.statusCode).toBe(401);
+        expect(badRes.body.error).toBe('Token has expired or is invalid');
     });
 
     test('Branded OTP email builder renders PolicyGuard AI UI card without Confirm email link', () => {
