@@ -1,13 +1,13 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { UserPlus, Eye, EyeOff, Lock, ArrowLeft } from 'lucide-react';
+import { UserPlus, Eye, EyeOff, Lock, Mail, ArrowLeft } from 'lucide-react';
 import toast from 'react-hot-toast';
 import AuthBrandPanel from '../components/shared/AuthBrandPanel';
 import { SpotlightCard } from '../components/shared/MotionPrimitives';
 
 export default function RegisterPage() {
-    const { register, verifyOtp } = useAuth();
+    const { register, resendSignupOtp, verifyOtp } = useAuth();
     const navigate = useNavigate();
     const location = useLocation();
     const rawFrom = location.state?.from;
@@ -16,10 +16,20 @@ export default function RegisterPage() {
         : '/dashboard';
     const [form, setForm] = useState({ name: '', email: '', password: '', confirmPassword: '' });
     const [otp, setOtp] = useState('');
+    const [otpType, setOtpType] = useState('signup');
     const [needsVerification, setNeedsVerification] = useState(false);
+    const [resendCooldown, setResendCooldown] = useState(0);
     const [showPass, setShowPass] = useState(false);
     const [showConfirmPass, setShowConfirmPass] = useState(false);
     const [loading, setLoading] = useState(false);
+
+    useEffect(() => {
+        if (resendCooldown <= 0) return undefined;
+        const id = window.setInterval(() => {
+            setResendCooldown((prev) => (prev > 1 ? prev - 1 : 0));
+        }, 1000);
+        return () => window.clearInterval(id);
+    }, [resendCooldown]);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -30,8 +40,10 @@ export default function RegisterPage() {
         try {
             const res = await register(form.name.trim(), form.email, form.password);
             if (res?.requiresVerification) {
+                setOtpType(res?.otpType || 'signup');
                 setNeedsVerification(true);
-                toast.success('Account created! Check your email for the verification code.');
+                setResendCooldown(30);
+                toast.success('Verification code sent to your inbox!');
             } else {
                 toast.success('Account created successfully!');
                 navigate(postRegisterPath, { replace: true });
@@ -48,11 +60,27 @@ export default function RegisterPage() {
         if (!/^\d{6,8}$/.test(otp)) return toast.error('Please enter the 6-to-8 digit verification code');
         setLoading(true);
         try {
-            await verifyOtp(form.email, otp, 'signup');
+            await verifyOtp(form.email, otp, otpType);
             toast.success('Email verified! Welcome to PolicyGuard AI.');
             navigate(postRegisterPath, { replace: true });
         } catch (err) {
             toast.error(err.response?.data?.error || err.message || 'Invalid verification code');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleResendCode = async () => {
+        if (resendCooldown > 0 || loading) return;
+        setLoading(true);
+        try {
+            const res = await resendSignupOtp(form.email);
+            setOtpType(res?.otpType || 'email');
+            setResendCooldown(30);
+            setOtp('');
+            toast.success('A fresh 6-digit verification code was sent!');
+        } catch (err) {
+            toast.error(err.response?.data?.error || err.message || 'Could not resend verification code');
         } finally {
             setLoading(false);
         }
@@ -80,24 +108,41 @@ export default function RegisterPage() {
                         <div className="auth-card-logo-badge">
                             <img src="/logo.png" alt="PolicyGuard AI" />
                         </div>
-                        <h1>{needsVerification ? 'Verify Email' : 'Create Account'}</h1>
-                        <p>{needsVerification ? `Enter the verification code sent to ${form.email}` : 'Join PolicyGuard AI — completely free'}</p>
+                        <h1>{needsVerification ? 'Verify Email Code' : 'Create Account'}</h1>
+                        <p>{needsVerification ? `Enter the 6-digit code sent to ${form.email}` : 'Join PolicyGuard AI — completely free'}</p>
                     </div>
 
                     {needsVerification ? (
                         <form onSubmit={handleVerifySignup}>
+                            <div style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 10,
+                                padding: '10px 12px',
+                                borderRadius: 10,
+                                background: 'rgba(14, 165, 233, 0.08)',
+                                border: '1px solid rgba(14, 165, 233, 0.25)',
+                                color: '#0369a1',
+                                fontSize: 12.5,
+                                fontWeight: 500,
+                                marginBottom: 16,
+                            }}>
+                                <Mail size={16} style={{ flexShrink: 0 }} />
+                                <span>Check your inbox for your PolicyGuard AI verification code. Expires in 10 minutes.</span>
+                            </div>
                             <div className="form-group">
-                                <label className="form-label">Email Verification Code (6–8 Digits)</label>
+                                <label className="form-label" htmlFor="register-otp">6-Digit Verification Code</label>
                                 <input
                                     id="register-otp"
                                     type="text"
                                     inputMode="numeric"
                                     maxLength={8}
                                     className="form-input"
-                                    placeholder="000000"
+                                    placeholder="• • • • • •"
                                     value={otp}
                                     onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 8))}
                                     required
+                                    autoFocus
                                     autoComplete="one-time-code"
                                     style={{ letterSpacing: '6px', fontSize: 20, textAlign: 'center', fontWeight: 'bold' }}
                                 />
@@ -105,13 +150,20 @@ export default function RegisterPage() {
                             <button type="submit" className="btn btn-primary btn-lg" style={{ width: '100%', marginTop: 8 }} disabled={loading}>
                                 {loading
                                     ? <div className="spinner" style={{ width: 20, height: 20, borderWidth: 2 }} />
-                                    : <><Lock size={18} /> Confirm &amp; Continue</>
+                                    : <><Lock size={18} /> Verify &amp; Create Account</>
                                 }
                             </button>
-                            <div style={{ textAlign: 'center', marginTop: 12 }}>
-                                <button type="button" onClick={() => { setNeedsVerification(false); setOtp(''); }}
-                                    style={{ background: 'none', border: 'none', color: '#64748b', fontSize: 13, cursor: 'pointer', textDecoration: 'underline' }}>
-                                    Back to registration
+                            <div className="auth-otp-actions">
+                                <button type="button" onClick={handleResendCode} disabled={loading || resendCooldown > 0}>
+                                    {resendCooldown > 0 ? `Resend code (${resendCooldown}s)` : 'Resend code'}
+                                </button>
+                                <span aria-hidden="true">·</span>
+                                <button
+                                    type="button"
+                                    onClick={() => { setNeedsVerification(false); setOtp(''); setResendCooldown(0); }}
+                                    disabled={loading}
+                                >
+                                    Change email
                                 </button>
                             </div>
                         </form>

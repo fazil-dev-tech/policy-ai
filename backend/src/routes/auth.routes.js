@@ -38,6 +38,7 @@ const refreshSchema = z.object({
 const sendOtpSchema = z.object({
     body: z.object({
         email: z.string().trim().email(),
+        type: z.enum(['email', 'signup', 'magiclink']).optional(),
         createIfMissing: z.boolean().optional(),
     }),
 });
@@ -46,7 +47,7 @@ const verifyOtpSchema = z.object({
     body: z.object({
         email: z.string().trim().email(),
         otp: z.string().trim().regex(/^\d{6,8}$/, 'OTP must be 6 to 8 digits'),
-        type: z.enum(['email', 'signup']).optional(),
+        type: z.enum(['email', 'signup', 'magiclink']).optional(),
     }),
 });
 

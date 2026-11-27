@@ -147,45 +147,26 @@ export const AuthProvider = ({ children }) => {
     };
 
     const register = async (name, email, password) => {
-        if (supabase) {
-            explicitAuthRef.current = true;
-            try {
-                const { data, error } = await supabase.auth.signUp({
-                    email: email.trim().toLowerCase(),
-                    password,
-                    options: { data: { name: name.trim() } },
-                });
-                if (error) {
-                    const err = new Error(error.message);
-                    err.response = { data: { error: error.message } };
-                    throw err;
+        explicitAuthRef.current = true;
+        try {
+            const { data } = await api.post('/auth/register', {
+                name: name.trim(),
+                email: email.trim().toLowerCase(),
+                password,
+            });
+            if (data.accessToken) {
+                localStorage.setItem('accessToken', data.accessToken);
+                if (data.refreshToken) localStorage.setItem('refreshToken', data.refreshToken);
+                localStorage.setItem('user', JSON.stringify(data.user));
+                if (supabase && data.refreshToken) {
+                    await supabase.auth.setSession({ access_token: data.accessToken, refresh_token: data.refreshToken }).catch(() => {});
                 }
-                if (Array.isArray(data.user?.identities) && data.user.identities.length === 0) {
-                    const err = new Error('Email already registered');
-                    err.response = { data: { error: 'Email already registered' } };
-                    throw err;
-                }
-                if (data.session) {
-                    persistSession(data.session, null);
-                    const profile = await fetchBackendProfile(data.session.access_token);
-                    persistSession(data.session, profile);
-                    setUser(profile);
-                    return { requiresVerification: false, user: profile };
-                }
-                return { requiresVerification: true, user: data.user };
-            } finally {
-                explicitAuthRef.current = false;
+                setUser(data.user);
             }
+            return data;
+        } finally {
+            explicitAuthRef.current = false;
         }
-
-        const { data } = await api.post('/auth/register', { name, email, password });
-        if (data.accessToken) {
-            localStorage.setItem('accessToken', data.accessToken);
-            localStorage.setItem('refreshToken', data.refreshToken);
-            localStorage.setItem('user', JSON.stringify(data.user));
-            setUser(data.user);
-        }
-        return data;
     };
 
     const logout = async () => {
@@ -197,76 +178,42 @@ export const AuthProvider = ({ children }) => {
     };
 
     const sendOtp = async (email) => {
-        if (supabase) {
-            const { error } = await supabase.auth.signInWithOtp({
-                email: email.trim().toLowerCase(),
-                options: { shouldCreateUser: false },
-            });
-            if (error) {
-                const raw = error.message || '';
-                const msg = raw.toLowerCase().includes('signups not allowed')
-                    ? 'No account found for this email. Please create a free account first.'
-                    : raw;
-                const err = new Error(msg);
-                err.response = { data: { error: msg } };
-                throw err;
-            }
-            return { message: 'Verification code sent to your email' };
-        }
-
-        const { data } = await api.post('/auth/send-otp', { email });
+        const { data } = await api.post('/auth/send-otp', {
+            email: email.trim().toLowerCase(),
+            type: 'email',
+        });
         return data;
     };
 
     const resendSignupOtp = async (email) => {
-        if (supabase) {
-            const { error } = await supabase.auth.resend({
-                type: 'signup',
-                email: email.trim().toLowerCase(),
-            });
-            if (error) {
-                const err = new Error(error.message);
-                err.response = { data: { error: error.message } };
-                throw err;
-            }
-            return { message: 'Signup verification code re-sent to your email' };
-        }
-
-        const { data } = await api.post('/auth/send-otp', { email });
+        const { data } = await api.post('/auth/send-otp', {
+            email: email.trim().toLowerCase(),
+            type: 'signup',
+        });
         return data;
     };
 
     const verifyOtp = async (email, otp, type = 'email') => {
-        if (supabase) {
-            explicitAuthRef.current = true;
-            try {
-                const { data, error } = await supabase.auth.verifyOtp({
-                    email: email.trim().toLowerCase(),
-                    token: otp.trim(),
-                    type,
-                });
-                if (error || !data?.session) {
-                    const msg = error?.message || 'Invalid or expired OTP';
-                    const err = new Error(msg);
-                    err.response = { data: { error: msg } };
-                    throw err;
+        explicitAuthRef.current = true;
+        try {
+            const { data } = await api.post('/auth/verify-otp', {
+                email: email.trim().toLowerCase(),
+                otp: otp.trim(),
+                type,
+            });
+            if (data.accessToken) {
+                localStorage.setItem('accessToken', data.accessToken);
+                if (data.refreshToken) localStorage.setItem('refreshToken', data.refreshToken);
+                localStorage.setItem('user', JSON.stringify(data.user));
+                if (supabase && data.refreshToken) {
+                    await supabase.auth.setSession({ access_token: data.accessToken, refresh_token: data.refreshToken }).catch(() => {});
                 }
-                persistSession(data.session, null);
-                const profile = await fetchBackendProfile(data.session.access_token);
-                persistSession(data.session, profile);
-                setUser(profile);
-                return { user: profile, accessToken: data.session.access_token };
-            } finally {
-                explicitAuthRef.current = false;
+                setUser(data.user);
             }
+            return data;
+        } finally {
+            explicitAuthRef.current = false;
         }
-
-        const { data } = await api.post('/auth/verify-otp', { email, otp, type });
-        localStorage.setItem('accessToken', data.accessToken);
-        localStorage.setItem('refreshToken', data.refreshToken);
-        localStorage.setItem('user', JSON.stringify(data.user));
-        setUser(data.user);
-        return data;
     };
 
     return (

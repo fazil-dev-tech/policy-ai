@@ -128,4 +128,16 @@ describe('Express app route auth, Zod validation, CORS & SLA checks', () => {
         expect(breached.body.elapsedMinutes).toBe(195);
         expect(breached.body.draft).toContain('URGENT – Breach of IRDAI');
     });
+
+    test('Branded OTP email builder renders PolicyGuard AI UI card without Confirm email link', () => {
+        const emailService = require('../src/services/email.service');
+        const signupPayload = emailService.buildOtpEmailPayload('454136', { mode: 'signup', userName: 'Fazil Pasha' });
+        expect(signupPayload.subject).toContain('PolicyGuard AI');
+        expect(signupPayload.subject).toContain('454136');
+        expect(signupPayload.html).toContain('PolicyGuard AI');
+        expect(signupPayload.html).toContain('454136');
+        expect(signupPayload.html).toContain('Hi Fazil,');
+        expect(signupPayload.html).not.toMatch(/Confirm email address/i);
+        expect(signupPayload.html).not.toMatch(/Confirm your PolicyAI/i);
+    });
 });

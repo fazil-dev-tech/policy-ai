@@ -1,4 +1,6 @@
+const env = require('../config/env');
 const { supabaseAdmin, createAuthClient } = require('../config/supabase');
+const emailService = require('../services/email.service');
 const { mapProfile } = require('../utils/mappers');
 const logger = require('../utils/logger');
 
@@ -35,13 +37,62 @@ const register = async (req, res, next) => {
     try {
         const { name, email, password } = req.body;
         const normalizedEmail = email.trim().toLowerCase();
-        const authClient = createAuthClient();
+        const trimmedName = name.trim();
+        const smtpReady = Boolean(env.SMTP_USER && env.SMTP_PASS);
 
+        if (smtpReady && typeof supabaseAdmin.auth?.admin?.generateLink === 'function') {
+            const { data, error } = await supabaseAdmin.auth.admin.generateLink({
+                type: 'signup',
+                email: normalizedEmail,
+                password,
+                options: {
+                    data: { name: trimmedName },
+                },
+            });
+
+            if (error) {
+                const status = error.message.toLowerCase().includes('already') ? 409 : 400;
+                return res.status(status).json({ error: error.message });
+            }
+
+            if (!data?.user) {
+                return res.status(400).json({ error: 'Unable to create account' });
+            }
+
+            if (data.user.email_confirmed_at) {
+                return res.status(409).json({ error: 'Email already registered' });
+            }
+
+            const otp = data.properties?.email_otp;
+            if (otp) {
+                try {
+                    await emailService.sendOtpEmail(normalizedEmail, otp, {
+                        mode: 'signup',
+                        userName: trimmedName,
+                    });
+                } catch (smtpErr) {
+                    logger.warn(`Branded SMTP signup email failed for ${normalizedEmail}, falling back to Supabase resend: ${smtpErr.message}`);
+                    await createAuthClient().auth.resend({ type: 'signup', email: normalizedEmail }).catch(() => {});
+                }
+                const profile = await ensureProfile(data.user, trimmedName);
+                logger.info(`User registered (OTP verification sent): ${normalizedEmail}`);
+                return res.status(201).json({
+                    message: 'Account created! Enter the 6-digit verification code sent to your email.',
+                    requiresVerification: true,
+                    otpType: 'signup',
+                    user: mapProfile(profile),
+                    accessToken: null,
+                    refreshToken: null,
+                });
+            }
+        }
+
+        const authClient = createAuthClient();
         const { data, error } = await authClient.auth.signUp({
             email: normalizedEmail,
             password,
             options: {
-                data: { name: name.trim() },
+                data: { name: trimmedName },
             },
         });
 
@@ -59,7 +110,7 @@ const register = async (req, res, next) => {
             return res.status(409).json({ error: 'Email already registered' });
         }
 
-        const profile = await ensureProfile(data.user, name.trim());
+        const profile = await ensureProfile(data.user, trimmedName);
 
         logger.info(`User registered: ${normalizedEmail}`);
 
@@ -68,6 +119,7 @@ const register = async (req, res, next) => {
                 ? 'Registration successful'
                 : 'Account created! Enter the 6-digit verification code sent to your email.',
             requiresVerification: !data.session,
+            otpType: 'signup',
             user: mapProfile(profile),
             accessToken: data.session?.access_token || null,
             refreshToken: data.session?.refresh_token || null,
@@ -144,15 +196,50 @@ const refresh = async (req, res, next) => {
 
 const sendOtp = async (req, res, next) => {
     try {
-        const { email } = req.body;
+        const { email, type = 'email', createIfMissing = false } = req.body || {};
         if (!email) return res.status(400).json({ error: 'Email is required' });
 
         const normalizedEmail = email.trim().toLowerCase();
-        const authClient = createAuthClient();
+        const smtpReady = Boolean(env.SMTP_USER && env.SMTP_PASS);
 
+        if (smtpReady && typeof supabaseAdmin.auth?.admin?.generateLink === 'function') {
+            const { data: existingProf } = await supabaseAdmin
+                .from('profiles')
+                .select('id, name')
+                .eq('email', normalizedEmail)
+                .maybeSingle();
+
+            if (!existingProf && !createIfMissing && type !== 'signup') {
+                return res.status(404).json({ error: 'No account found for this email. Please create an account first.' });
+            }
+
+            const { data: linkData, error: linkErr } = await supabaseAdmin.auth.admin.generateLink({
+                type: 'magiclink',
+                email: normalizedEmail,
+            });
+            if (linkErr) {
+                return res.status(400).json({ error: linkErr.message });
+            }
+
+            const otp = linkData?.properties?.email_otp;
+            if (otp) {
+                try {
+                    await emailService.sendOtpEmail(normalizedEmail, otp, {
+                        mode: type === 'signup' ? 'signup' : 'login',
+                        userName: existingProf?.name || linkData.user?.user_metadata?.name || '',
+                    });
+                    logger.info(`Branded OTP email sent via SMTP for ${normalizedEmail}`);
+                    return res.json({ message: 'Verification code sent to your email', otpType: 'email' });
+                } catch (smtpErr) {
+                    logger.warn(`Branded SMTP OTP failed for ${normalizedEmail}, falling back to Supabase Auth: ${smtpErr.message}`);
+                }
+            }
+        }
+
+        const authClient = createAuthClient();
         const { error } = await authClient.auth.signInWithOtp({
             email: normalizedEmail,
-            options: { shouldCreateUser: Boolean(req.body.createIfMissing) },
+            options: { shouldCreateUser: Boolean(createIfMissing) },
         });
 
         if (error) {
@@ -164,7 +251,7 @@ const sendOtp = async (req, res, next) => {
         }
 
         logger.info(`OTP email requested via Supabase Auth for ${normalizedEmail}`);
-        res.json({ message: 'Verification code sent to your email' });
+        res.json({ message: 'Verification code sent to your email', otpType: 'email' });
     } catch (error) {
         next(error);
     }
@@ -178,17 +265,27 @@ const verifyOtp = async (req, res, next) => {
         }
 
         const normalizedEmail = email.trim().toLowerCase();
-        const otpType = type === 'signup' ? 'signup' : 'email';
+        const preferredType = type === 'signup' ? 'signup' : type === 'magiclink' ? 'magiclink' : 'email';
+        const candidateTypes = Array.from(new Set([preferredType, 'email', 'signup', 'magiclink']));
         const authClient = createAuthClient();
 
-        const { data, error } = await authClient.auth.verifyOtp({
-            email: normalizedEmail,
-            token: otp.trim(),
-            type: otpType,
-        });
+        let data = null;
+        let lastError = null;
+        for (const t of candidateTypes) {
+            const resOtp = await authClient.auth.verifyOtp({
+                email: normalizedEmail,
+                token: otp.trim(),
+                type: t,
+            });
+            if (!resOtp.error && resOtp.data?.session && resOtp.data?.user) {
+                data = resOtp.data;
+                break;
+            }
+            lastError = resOtp.error;
+        }
 
-        if (error || !data?.session || !data?.user) {
-            return res.status(401).json({ error: error?.message || 'Invalid or expired OTP' });
+        if (!data?.session || !data?.user) {
+            return res.status(401).json({ error: lastError?.message || 'Invalid or expired OTP' });
         }
 
         const profile = await ensureProfile(data.user);
