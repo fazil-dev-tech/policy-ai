@@ -1,0 +1,133 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 380" width="100%" role="img" aria-label="PolicyGuard AI — Enterprise InsurTech, IRDAI Claims Intelligence, Motor Vision Estimator &amp; Browser Scam Shield">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#070B14"/>
+      <stop offset="55%" stop-color="#0F172A"/>
+      <stop offset="100%" stop-color="#111C33"/>
+    </linearGradient>
+    <radialGradient id="glowEmerald" cx="18%" cy="42%" r="48%">
+      <stop offset="0%" stop-color="#10B981" stop-opacity="0.28"/>
+      <stop offset="100%" stop-color="#10B981" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glowRose" cx="88%" cy="22%" r="42%">
+      <stop offset="0%" stop-color="#F43F5E" stop-opacity="0.22"/>
+      <stop offset="100%" stop-color="#F43F5E" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glowCyan" cx="72%" cy="85%" r="45%">
+      <stop offset="0%" stop-color="#38BDF8" stop-opacity="0.16"/>
+      <stop offset="100%" stop-color="#38BDF8" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="shieldFill" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#10B981"/>
+      <stop offset="55%" stop-color="#06B6D4"/>
+      <stop offset="100%" stop-color="#0284C7"/>
+    </linearGradient>
+    <linearGradient id="accentLine" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#10B981"/>
+      <stop offset="50%" stop-color="#38BDF8"/>
+      <stop offset="100%" stop-color="#F43F5E"/>
+    </linearGradient>
+    <pattern id="gridDots" width="28" height="28" patternUnits="userSpaceOnUse">
+      <circle cx="2" cy="2" r="1" fill="#334155" opacity="0.45"/>
+    </pattern>
+  </defs>
+
+  <!-- Outer Card -->
+  <rect x="2" y="2" width="1196" height="376" rx="22" fill="url(#bgGrad)" stroke="#1E293B" stroke-width="2"/>
+  <rect x="2" y="2" width="1196" height="376" rx="22" fill="url(#gridDots)"/>
+  <rect x="2" y="2" width="1196" height="376" rx="22" fill="url(#glowEmerald)"/>
+  <rect x="2" y="2" width="1196" height="376" rx="22" fill="url(#glowRose)"/>
+  <rect x="2" y="2" width="1196" height="376" rx="22" fill="url(#glowCyan)"/>
+
+  <!-- Top gradient hairline -->
+  <rect x="44" y="2" width="1112" height="3" rx="1.5" fill="url(#accentLine)"/>
+
+  <!-- Left Shield Emblem + Orbitals -->
+  <g transform="translate(148, 134)">
+    <circle cx="0" cy="0" r="88" fill="none" stroke="#1E293B" stroke-width="1.5" stroke-dasharray="6 6"/>
+    <ellipse cx="0" cy="0" rx="102" ry="40" transform="rotate(-24)" fill="none" stroke="#10B981" stroke-opacity="0.42" stroke-width="1.5"/>
+    <ellipse cx="0" cy="0" rx="102" ry="40" transform="rotate(24)" fill="none" stroke="#38BDF8" stroke-opacity="0.35" stroke-width="1.5"/>
+    <circle cx="-84" cy="-36" r="4.5" fill="#10B981"/>
+    <circle cx="88" cy="28" r="4" fill="#38BDF8"/>
+    <circle cx="48" cy="-76" r="3.5" fill="#F43F5E"/>
+
+    <!-- Outer Shield -->
+    <path d="M0,-62 L52,-38 L52,8 C52,40 28,62 0,72 C-28,62 -52,40 -52,8 L-52,-38 Z"
+          fill="#0F172A" stroke="url(#shieldFill)" stroke-width="3"/>
+    <!-- Inner Shield Glow -->
+    <path d="M0,-48 L40,-29 L40,6 C40,31 21,49 0,57 C-21,49 -40,31 -40,6 L-40,-29 Z"
+          fill="url(#shieldFill)" fill-opacity="0.14"/>
+    <!-- Protection Checkmark -->
+    <path d="M-16,4 L-4,16 L20,-10" fill="none" stroke="#34D399" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+
+  <!-- Title & Tagline -->
+  <g transform="translate(290, 56)">
+    <rect x="0" y="0" width="384" height="28" rx="14" fill="#0F2924" stroke="#10B981" stroke-opacity="0.55" stroke-width="1"/>
+    <circle cx="18" cy="14" r="4" fill="#34D399"/>
+    <text x="32" y="18.5" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="11.5" font-weight="700" letter-spacing="1.4" fill="#6EE7B7">
+      ENTERPRISE INSURTECH &amp; ANTI-SCAM SUITE
+    </text>
+
+    <text x="0" y="84" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="56" font-weight="800" letter-spacing="-1" fill="#F8FAFC">
+      PolicyGuard AI
+    </text>
+
+    <text x="2" y="118" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="18.5" font-weight="500" fill="#CBD5E1">
+      Deterministic IRDAI 2024 Claims Intelligence, Table-Aware Policy Vault,
+    </text>
+    <text x="2" y="143" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="18.5" font-weight="500" fill="#94A3B8">
+      YOLOv8 Motor Damage Estimator, Parinidhi Voice RAG &amp; Chrome MV3 Shield
+    </text>
+  </g>
+
+  <!-- Status badge top-right -->
+  <g transform="translate(950, 52)">
+    <rect x="0" y="0" width="206" height="34" rx="17" fill="#0F172A" stroke="#334155" stroke-width="1.2"/>
+    <circle cx="20" cy="17" r="5" fill="#10B981"/>
+    <text x="34" y="21.5" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12.5" font-weight="700" fill="#E2E8F0">
+      LIVE · VERCEL + SUPABASE
+    </text>
+  </g>
+
+  <!-- Divider -->
+  <line x1="44" y1="244" x2="1156" y2="244" stroke="#1E293B" stroke-width="1.2"/>
+
+  <!-- 5 Bottom Feature Pills -->
+  <g font-family="system-ui, -apple-system, 'Segoe UI', sans-serif">
+    <!-- Pill 1 -->
+    <rect x="44" y="266" width="210" height="82" rx="14" fill="#0F172A" fill-opacity="0.9" stroke="#1E293B" stroke-width="1.5"/>
+    <rect x="44" y="266" width="210" height="3" rx="1.5" fill="#10B981"/>
+    <text x="60" y="294" font-size="13.5" font-weight="700" fill="#34D399">Zero-LLM IRDAI Math</text>
+    <text x="60" y="315" font-size="12" fill="#CBD5E1">Room-rent, co-pay &amp;</text>
+    <text x="60" y="332" font-size="12" fill="#94A3B8">3h cashless SLA drafts</text>
+
+    <!-- Pill 2 -->
+    <rect x="268" y="266" width="210" height="82" rx="14" fill="#0F172A" fill-opacity="0.9" stroke="#1E293B" stroke-width="1.5"/>
+    <rect x="268" y="266" width="210" height="3" rx="1.5" fill="#38BDF8"/>
+    <text x="284" y="294" font-size="13.5" font-weight="700" fill="#38BDF8">Policy Vault + CIS</text>
+    <text x="284" y="315" font-size="12" fill="#CBD5E1">Table-aware PDF OCR</text>
+    <text x="284" y="332" font-size="12" fill="#94A3B8">60-mo moratorium audit</text>
+
+    <!-- Pill 3 -->
+    <rect x="492" y="266" width="210" height="82" rx="14" fill="#0F172A" fill-opacity="0.9" stroke="#1E293B" stroke-width="1.5"/>
+    <rect x="492" y="266" width="210" height="3" rx="1.5" fill="#F59E0B"/>
+    <text x="508" y="294" font-size="13.5" font-weight="700" fill="#FBBF24">Motor Damage AI</text>
+    <text x="508" y="315" font-size="12" fill="#CBD5E1">Car &amp; 2-wheeler vision</text>
+    <text x="508" y="332" font-size="12" fill="#94A3B8">YOLOv8 + sklearn sidecar</text>
+
+    <!-- Pill 4 -->
+    <rect x="716" y="266" width="210" height="82" rx="14" fill="#0F172A" fill-opacity="0.9" stroke="#1E293B" stroke-width="1.5"/>
+    <rect x="716" y="266" width="210" height="3" rx="1.5" fill="#A78BFA"/>
+    <text x="732" y="294" font-size="13.5" font-weight="700" fill="#C4B5FD">Parinidhi RAG + Voice</text>
+    <text x="732" y="315" font-size="12" fill="#CBD5E1">Clause-cited chat &amp;</text>
+    <text x="732" y="332" font-size="12" fill="#94A3B8">Tavily / Serper research</text>
+
+    <!-- Pill 5 -->
+    <rect x="940" y="266" width="216" height="82" rx="14" fill="#0F172A" fill-opacity="0.9" stroke="#1E293B" stroke-width="1.5"/>
+    <rect x="940" y="266" width="216" height="3" rx="1.5" fill="#F43F5E"/>
+    <text x="956" y="294" font-size="13.5" font-weight="700" fill="#FB7185">Browser Shield v2.1</text>
+    <text x="956" y="315" font-size="12" fill="#CBD5E1">Chrome, WA, Gmail &amp; TG</text>
+    <text x="956" y="332" font-size="12" fill="#94A3B8">VirusTotal + RDAP + APK</text>
+  </g>
+</svg>

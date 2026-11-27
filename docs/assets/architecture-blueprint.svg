@@ -1,0 +1,105 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 500" width="100%" role="img" aria-label="PolicyGuard AI End-to-End Architecture Blueprint">
+  <defs>
+    <linearGradient id="archBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#070B14"/>
+      <stop offset="100%" stop-color="#0F172A"/>
+    </linearGradient>
+    <marker id="arrowCyan" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#38BDF8"/>
+    </marker>
+    <marker id="arrowEmerald" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#10B981"/>
+    </marker>
+    <marker id="arrowAmber" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#F59E0B"/>
+    </marker>
+  </defs>
+
+  <rect x="2" y="2" width="1196" height="496" rx="20" fill="url(#archBg)" stroke="#1E293B" stroke-width="2"/>
+
+  <g font-family="system-ui, -apple-system, 'Segoe UI', sans-serif">
+    <!-- Top Label -->
+    <text x="40" y="38" font-size="12" font-weight="700" letter-spacing="1.6" fill="#64748B">
+      SYSTEM ARCHITECTURE BLUEPRINT · SERVERLESS API + DETERMINISTIC ENGINE + ML SIDECAR
+    </text>
+
+    <!-- TIER 1: CLIENTS -->
+    <rect x="40" y="58" width="545" height="82" rx="14" fill="#111C33" stroke="#38BDF8" stroke-opacity="0.45" stroke-width="1.5"/>
+    <text x="64" y="88" font-size="15" font-weight="700" fill="#F8FAFC">React 18 + Vite Web Application (frontend/)</text>
+    <text x="64" y="110" font-size="12.5" fill="#94A3B8">Three.js 3D Architecture Scenes · Recharts Analytics · OTP Auth</text>
+    <text x="64" y="127" font-size="11.5" font-weight="600" fill="#38BDF8">Served via Vercel CDN / Nginx</text>
+
+    <rect x="615" y="58" width="545" height="82" rx="14" fill="#111C33" stroke="#F43F5E" stroke-opacity="0.45" stroke-width="1.5"/>
+    <text x="639" y="88" font-size="15" font-weight="700" fill="#F8FAFC">PolicyGuard Shield Chrome MV3 Extension (extension/)</text>
+    <text x="639" y="110" font-size="12.5" fill="#94A3B8">Stage-1 Local Rules + DOM Scanners (Chrome, WA, Gmail, TG, IG)</text>
+    <text x="639" y="127" font-size="11.5" font-weight="600" fill="#FB7185">Site Bridge Sync + Packaged /policyguard-extension.zip</text>
+
+    <!-- Connector Tier 1 -> Tier 2 -->
+    <line x1="312" y1="140" x2="312" y2="184" stroke="#38BDF8" stroke-width="2" marker-end="url(#arrowCyan)"/>
+    <line x1="888" y1="140" x2="888" y2="184" stroke="#38BDF8" stroke-width="2" marker-end="url(#arrowCyan)"/>
+    <rect x="415" y="149" width="370" height="24" rx="12" fill="#0B1120" stroke="#334155"/>
+    <text x="600" y="165" text-anchor="middle" font-size="11" font-weight="600" fill="#CBD5E1">
+      HTTPS · Bearer Supabase JWT · Signed Storage URLs (up to 10 MB)
+    </text>
+
+    <!-- TIER 2: EXPRESS BACKEND -->
+    <rect x="40" y="188" width="1120" height="128" rx="16" fill="#0E1729" stroke="#10B981" stroke-opacity="0.55" stroke-width="1.8"/>
+    <text x="64" y="216" font-size="15" font-weight="700" fill="#34D399">
+      Express REST API &amp; Serverless Gateway (api/index.js → backend/src/app.js)
+    </text>
+    <text x="1136" y="216" text-anchor="end" font-size="11.5" font-weight="600" fill="#94A3B8">Swagger Docs: /api-docs</text>
+
+    <!-- 5 Internal Boxes -->
+    <rect x="64" y="232" width="204" height="66" rx="10" fill="#131F36" stroke="#1E293B"/>
+    <text x="166" y="256" text-anchor="middle" font-size="12.5" font-weight="700" fill="#F8FAFC">Auth, RBAC &amp; Zod</text>
+    <text x="166" y="274" text-anchor="middle" font-size="11" fill="#94A3B8">Helmet · CORS · Branded</text>
+    <text x="166" y="288" text-anchor="middle" font-size="11" fill="#94A3B8">SMTP OTP Verification</text>
+
+    <rect x="282" y="232" width="204" height="66" rx="10" fill="#131F36" stroke="#1E293B"/>
+    <text x="384" y="256" text-anchor="middle" font-size="12.5" font-weight="700" fill="#F8FAFC">PDF &amp; DPDP Masker</text>
+    <text x="384" y="274" text-anchor="middle" font-size="11" fill="#94A3B8">pdfjs-dist Table Parser</text>
+    <text x="384" y="288" text-anchor="middle" font-size="11" fill="#94A3B8">Magic-Byte Validation</text>
+
+    <rect x="500" y="232" width="204" height="66" rx="10" fill="#131F36" stroke="#10B981" stroke-opacity="0.5"/>
+    <text x="602" y="256" text-anchor="middle" font-size="12.5" font-weight="700" fill="#34D399">IRDAI Math Engine</text>
+    <text x="602" y="274" text-anchor="middle" font-size="11" fill="#94A3B8">claimEngine.service.js</text>
+    <text x="602" y="288" text-anchor="middle" font-size="11" fill="#94A3B8">Zero-LLM Exact Formulas</text>
+
+    <rect x="718" y="232" width="204" height="66" rx="10" fill="#131F36" stroke="#1E293B"/>
+    <text x="820" y="256" text-anchor="middle" font-size="12.5" font-weight="700" fill="#F8FAFC">Parinidhi RAG Core</text>
+    <text x="820" y="274" text-anchor="middle" font-size="11" fill="#94A3B8">Clause FTS + Fallback AI</text>
+    <text x="820" y="288" text-anchor="middle" font-size="11" fill="#94A3B8">Cache &amp; Redis Support</text>
+
+    <rect x="936" y="232" width="200" height="66" rx="10" fill="#131F36" stroke="#1E293B"/>
+    <text x="1036" y="256" text-anchor="middle" font-size="12.5" font-weight="700" fill="#F8FAFC">Threat Inspector</text>
+    <text x="1036" y="274" text-anchor="middle" font-size="11" fill="#94A3B8">Local Rules + RDAP</text>
+    <text x="1036" y="288" text-anchor="middle" font-size="11" fill="#94A3B8">VirusTotal + Site Cache</text>
+
+    <!-- Connectors Tier 2 -> Tier 3 -->
+    <line x1="215" y1="316" x2="215" y2="354" stroke="#10B981" stroke-width="2" marker-end="url(#arrowEmerald)"/>
+    <line x1="600" y1="316" x2="600" y2="354" stroke="#38BDF8" stroke-width="2" marker-end="url(#arrowCyan)"/>
+    <line x1="985" y1="316" x2="985" y2="354" stroke="#F59E0B" stroke-width="2" marker-end="url(#arrowAmber)"/>
+
+    <!-- TIER 3: DOWNSTREAMS -->
+    <!-- Supabase -->
+    <rect x="40" y="358" width="356" height="114" rx="14" fill="#111C33" stroke="#10B981" stroke-opacity="0.45" stroke-width="1.5"/>
+    <text x="62" y="388" font-size="15" font-weight="700" fill="#34D399">Supabase Stack</text>
+    <text x="62" y="410" font-size="12.5" fill="#CBD5E1">• PostgreSQL 15 + RLS (6 migrations)</text>
+    <text x="62" y="430" font-size="12.5" fill="#CBD5E1">• GIN FTS policy clauses &amp; cache TTL</text>
+    <text x="62" y="450" font-size="12.5" fill="#94A3B8">• Auth + Private Storage (policy-files)</text>
+
+    <!-- Free-First AI & Intel -->
+    <rect x="422" y="358" width="356" height="114" rx="14" fill="#111C33" stroke="#38BDF8" stroke-opacity="0.45" stroke-width="1.5"/>
+    <text x="444" y="388" font-size="15" font-weight="700" fill="#38BDF8">Free-First AI &amp; Threat APIs</text>
+    <text x="444" y="410" font-size="12.5" fill="#CBD5E1">• OpenRouter · NVIDIA NIM · Groq · Gemini</text>
+    <text x="444" y="430" font-size="12.5" fill="#CBD5E1">• AI_ALLOW_PAID=false cost guardrail</text>
+    <text x="444" y="450" font-size="12.5" fill="#94A3B8">• Tavily · Serper · VirusTotal · RDAP</text>
+
+    <!-- Python ML Sidecar -->
+    <rect x="804" y="358" width="356" height="114" rx="14" fill="#111C33" stroke="#F59E0B" stroke-opacity="0.45" stroke-width="1.5"/>
+    <text x="826" y="388" font-size="15" font-weight="700" fill="#FBBF24">Python ML Sidecar (:8000)</text>
+    <text x="826" y="410" font-size="12.5" fill="#CBD5E1">• FastAPI Uvicorn CPU inference service</text>
+    <text x="826" y="430" font-size="12.5" fill="#CBD5E1">• YOLOv8n / CarDD car &amp; bike damage detection</text>
+    <text x="826" y="450" font-size="12.5" fill="#94A3B8">• scikit-learn RandomForest cost calibrator</text>
+  </g>
+</svg>
