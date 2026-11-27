@@ -1,91 +1,156 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 470" width="100%" role="img" aria-label="PolicyGuard AI Platform Modules Bento Showcase">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 500" width="100%" role="img" aria-label="PolicyGuard AI Six Platform Modules Showcase">
   <defs>
-    <linearGradient id="panelBg" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#090E1A"/>
-      <stop offset="100%" stop-color="#0F172A"/>
+    <radialGradient id="modStage" cx="50%" cy="35%" r="75%">
+      <stop offset="0%" stop-color="#0B1124"/>
+      <stop offset="100%" stop-color="#030612"/>
+    </radialGradient>
+    <linearGradient id="modCard" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#111A30"/>
+      <stop offset="100%" stop-color="#090F1E"/>
     </linearGradient>
-    <linearGradient id="cardBg" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" stop-color="#131C31"/>
-      <stop offset="100%" stop-color="#0D1424"/>
-    </linearGradient>
+    <clipPath id="mc1"><rect x="44" y="80" width="356" height="184" rx="16"/></clipPath>
+    <clipPath id="mc2"><rect x="422" y="80" width="356" height="184" rx="16"/></clipPath>
+    <clipPath id="mc3"><rect x="800" y="80" width="356" height="184" rx="16"/></clipPath>
+    <clipPath id="mc4"><rect x="44" y="284" width="356" height="184" rx="16"/></clipPath>
+    <clipPath id="mc5"><rect x="422" y="284" width="356" height="184" rx="16"/></clipPath>
+    <clipPath id="mc6"><rect x="800" y="284" width="356" height="184" rx="16"/></clipPath>
+
+    <style>
+      .mono { font-family: ui-monospace, 'Cascadia Code', 'JetBrains Mono', Consolas, monospace; }
+      .sans { font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; }
+    </style>
   </defs>
 
-  <rect x="2" y="2" width="1196" height="466" rx="20" fill="url(#panelBg)" stroke="#1E293B" stroke-width="2"/>
+  <rect x="4" y="4" width="1192" height="492" rx="22" fill="url(#modStage)" stroke="#1E293B" stroke-width="2"/>
 
-  <!-- Section Header -->
-  <text x="40" y="42" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" font-weight="700" letter-spacing="1.8" fill="#64748B">
-    PLATFORM CAPABILITY MATRIX · SIX INTEGRATED ENGINE SUITES
+  <!-- HUD Brackets -->
+  <path d="M 18 36 L 18 18 L 36 18" fill="none" stroke="#22D3EE" stroke-opacity="0.65" stroke-width="2.2" stroke-linecap="round"/>
+  <path d="M 1164 18 L 1182 18 L 1182 36" fill="none" stroke="#EC4899" stroke-opacity="0.65" stroke-width="2.2" stroke-linecap="round"/>
+  <path d="M 18 464 L 18 482 L 36 482" fill="none" stroke="#EC4899" stroke-opacity="0.65" stroke-width="2.2" stroke-linecap="round"/>
+  <path d="M 1164 482 L 1182 482 L 1182 464" fill="none" stroke="#22D3EE" stroke-opacity="0.65" stroke-width="2.2" stroke-linecap="round"/>
+
+  <!-- Header -->
+  <rect x="44" y="24" width="196" height="28" rx="14" fill="#E11D48" fill-opacity="0.14" stroke="#FB7185" stroke-opacity="0.38"/>
+  <text x="142" y="42.5" text-anchor="middle" class="mono" font-size="11.5" font-weight="700" letter-spacing="1.1" fill="#FDA4AF">
+    01 / CORE SUITE
   </text>
-  <text x="1160" y="42" text-anchor="end" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" font-weight="600" fill="#38BDF8">
-    13 SPA Pages · 9 Express Routers
+  <text x="256" y="43.5" class="sans" font-size="19" font-weight="700" fill="#F8FAFC">
+    Six Integrated InsurTech &amp; Consumer Defense Systems
   </text>
-  <line x1="40" y1="58" x2="1160" y2="58" stroke="#1E293B" stroke-width="1"/>
+  <rect x="920" y="24" width="236" height="28" rx="14" fill="#0F172A" stroke="#334155"/>
+  <text x="1038" y="42" text-anchor="middle" class="mono" font-size="11.5" font-weight="600" fill="#67E8F9">
+    13 PAGES · 9 API ROUTERS
+  </text>
+  <line x1="44" y1="64" x2="1156" y2="64" stroke="#1E293B" stroke-width="1.2"/>
 
-  <g font-family="system-ui, -apple-system, 'Segoe UI', sans-serif">
-    <!-- Card 1: Policy Vault & CIS -->
-    <rect x="40" y="78" width="356" height="174" rx="16" fill="url(#cardBg)" stroke="#1E293B" stroke-width="1.5"/>
-    <rect x="56" y="96" width="36" height="24" rx="6" fill="#064E3B" stroke="#10B981" stroke-opacity="0.5"/>
-    <text x="74" y="112" text-anchor="middle" font-size="11.5" font-weight="800" fill="#34D399">01</text>
-    <text x="104" y="113" font-size="15.5" font-weight="700" fill="#F8FAFC">Policy Vault &amp; CIS Audit</text>
-    <text x="56" y="142" font-size="12.5" fill="#CBD5E1">• Table-aware pdfjs-dist PDF &amp; E-Card OCR</text>
-    <text x="56" y="164" font-size="12.5" fill="#CBD5E1">• IRDAI CIS extractor &amp; 60-mo moratorium tracker</text>
-    <text x="56" y="186" font-size="12.5" fill="#CBD5E1">• Renewal year-over-year diff &amp; mis-selling audit</text>
-    <rect x="56" y="208" width="152" height="24" rx="12" fill="#0B192C" stroke="#1E293B"/>
-    <text x="132" y="224" text-anchor="middle" font-size="11" font-weight="600" fill="#34D399">DPDP PII Masking + FTS</text>
+  <g class="sans">
+    <!-- CARD 1: Policy Vault & CIS -->
+    <g clip-path="url(#mc1)">
+      <rect x="44" y="80" width="356" height="184" rx="16" fill="url(#modCard)"/>
+      <rect x="44" y="80" width="356" height="4" fill="#10B981"/>
+    </g>
+    <rect x="44" y="80" width="356" height="184" rx="16" fill="none" stroke="#1E293B" stroke-width="1.5"/>
+    <!-- Custom Document Icon -->
+    <rect x="64" y="102" width="38" height="38" rx="10" fill="#10B981" fill-opacity="0.14" stroke="#10B981" stroke-opacity="0.45"/>
+    <path d="M77,111 L86,111 L90,115 L90,130 L77,130 Z M80,120 L87,120 M80,125 L85,125" fill="none" stroke="#34D399" stroke-width="1.8" stroke-linecap="round"/>
+    <text x="114" y="118" font-size="16.5" font-weight="700" fill="#F8FAFC">Policy Vault &amp; CIS Audit</text>
+    <text x="114" y="137" class="mono" font-size="11" font-weight="600" fill="#6EE7B7">01 · PARSER &amp; AUDIT</text>
+    <text x="64" y="169" font-size="14" fill="#E2E8F0">Table-aware pdfjs-dist OCR, IRDAI CIS</text>
+    <text x="64" y="191" font-size="14" fill="#CBD5E1">summaries &amp; 60-mo moratorium tracker.</text>
+    <!-- Aligned Bottom Telemetry Bar -->
+    <rect x="64" y="212" width="316" height="34" rx="8" fill="#FFFFFF" fill-opacity="0.035" stroke="#1E293B"/>
+    <circle cx="80" cy="229" r="3.5" fill="#10B981"/>
+    <text x="92" y="233.5" class="mono" font-size="11.5" font-weight="700" fill="#6EE7B7">DPDP PII MASK</text>
+    <text x="366" y="233.5" text-anchor="end" class="mono" font-size="11.5" fill="#94A3B8">/api/policy</text>
 
-    <!-- Card 2: Claim Simulator & SLA -->
-    <rect x="422" y="78" width="356" height="174" rx="16" fill="url(#cardBg)" stroke="#1E293B" stroke-width="1.5"/>
-    <rect x="438" y="96" width="36" height="24" rx="6" fill="#0C4A6E" stroke="#38BDF8" stroke-opacity="0.5"/>
-    <text x="456" y="112" text-anchor="middle" font-size="11.5" font-weight="800" fill="#38BDF8">02</text>
-    <text x="486" y="113" font-size="15.5" font-weight="700" fill="#F8FAFC">Deterministic Claim Engine</text>
-    <text x="438" y="142" font-size="12.5" fill="#CBD5E1">• 7-scenario estimator &amp; What-If rent sliders</text>
-    <text x="438" y="164" font-size="12.5" fill="#CBD5E1">• Zero-LLM proportionate deduction arithmetic</text>
-    <text x="438" y="186" font-size="12.5" fill="#CBD5E1">• 3h Cashless SLA notices &amp; GRO appeal PDFs</text>
-    <rect x="438" y="208" width="174" height="24" rx="12" fill="#0B192C" stroke="#1E293B"/>
-    <text x="525" y="224" text-anchor="middle" font-size="11" font-weight="600" fill="#38BDF8">claimEngine.service.js</text>
+    <!-- CARD 2: Deterministic Claim Engine -->
+    <g clip-path="url(#mc2)">
+      <rect x="422" y="80" width="356" height="184" rx="16" fill="url(#modCard)"/>
+      <rect x="422" y="80" width="356" height="4" fill="#22D3EE"/>
+    </g>
+    <rect x="422" y="80" width="356" height="184" rx="16" fill="none" stroke="#1E293B" stroke-width="1.5"/>
+    <rect x="442" y="102" width="38" height="38" rx="10" fill="#22D3EE" fill-opacity="0.14" stroke="#22D3EE" stroke-opacity="0.45"/>
+    <path d="M454,114 L468,114 M454,121 L468,121 M454,128 L468,128 M458,111 L458,117 M464,118 L464,124 M457,125 L457,131" fill="none" stroke="#22D3EE" stroke-width="1.8" stroke-linecap="round"/>
+    <text x="492" y="118" font-size="16.5" font-weight="700" fill="#F8FAFC">Deterministic Claim Engine</text>
+    <text x="492" y="137" class="mono" font-size="11" font-weight="600" fill="#67E8F9">02 · PAYOUT &amp; SLA</text>
+    <text x="442" y="169" font-size="14" fill="#E2E8F0">Zero-LLM proportionate room-rent math,</text>
+    <text x="442" y="191" font-size="14" fill="#CBD5E1">What-If sliders &amp; 3h SLA grievance PDFs.</text>
+    <rect x="442" y="212" width="316" height="34" rx="8" fill="#FFFFFF" fill-opacity="0.035" stroke="#1E293B"/>
+    <circle cx="458" cy="229" r="3.5" fill="#22D3EE"/>
+    <text x="470" y="233.5" class="mono" font-size="11.5" font-weight="700" fill="#67E8F9">0% LLM MATH</text>
+    <text x="744" y="233.5" text-anchor="end" class="mono" font-size="11.5" fill="#94A3B8">claimEngine.js</text>
 
-    <!-- Card 3: Motor Damage AI -->
-    <rect x="804" y="78" width="356" height="174" rx="16" fill="url(#cardBg)" stroke="#1E293B" stroke-width="1.5"/>
-    <rect x="820" y="96" width="36" height="24" rx="6" fill="#78350F" stroke="#F59E0B" stroke-opacity="0.5"/>
-    <text x="838" y="112" text-anchor="middle" font-size="11.5" font-weight="800" fill="#FBBF24">03</text>
-    <text x="868" y="113" font-size="15.5" font-weight="700" fill="#F8FAFC">Motor Damage AI &amp; ML</text>
-    <text x="820" y="142" font-size="12.5" fill="#CBD5E1">• 4-wheeler &amp; 2-wheeler claim damage analyzer</text>
-    <text x="820" y="164" font-size="12.5" fill="#CBD5E1">• FastAPI YOLOv8 + sklearn severity calibrator</text>
-    <text x="820" y="186" font-size="12.5" fill="#CBD5E1">• Statutory depreciation &amp; repair cost bands</text>
-    <rect x="820" y="208" width="166" height="24" rx="12" fill="#0B192C" stroke="#1E293B"/>
-    <text x="903" y="224" text-anchor="middle" font-size="11" font-weight="600" fill="#FBBF24">ml-service/ (:8000)</text>
+    <!-- CARD 3: Motor Damage AI -->
+    <g clip-path="url(#mc3)">
+      <rect x="800" y="80" width="356" height="184" rx="16" fill="url(#modCard)"/>
+      <rect x="800" y="80" width="356" height="4" fill="#F59E0B"/>
+    </g>
+    <rect x="800" y="80" width="356" height="184" rx="16" fill="none" stroke="#1E293B" stroke-width="1.5"/>
+    <rect x="820" y="102" width="38" height="38" rx="10" fill="#F59E0B" fill-opacity="0.14" stroke="#F59E0B" stroke-opacity="0.45"/>
+    <circle cx="839" cy="121" r="9" fill="none" stroke="#FBBF24" stroke-width="1.8"/>
+    <path d="M839,109 L839,114 M839,128 L839,133 M827,121 L832,121 M846,121 L851,121" fill="none" stroke="#FBBF24" stroke-width="1.8" stroke-linecap="round"/>
+    <text x="870" y="118" font-size="16.5" font-weight="700" fill="#F8FAFC">Motor Damage AI (4W &amp; 2W)</text>
+    <text x="870" y="137" class="mono" font-size="11" font-weight="600" fill="#FDE68A">03 · VISION &amp; ML</text>
+    <text x="820" y="169" font-size="14" fill="#E2E8F0">Multi-photo car &amp; bike severity detection</text>
+    <text x="820" y="191" font-size="14" fill="#CBD5E1">with FastAPI YOLOv8 + sklearn pricing.</text>
+    <rect x="820" y="212" width="316" height="34" rx="8" fill="#FFFFFF" fill-opacity="0.035" stroke="#1E293B"/>
+    <circle cx="836" cy="229" r="3.5" fill="#F59E0B"/>
+    <text x="848" y="233.5" class="mono" font-size="11.5" font-weight="700" fill="#FDE68A">FASTAPI :8000</text>
+    <text x="1122" y="233.5" text-anchor="end" class="mono" font-size="11.5" fill="#94A3B8">/api/incidents</text>
 
-    <!-- Card 4: Parinidhi Counselor -->
-    <rect x="40" y="272" width="356" height="174" rx="16" fill="url(#cardBg)" stroke="#1E293B" stroke-width="1.5"/>
-    <rect x="56" y="290" width="36" height="24" rx="6" fill="#4C1D95" stroke="#A78BFA" stroke-opacity="0.5"/>
-    <text x="74" y="306" text-anchor="middle" font-size="11.5" font-weight="800" fill="#C4B5FD">04</text>
-    <text x="104" y="307" font-size="15.5" font-weight="700" fill="#F8FAFC">Parinidhi AI &amp; Research</text>
-    <text x="56" y="336" font-size="12.5" fill="#CBD5E1">• Policy-grounded RAG with clause page links</text>
-    <text x="56" y="358" font-size="12.5" fill="#CBD5E1">• Multilingual voice synthesis &amp; guidance mode</text>
-    <text x="56" y="380" font-size="12.5" fill="#CBD5E1">• Live Tavily &amp; Serper insurer web verification</text>
-    <rect x="56" y="402" width="188" height="24" rx="12" fill="#0B192C" stroke="#1E293B"/>
-    <text x="150" y="418" text-anchor="middle" font-size="11" font-weight="600" fill="#C4B5FD">Free-First NIM / OpenRouter</text>
+    <!-- CARD 4: Parinidhi RAG & Voice -->
+    <g clip-path="url(#mc4)">
+      <rect x="44" y="284" width="356" height="184" rx="16" fill="url(#modCard)"/>
+      <rect x="44" y="284" width="356" height="4" fill="#EC4899"/>
+    </g>
+    <rect x="44" y="284" width="356" height="184" rx="16" fill="none" stroke="#1E293B" stroke-width="1.5"/>
+    <rect x="64" y="306" width="38" height="38" rx="10" fill="#EC4899" fill-opacity="0.14" stroke="#EC4899" stroke-opacity="0.45"/>
+    <path d="M74,325 L74,325 M78,320 L78,330 M83,315 L83,335 M88,319 L88,331 M92,323 L92,327" fill="none" stroke="#F472B6" stroke-width="2.2" stroke-linecap="round"/>
+    <text x="114" y="322" font-size="16.5" font-weight="700" fill="#F8FAFC">Parinidhi RAG &amp; Voice</text>
+    <text x="114" y="341" class="mono" font-size="11" font-weight="600" fill="#F9A8D4">04 · COUNSELOR AI</text>
+    <text x="64" y="373" font-size="14" fill="#E2E8F0">Page-indexed clause RAG citations, voice</text>
+    <text x="64" y="395" font-size="14" fill="#CBD5E1">synthesis &amp; live Tavily / Serper search.</text>
+    <rect x="64" y="416" width="316" height="34" rx="8" fill="#FFFFFF" fill-opacity="0.035" stroke="#1E293B"/>
+    <circle cx="80" cy="433" r="3.5" fill="#EC4899"/>
+    <text x="92" y="437.5" class="mono" font-size="11.5" font-weight="700" fill="#F9A8D4">FREE NIM / GROQ</text>
+    <text x="366" y="437.5" text-anchor="end" class="mono" font-size="11.5" fill="#94A3B8">/api/parinidhi</text>
 
-    <!-- Card 5: Browser Shield MV3 -->
-    <rect x="422" y="272" width="356" height="174" rx="16" fill="url(#cardBg)" stroke="#1E293B" stroke-width="1.5"/>
-    <rect x="438" y="290" width="36" height="24" rx="6" fill="#881337" stroke="#F43F5E" stroke-opacity="0.5"/>
-    <text x="456" y="306" text-anchor="middle" font-size="11.5" font-weight="800" fill="#FB7185">05</text>
-    <text x="486" y="307" font-size="15.5" font-weight="700" fill="#F8FAFC">Browser Shield MV3 v2.1</text>
-    <text x="438" y="336" font-size="12.5" fill="#CBD5E1">• Guards Chrome, WhatsApp, Gmail, TG &amp; IG DOM</text>
-    <text x="438" y="358" font-size="12.5" fill="#CBD5E1">• Stage-1 homoglyph, .apk &amp; reverse-UPI traps</text>
-    <text x="438" y="380" font-size="12.5" fill="#CBD5E1">• VirusTotal + RDAP domain-age threat lookup</text>
-    <rect x="438" y="402" width="178" height="24" rx="12" fill="#0B192C" stroke="#1E293B"/>
-    <text x="527" y="418" text-anchor="middle" font-size="11" font-weight="600" fill="#FB7185">One-Click Extension ZIP</text>
+    <!-- CARD 5: Browser Shield MV3 -->
+    <g clip-path="url(#mc5)">
+      <rect x="422" y="284" width="356" height="184" rx="16" fill="url(#modCard)"/>
+      <rect x="422" y="284" width="356" height="4" fill="#F43F5E"/>
+    </g>
+    <rect x="422" y="284" width="356" height="184" rx="16" fill="none" stroke="#1E293B" stroke-width="1.5"/>
+    <rect x="442" y="306" width="38" height="38" rx="10" fill="#F43F5E" fill-opacity="0.14" stroke="#F43F5E" stroke-opacity="0.45"/>
+    <path d="M461,313 L471,317 L471,325 C471,331 466,335 461,337 C456,335 451,331 451,325 L451,317 Z" fill="none" stroke="#FB7185" stroke-width="1.8"/>
+    <text x="492" y="322" font-size="16.5" font-weight="700" fill="#F8FAFC">Browser Shield MV3 v2.1</text>
+    <text x="492" y="341" class="mono" font-size="11" font-weight="600" fill="#FDA4AF">05 · SCAM DEFENSE</text>
+    <text x="442" y="373" font-size="14" fill="#E2E8F0">Real-time DOM guard across Chrome, WA,</text>
+    <text x="442" y="395" font-size="14" fill="#CBD5E1">Gmail, Telegram &amp; IG + VT / RDAP checks.</text>
+    <rect x="442" y="416" width="316" height="34" rx="8" fill="#FFFFFF" fill-opacity="0.035" stroke="#1E293B"/>
+    <circle cx="458" cy="433" r="3.5" fill="#F43F5E">
+      <animate attributeName="opacity" values="1;0.35;1" dur="1.8s" repeatCount="indefinite"/>
+    </circle>
+    <text x="470" y="437.5" class="mono" font-size="11.5" font-weight="700" fill="#FDA4AF">ACTIVE DOM SHIELD</text>
+    <text x="744" y="437.5" text-anchor="end" class="mono" font-size="11.5" fill="#94A3B8">extension/</text>
 
-    <!-- Card 6: Family Vault & Admin -->
-    <rect x="804" y="272" width="356" height="174" rx="16" fill="url(#cardBg)" stroke="#1E293B" stroke-width="1.5"/>
-    <rect x="820" y="290" width="36" height="24" rx="6" fill="#134E4A" stroke="#14B8A6" stroke-opacity="0.5"/>
-    <text x="838" y="306" text-anchor="middle" font-size="11.5" font-weight="800" fill="#2DD4BF">06</text>
-    <text x="868" y="307" font-size="15.5" font-weight="700" fill="#F8FAFC">Family Vault &amp; Governance</text>
-    <text x="820" y="336" font-size="12.5" fill="#CBD5E1">• Links dependents to active policies &amp; cards</text>
-    <text x="820" y="358" font-size="12.5" fill="#CBD5E1">• Direct 10 MB signed Storage upload bridge</text>
-    <text x="820" y="380" font-size="12.5" fill="#CBD5E1">• Admin telemetry &amp; verified-domain registry</text>
-    <rect x="820" y="402" width="184" height="24" rx="12" fill="#0B192C" stroke="#1E293B"/>
-    <text x="912" y="418" text-anchor="middle" font-size="11" font-weight="600" fill="#2DD4BF">Postgres RLS + Branded OTP</text>
+    <!-- CARD 6: Family Vault & Governance -->
+    <g clip-path="url(#mc6)">
+      <rect x="800" y="284" width="356" height="184" rx="16" fill="url(#modCard)"/>
+      <rect x="800" y="284" width="356" height="4" fill="#818CF8"/>
+    </g>
+    <rect x="800" y="284" width="356" height="184" rx="16" fill="none" stroke="#1E293B" stroke-width="1.5"/>
+    <rect x="820" y="306" width="38" height="38" rx="10" fill="#818CF8" fill-opacity="0.14" stroke="#818CF8" stroke-opacity="0.45"/>
+    <circle cx="839" cy="319" r="4" fill="none" stroke="#A5B4FC" stroke-width="1.8"/>
+    <circle cx="832" cy="331" r="3.5" fill="none" stroke="#A5B4FC" stroke-width="1.8"/>
+    <circle cx="846" cy="331" r="3.5" fill="none" stroke="#A5B4FC" stroke-width="1.8"/>
+    <text x="870" y="322" font-size="16.5" font-weight="700" fill="#F8FAFC">Family Vault &amp; Admin</text>
+    <text x="870" y="341" class="mono" font-size="11" font-weight="600" fill="#C7D2FE">06 · RLS &amp; STORAGE</text>
+    <text x="820" y="373" font-size="14" fill="#E2E8F0">Dependent policy links, emergency cards,</text>
+    <text x="820" y="395" font-size="14" fill="#CBD5E1">10 MB signed uploads &amp; allowlist moderation.</text>
+    <rect x="820" y="416" width="316" height="34" rx="8" fill="#FFFFFF" fill-opacity="0.035" stroke="#1E293B"/>
+    <circle cx="836" cy="433" r="3.5" fill="#818CF8"/>
+    <text x="848" y="437.5" class="mono" font-size="11.5" font-weight="700" fill="#C7D2FE">SIGNED 10MB + RLS</text>
+    <text x="1122" y="437.5" text-anchor="end" class="mono" font-size="11.5" fill="#94A3B8">/api/platform</text>
   </g>
 </svg>

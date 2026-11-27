@@ -1,7 +1,7 @@
 <div align="center">
 
 <a href="https://policyguard-ai-ecru.vercel.app">
-  <img src="docs/assets/hero-banner.svg" alt="PolicyGuard AI — Insurance Protection, IRDAI Claims Intelligence, Motor Estimator & Browser Scam Shield" width="100%" />
+  <img src="docs/assets/hero-banner.svg" alt="PolicyGuard AI — IRDAI 2024 Claims Intelligence, Motor Vision Estimator & Browser Scam Shield" width="100%" />
 </a>
 
 <br />
@@ -9,12 +9,12 @@
 <h3>Insurance Protection, IRDAI 2024 Claims Intelligence, Motor Vision Estimator &amp; Browser Scam Shield</h3>
 
 <p>
-  <a href="https://policyguard-ai-ecru.vercel.app"><img src="https://img.shields.io/badge/Live_App-policyguard--ai--ecru.vercel.app-10B981?style=for-the-badge&logo=vercel&logoColor=white" alt="Live App" /></a>
+  <a href="https://policyguard-ai-ecru.vercel.app"><img src="https://img.shields.io/badge/Live_App-policyguard--ai--ecru.vercel.app-E11D48?style=for-the-badge&logo=vercel&logoColor=white" alt="Live App" /></a>
   <a href="https://react.dev/"><img src="https://img.shields.io/badge/React-18_%2B_Three.js-0EA5E9?style=for-the-badge&logo=react&logoColor=white" alt="React 18 + Three.js" /></a>
-  <a href="https://nodejs.org/"><img src="https://img.shields.io/badge/Backend-Express_%2B_Zod-339933?style=for-the-badge&logo=node.js&logoColor=white" alt="Express + Zod" /></a>
+  <a href="https://nodejs.org/"><img src="https://img.shields.io/badge/Backend-Express_%2B_Zod-10B981?style=for-the-badge&logo=node.js&logoColor=white" alt="Express + Zod" /></a>
   <a href="https://supabase.com/"><img src="https://img.shields.io/badge/Supabase-Postgres_%2B_RLS_%2B_Auth-3ECF8E?style=for-the-badge&logo=supabase&logoColor=white" alt="Supabase" /></a>
   <a href="https://fastapi.tiangolo.com/"><img src="https://img.shields.io/badge/ML_Sidecar-FastAPI_%2B_YOLOv8-F59E0B?style=for-the-badge&logo=fastapi&logoColor=white" alt="FastAPI + YOLOv8" /></a>
-  <a href="extension/manifest.json"><img src="https://img.shields.io/badge/Chrome_MV3-Shield_v2.1-F43F5E?style=for-the-badge&logo=googlechrome&logoColor=white" alt="Chrome MV3 v2.1" /></a>
+  <a href="extension/manifest.json"><img src="https://img.shields.io/badge/Chrome_MV3-Shield_v2.1-EC4899?style=for-the-badge&logo=googlechrome&logoColor=white" alt="Chrome MV3 v2.1" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-64748B?style=for-the-badge" alt="License: MIT" /></a>
 </p>
 
@@ -37,6 +37,10 @@
 ---
 
 **PolicyGuard AI** is a full-stack InsurTech and consumer protection platform combining **table-aware PDF policy parsing**, **deterministic IRDAI 2024 compliance arithmetic**, **interactive claim payout simulation**, **Parinidhi AI policy-grounded counseling**, a **FastAPI + YOLOv8 motor damage sidecar**, and a **Chrome Manifest V3 Browser Shield extension** guarding Chrome tabs, WhatsApp Web, Gmail, Outlook Web, Telegram Web, and Instagram.
+
+<p align="center">
+  <img src="docs/assets/pipeline-flow.svg" alt="PolicyGuard AI End-to-End Protection Pipeline" width="100%" />
+</p>
 
 ---
 
@@ -65,33 +69,29 @@
   <img src="docs/assets/architecture-blueprint.svg" alt="PolicyGuard AI System Architecture Blueprint" width="100%" />
 </p>
 
-### Data & Verification Flows
-
-<details open>
-<summary><strong>Interactive Mermaid Pipelines: Claim &amp; Policy Flow + Browser Shield 2-Stage Defense</strong></summary>
+<details>
+<summary><strong>Interactive Mermaid Flows: Claim Processing Pipeline &amp; Browser Shield 2-Stage Defense</strong></summary>
 
 ```mermaid
-flowchart LR
+flowchart TD
     U["Policyholder / Claim Photo / PDF"] --> B["React 18 + Vite UI"]
-    B -->|"&lt;= 3.8 MB"| API["Express API gateway"]
-    B -->|"&gt; 3.8 MB (up to 10 MB)"| SURL["Signed Upload URL"]
-    SURL --> ST["Supabase Storage (policy-files)"]
-    API --> PARSE["pdfjs-dist Table Parser + DPDP PII Mask"]
-    PARSE --> FTS["Postgres policy_clauses (GIN FTS + RLS)"]
+    B -->|"<= 3.8 MB"| API["Express Serverless API"]
+    B -->|"> 3.8 MB (up to 10 MB)"| SURL["Signed Upload URL -> Supabase Storage"]
+    API --> PARSE["pdfjs-dist Parser + DPDP PII Mask -> Postgres FTS"]
     API --> MATH["claimEngine.service.js (Deterministic IRDAI Math)"]
     API --> RAG["Parinidhi RAG (Free NIM / OpenRouter + Tavily)"]
     API --> ML["FastAPI YOLOv8 + sklearn Sidecar (:8000)"]
-    MATH --> OUT["Cashless Breakdown · 3h SLA Notice · GRO PDF"]
+    MATH --> OUT["Cashless Breakdown · 3h SLA Notice · GRO Appeal PDF"]
 ```
 
 ```mermaid
 flowchart LR
-    DOM["Chrome · WhatsApp · Gmail · Outlook · Telegram · Instagram"] --> S1["Stage-1 Extension Engine (localRules + Homoglyph + APK)"]
-    S1 -->|"Safe &amp; Known Trusted"| ALLOW["Pass (Zero Latency)"]
-    S1 -->|"Suspicious / Unknown Domain"| API2["POST /api/security/check-url"]
-    API2 --> CACHE["Supabase site_scans &amp; research_cache"]
-    API2 --> INTEL["RDAP Domain Age + VirusTotal v3 + Shortener Unroll"]
-    INTEL --> VERDICT["Real-Time Risk Banner + Report / Allowlist Action"]
+    DOM["Chrome · WhatsApp · Gmail · Outlook · TG · IG"] --> S1["Stage-1 Rules (Homoglyph · APK · UPI)"]
+    S1 -->|"Safe & Trusted"| ALLOW["Pass (Zero Latency)"]
+    S1 -->|"Suspicious / Unknown"| API2["POST /api/security/check-url"]
+    API2 --> CACHE["Supabase site_scans Cache"]
+    API2 --> INTEL["RDAP Age + VirusTotal v3"]
+    INTEL --> VERDICT["Risk Banner + Allowlist / Report"]
 ```
 
 </details>
@@ -216,7 +216,7 @@ policy-ai/
 ├── extension/              # Chrome MV3 Browser Shield v2.1 (WhatsApp, Gmail, Outlook, Telegram, IG & Web)
 ├── ml-service/             # Python FastAPI + CPU YOLOv8 + scikit-learn motor estimator sidecar
 ├── supabase/               # Config & 6 PostgreSQL migrations (schema, RLS, grants, FTS & 2W benchmarks)
-├── docs/                   # Architecture, deployment & scaling guides + SVG visual assets (docs/assets/)
+├── docs/                   # Architecture, deployment & scaling guides + animated SVG visuals (docs/assets/)
 ├── k8s/                    # Kubernetes manifests
 ├── docker-compose.yml      # Local multi-container stack (frontend, backend, ml-service)
 └── vercel.json             # Production Vercel build & serverless routing configuration

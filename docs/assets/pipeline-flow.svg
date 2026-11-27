@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 186" width="100%" role="img" aria-label="PolicyGuard AI Four-Stage Real-Time Protection Pipeline">
+  <defs>
+    <linearGradient id="pipeStage" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#050814"/>
+      <stop offset="50%" stop-color="#0A1022"/>
+      <stop offset="100%" stop-color="#050814"/>
+    </linearGradient>
+    <linearGradient id="stepCard" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#111A30"/>
+      <stop offset="100%" stop-color="#0A1020"/>
+    </linearGradient>
+    <linearGradient id="beamGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#E11D48"/>
+      <stop offset="50%" stop-color="#EC4899"/>
+      <stop offset="100%" stop-color="#22D3EE"/>
+    </linearGradient>
+    <style>
+      .mono { font-family: ui-monospace, 'Cascadia Code', 'JetBrains Mono', Consolas, monospace; }
+      .sans { font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; }
+    </style>
+  </defs>
+
+  <rect x="4" y="4" width="1192" height="178" rx="18" fill="url(#pipeStage)" stroke="#1E293B" stroke-width="1.8"/>
+
+  <!-- Title Strip -->
+  <text x="44" y="34" class="mono" font-size="11.5" font-weight="700" letter-spacing="1.4" fill="#67E8F9">
+    EXECUTION PIPELINE · HOW POLICYGUARD PROTECTS USERS END-TO-END
+  </text>
+
+  <!-- Underlying Connector Beam + Animated Signal Packet -->
+  <line x1="166" y1="102" x2="1034" y2="102" stroke="#1E293B" stroke-width="3"/>
+  <line x1="166" y1="102" x2="1034" y2="102" stroke="url(#beamGrad)" stroke-opacity="0.55" stroke-width="2" stroke-dasharray="8 6"/>
+  <circle r="5" fill="#22D3EE">
+    <animateMotion dur="3.6s" repeatCount="indefinite" path="M 166,102 L 1034,102"/>
+  </circle>
+  <circle r="4" fill="#FB7185">
+    <animateMotion dur="3.6s" begin="1.8s" repeatCount="indefinite" path="M 166,102 L 1034,102"/>
+  </circle>
+
+  <!-- 4 Equal Pipeline Stage Cards (252px wide, 34px gaps: 44..296, 330..582, 616..868, 902..1154) -->
+  <g class="sans">
+    <!-- Step 1 -->
+    <rect x="44" y="52" width="252" height="106" rx="14" fill="url(#stepCard)" stroke="#10B981" stroke-opacity="0.55" stroke-width="1.5"/>
+    <text x="64" y="80" class="mono" font-size="11.5" font-weight="700" fill="#6EE7B7">STEP 01 · INGEST &amp; MASK</text>
+    <text x="64" y="106" font-size="15.5" font-weight="700" fill="#F8FAFC">PDF OCR + Signed Vault</text>
+    <text x="64" y="129" font-size="13" fill="#CBD5E1">pdfjs-dist parser + DPDP</text>
+    <text x="64" y="146" font-size="13" fill="#94A3B8">masking up to 10 MB PDF</text>
+
+    <!-- Step 2 -->
+    <rect x="330" y="52" width="252" height="106" rx="14" fill="url(#stepCard)" stroke="#22D3EE" stroke-opacity="0.55" stroke-width="1.5"/>
+    <text x="350" y="80" class="mono" font-size="11.5" font-weight="700" fill="#67E8F9">STEP 02 · COMPUTE</text>
+    <text x="350" y="106" font-size="15.5" font-weight="700" fill="#F8FAFC">Deterministic IRDAI Math</text>
+    <text x="350" y="129" font-size="13" fill="#CBD5E1">Zero-LLM deductions,</text>
+    <text x="350" y="146" font-size="13" fill="#94A3B8">co-pay &amp; What-If sliders</text>
+
+    <!-- Step 3 -->
+    <rect x="616" y="52" width="252" height="106" rx="14" fill="url(#stepCard)" stroke="#F59E0B" stroke-opacity="0.55" stroke-width="1.5"/>
+    <text x="636" y="80" class="mono" font-size="11.5" font-weight="700" fill="#FDE68A">STEP 03 · TRIAGE &amp; RAG</text>
+    <text x="636" y="106" font-size="15.5" font-weight="700" fill="#F8FAFC">YOLOv8 + Parinidhi AI</text>
+    <text x="636" y="129" font-size="13" fill="#CBD5E1">Motor damage scoring,</text>
+    <text x="636" y="146" font-size="13" fill="#94A3B8">citations &amp; 3h SLA PDF</text>
+
+    <!-- Step 4 -->
+    <rect x="902" y="52" width="252" height="106" rx="14" fill="url(#stepCard)" stroke="#F43F5E" stroke-opacity="0.55" stroke-width="1.5"/>
+    <text x="922" y="80" class="mono" font-size="11.5" font-weight="700" fill="#FDA4AF">STEP 04 · DEFEND</text>
+    <text x="922" y="106" font-size="15.5" font-weight="700" fill="#F8FAFC">Browser Shield MV3 v2.1</text>
+    <text x="922" y="129" font-size="13" fill="#CBD5E1">Live scam, .apk &amp; UPI guard</text>
+    <text x="922" y="146" font-size="13" fill="#94A3B8">across Web, WA, Gmail &amp; TG</text>
+  </g>
+</svg>
