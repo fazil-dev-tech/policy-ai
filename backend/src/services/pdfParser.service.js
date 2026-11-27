@@ -24,10 +24,37 @@ const getPdfJs = async () => {
 };
 
 /**
+ * Strip NULL bytes (\u0000), illegal ASCII controls, and unpaired UTF-16 surrogates
+ * so PostgreSQL JSONB & TEXT columns never throw "unsupported Unicode escape sequence".
+ */
+const sanitizeUnicodeForDb = (text = '') => {
+    const str = String(text ?? '');
+    const wellFormed = typeof str.toWellFormed === 'function'
+        ? str.toWellFormed()
+        : str.replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?:[^\uD800-\uDBFF]|^)[\uDC00-\uDFFF]/g, (m) =>
+              m.length === 2 ? `${m[0]}\uFFFD` : '\uFFFD'
+          );
+    return wellFormed.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
+};
+
+const sanitizeJsonForDb = (val) => {
+    if (typeof val === 'string') return sanitizeUnicodeForDb(val);
+    if (Array.isArray(val)) return val.map(sanitizeJsonForDb);
+    if (val && typeof val === 'object') {
+        const out = {};
+        for (const [k, v] of Object.entries(val)) {
+            out[sanitizeUnicodeForDb(k)] = sanitizeJsonForDb(v);
+        }
+        return out;
+    }
+    return val;
+};
+
+/**
  * DPDP Privacy Masking before sending free-form PDF text to external LLMs
  */
 const maskSensitivePii = (text = '') => {
-    return String(text || '')
+    return sanitizeUnicodeForDb(text)
         .replace(/\b[A-Z]{5}\d{4}[A-Z]\b/g, '[PAN-MASKED]')
         .replace(/\b\d{4}[\s-]\d{4}[\s-]\d{4}\b/g, (m) => `[AADHAAR-****-${m.slice(-4)}]`)
         .replace(/(?:\+91[\s-]?)[6-9]\d{9}\b/g, (m) => `[PHONE-***${m.slice(-4)}]`);
@@ -41,10 +68,12 @@ const reconstructPageLines = (items = []) => {
     const rows = new Map();
     for (const item of items) {
         if (!item?.str || !item.str.trim()) continue;
+        const cleanStr = sanitizeUnicodeForDb(item.str).trim();
+        if (!cleanStr) continue;
         const x = item.transform?.[4] ?? 0;
         const y = Math.round((item.transform?.[5] ?? 0) / 3) * 3;
         if (!rows.has(y)) rows.set(y, []);
-        rows.get(y).push({ x, width: Number(item.width || 0), str: item.str.trim() });
+        rows.get(y).push({ x, width: Number(item.width || 0), str: cleanStr });
     }
 
     const sortedYs = Array.from(rows.keys()).sort((a, b) => b - a);
@@ -167,6 +196,25 @@ const extractDeterministicHints = (fullText = '') => {
         }
     }
     if (insuredMembers.length > 0) hints.insuredMembers = insuredMembers;
+
+    const fullLow = String(fullText || '').toLowerCase();
+    if (/any\s*room[\s\S]{0,40}\(\s*except\s*suite/i.test(fullText) && (!hints.coverageAmount || hints.coverageAmount >= 1000000)) {
+        hints.roomRentCapPct = null;
+        hints.roomRentLabel = 'Any room (Except suite or above category)';
+    } else if (/\b(?:single\s*(?:private|standard)\s*(?:a\/?c\s*)?room|at\s*actuals|no\s*room\s*rent\s*(?:limit|capping))\b/i.test(fullText)) {
+        hints.roomRentCapPct = null;
+        hints.roomRentLabel = 'Single Standard / No Room Cap';
+    } else {
+        const pctRoom = fullText.match(/\b(1|2)\s*%\s*of\s*(?:the\s*)?sum\s*insured(?:\s*per\s*day|\s*\/\s*day)?/i);
+        if (pctRoom && (!hints.coverageAmount || hints.coverageAmount < 1000000)) {
+            hints.roomRentCapPct = Number(pctRoom[1]);
+            hints.roomRentLabel = `Up to ${pctRoom[1]}% of Sum Insured / day`;
+        }
+    }
+
+    if (/automatic\s*restoration|unlimited\s*(?:number\s*of\s*times|restoration)|100%\s*(?:restore|restoration|refill)/i.test(fullLow)) {
+        hints.restoration = true;
+    }
 
     return hints;
 };
@@ -305,12 +353,69 @@ const indexPolicyClauses = async ({ policyId, userId, pages = [] }) => {
 /**
  * Search policy clauses with Postgres websearch FTS + ILIKE fallback for exact Page citations.
  */
-const STOPWORDS = new Set(['what', 'does', 'when', 'where', 'which', 'this', 'that', 'with', 'from', 'have', 'will', 'your', 'about', 'policy', 'insurance', 'please', 'tell', 'much', 'many']);
+const STOPWORDS = new Set([
+    'what', 'does', 'when', 'where', 'which', 'this', 'that', 'with', 'from', 'have',
+    'will', 'your', 'about', 'policy', 'insurance', 'please', 'tell', 'much', 'many',
+    'page', 'says', 'state', 'show', 'explain', 'under', 'check', 'have', 'number',
+]);
+
+const HIGH_SIGNAL_TERMS = new Set([
+    'room', 'category', 'rent', 'capping', 'proportionate', 'copay', 'co-pay', 'deductible',
+    'waiting', 'moratorium', 'maternity', 'delivery', 'restoration', 'bonus', 'ambulance',
+    'cataract', 'consumables', 'ayush', 'helpline', 'intimation', 'nominee', 'member',
+    'exclusion', 'pre-existing', 'domiciliary', 'organ', 'donor', 'modern', 'icu', 'daycare',
+]);
+
+const scoreClauseRelevance = (clause, keywords, explicitPage) => {
+    const txt = `${clause.section_title || ''} ${clause.clause_text || ''}`.toLowerCase();
+    let score = 0;
+    if (explicitPage && Number(clause.page_number) === explicitPage) score += 20;
+    for (const kw of keywords) {
+        if (txt.includes(kw)) {
+            score += HIGH_SIGNAL_TERMS.has(kw) ? 5 : 2;
+        }
+    }
+    return score;
+};
 
 const searchPolicyClauses = async ({ policyId, userId, query, limit = 5 }) => {
     if (!policyId || !query) return [];
     const clean = String(query).replace(/[^\w\s₹.-]/g, ' ').trim();
     if (!clean) return [];
+
+    const pageRefMatch = clean.match(/\bpage\s*(\d{1,3})\b/i);
+    const explicitPage = pageRefMatch ? Number(pageRefMatch[1]) : null;
+
+    const allTokens = Array.from(
+        new Set(
+            clean
+                .split(/\s+/)
+                .map((w) => w.replace(/[%_]/g, '').toLowerCase())
+                .filter((w) => (w.length >= 3 || w === 'no') && !STOPWORDS.has(w))
+        )
+    );
+    const rankedKeywords = [
+        ...allTokens.filter((w) => HIGH_SIGNAL_TERMS.has(w)),
+        ...allTokens.filter((w) => !HIGH_SIGNAL_TERMS.has(w) && w.length >= 4),
+    ].slice(0, 7);
+
+    const collected = new Map();
+    const pushRows = (rows) => {
+        for (const row of rows || []) {
+            if (row?.id && !collected.has(row.id)) collected.set(row.id, row);
+        }
+    };
+
+    if (explicitPage) {
+        const { data: exactPageRows } = await supabaseAdmin
+            .from('policy_clauses')
+            .select('id, page_number, section_title, clause_text')
+            .eq('policy_id', policyId)
+            .eq('user_id', userId)
+            .eq('page_number', explicitPage)
+            .limit(Math.max(limit, 4));
+        pushRows(exactPageRows);
+    }
 
     try {
         const { data, error } = await supabaseAdmin
@@ -322,29 +427,31 @@ const searchPolicyClauses = async ({ policyId, userId, query, limit = 5 }) => {
             .limit(limit);
 
         if (!error && data && data.length > 0) {
-            return data;
+            pushRows(data);
         }
     } catch (err) {
         logger.warn('FTS search error, using fallback ilike:', err.message);
     }
 
-    const keywords = clean
-        .split(/\s+/)
-        .map((w) => w.replace(/[%_]/g, '').toLowerCase())
-        .filter((w) => w.length >= 4 && !STOPWORDS.has(w))
-        .slice(0, 3);
-
-    if (keywords.length > 0) {
-        const orFilter = keywords.map((kw) => `clause_text.ilike.%${kw}%`).join(',');
+    if (rankedKeywords.length > 0) {
+        const orFilter = rankedKeywords
+            .map((kw) => `clause_text.ilike.%${kw}%,section_title.ilike.%${kw}%`)
+            .join(',');
         const { data: fallback } = await supabaseAdmin
             .from('policy_clauses')
             .select('id, page_number, section_title, clause_text')
             .eq('policy_id', policyId)
             .eq('user_id', userId)
             .or(orFilter)
-            .limit(limit);
+            .limit(Math.max(limit * 3, 15));
 
-        if (fallback && fallback.length > 0) return fallback;
+        pushRows(fallback);
+    }
+
+    if (collected.size > 0) {
+        return Array.from(collected.values())
+            .sort((a, b) => scoreClauseRelevance(b, rankedKeywords, explicitPage) - scoreClauseRelevance(a, rankedKeywords, explicitPage))
+            .slice(0, limit);
     }
 
     // For broad queries ("summarize", "who is covered", etc.), return initial schedule pages cleanly
@@ -360,6 +467,8 @@ const searchPolicyClauses = async ({ policyId, userId, query, limit = 5 }) => {
 };
 
 module.exports = {
+    sanitizeUnicodeForDb,
+    sanitizeJsonForDb,
     maskSensitivePii,
     parsePdfWithLayout,
     extractDeterministicHints,

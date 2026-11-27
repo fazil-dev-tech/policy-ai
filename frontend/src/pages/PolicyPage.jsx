@@ -13,11 +13,12 @@ import {
 import toast from 'react-hot-toast';
 
 function ScoreRing({ score }) {
+    const safeScore = Math.min(100, Math.max(0, Number(score) || 0));
     const r = 36, circ = 2 * Math.PI * r;
-    const dash = ((score || 0) / 100) * circ;
-    const color = score >= 70 ? '#059669' : score >= 40 ? '#d97706' : '#dc2626';
+    const dash = (safeScore / 100) * circ;
+    const color = safeScore >= 70 ? '#059669' : safeScore >= 45 ? '#d97706' : '#dc2626';
     return (
-        <svg width="90" height="90" style={{ transform: 'rotate(-90deg)' }}>
+        <svg width="90" height="90" style={{ transform: 'rotate(-90deg)' }} aria-label={`Policy Health Score ${safeScore} out of 100`}>
             <circle cx="45" cy="45" r={r} fill="none" stroke="rgba(236,72,153,0.12)" strokeWidth="7" />
             <circle cx="45" cy="45" r={r} fill="none" stroke={color} strokeWidth="7"
                 strokeDasharray={`${dash} ${circ}`} strokeLinecap="round"
@@ -30,11 +31,41 @@ function ScoreRing({ score }) {
     );
 }
 
+function getEffectivePolicyStatus(policy) {
+    const expired = policy?.status === 'expired' || (policy?.endDate && new Date(policy.endDate) < new Date());
+    const daysLeft = policy?.endDate
+        ? Math.ceil((new Date(policy.endDate) - new Date()) / (1000 * 60 * 60 * 24))
+        : null;
+    if (expired) {
+        return { expired: true, daysLeft, badgeClass: 'danger', label: 'expired' };
+    }
+    if (daysLeft !== null && daysLeft <= 45) {
+        return { expired: false, daysLeft, badgeClass: 'warning', label: 'expiring soon' };
+    }
+    return {
+        expired: false,
+        daysLeft,
+        badgeClass: policy?.status === 'active' || !policy?.status ? 'success' : 'warning',
+        label: policy?.status || 'active',
+    };
+}
+
 function formatFieldLabel(rawKey) {
     return String(rawKey || '')
         .replace(/([a-z])([A-Z])/g, '$1 $2')
         .replace(/_/g, ' ')
         .replace(/^./, (c) => c.toUpperCase());
+}
+
+function formatScalarOrNested(val) {
+    if (val === null || val === undefined || val === '') return '—';
+    if (Array.isArray(val)) return val.map((v) => formatScalarOrNested(v)).join(', ');
+    if (typeof val === 'object') {
+        return Object.entries(val)
+            .map(([k, v]) => `${formatFieldLabel(k)}: ${formatScalarOrNested(v)}`)
+            .join(' · ');
+    }
+    return String(val);
 }
 
 function AiValue({ value }) {
@@ -47,7 +78,7 @@ function AiValue({ value }) {
                         {typeof item === 'object' ? (
                             <div className="ai-object">
                                 {Object.entries(item).map(([k, v]) => (
-                                    <div key={k}><strong>{formatFieldLabel(k)}:</strong> {String(v)}</div>
+                                    <div key={k}><strong>{formatFieldLabel(k)}:</strong> {formatScalarOrNested(v)}</div>
                                 ))}
                             </div>
                         ) : item}
@@ -62,7 +93,7 @@ function AiValue({ value }) {
                 {Object.entries(value).map(([k, v]) => (
                     <div key={k} className="ai-object-row">
                         <span className="ai-object-key">{formatFieldLabel(k)}</span>
-                        <span className="ai-object-val">{Array.isArray(v) ? v.join(', ') : String(v)}</span>
+                        <span className="ai-object-val">{formatScalarOrNested(v)}</span>
                     </div>
                 ))}
             </div>
@@ -72,8 +103,8 @@ function AiValue({ value }) {
 }
 
 const POLICY_TYPE_COLORS = {
-    health: '#059669', life: '#8b5cf6', auto: '#0284c7', home: '#d97706',
-    travel: '#06b6d4', business: '#ec4899', other: '#64748b',
+    health: '#065f46', life: '#5b21b6', auto: '#075985', home: '#92400e',
+    travel: '#155e75', business: '#9d174d', other: '#334155',
 };
 
 const TABS = [
@@ -90,7 +121,7 @@ const TABS = [
 
 export default function PolicyPage() {
     const navigate = useNavigate();
-    const [searchParams] = useSearchParams();
+    const [searchParams, setSearchParams] = useSearchParams();
     const [policies, setPolicies] = useState([]);
     const [loading, setLoading] = useState(true);
     const [uploading, setUploading] = useState(false);
@@ -102,6 +133,8 @@ export default function PolicyPage() {
     const [dragOver, setDragOver] = useState(false);
     const [uploadStep, setUploadStep] = useState(0);
     const [policyToDelete, setPolicyToDelete] = useState(null);
+    const [deletingPolicy, setDeletingPolicy] = useState(false);
+    const deletingRef = useRef(false);
 
     // Renewal Diff & Agent Mis-selling state
     const [renewalLoading, setRenewalLoading] = useState(false);
@@ -110,17 +143,48 @@ export default function PolicyPage() {
     const fileRef = useRef(null);
     const renewalRef = useRef(null);
 
+    const openPolicyModal = async (policy) => {
+        setSelectedPolicy(policy);
+        setActiveTab('simpleSummary');
+        setClauseQuery('');
+        setPolicyInsights(null);
+        try {
+            const { data } = await api.get(`/policy/${policy._id || policy.id}/insights`);
+            setPolicyInsights(data);
+        } catch {
+            toast.error('Showing saved summary (live clause lookup unavailable)');
+        }
+    };
+
+    const closePolicyModal = () => {
+        setSelectedPolicy(null);
+        if (searchParams.get('policyId')) {
+            const next = new URLSearchParams(searchParams);
+            next.delete('policyId');
+            setSearchParams(next, { replace: true });
+        }
+    };
+
     useEffect(() => {
         loadPolicies();
         const onKey = (e) => {
             if (e.key === 'Escape') {
-                setSelectedPolicy(null);
+                closePolicyModal();
                 setPolicyToDelete(null);
             }
         };
         window.addEventListener('keydown', onKey);
         return () => window.removeEventListener('keydown', onKey);
     }, []);
+
+    useEffect(() => {
+        const urlPolicyId = searchParams.get('policyId');
+        if (!urlPolicyId || policies.length === 0) return;
+        const match = policies.find((p) => (p._id || p.id) === urlPolicyId);
+        if (match && selectedPolicy?._id !== match._id) {
+            openPolicyModal(match);
+        }
+    }, [searchParams, policies]);
 
     const loadPolicies = async () => {
         try {
@@ -136,19 +200,6 @@ export default function PolicyPage() {
             toast.error('Failed to load policies');
         } finally {
             setLoading(false);
-        }
-    };
-
-    const openPolicyModal = async (policy) => {
-        setSelectedPolicy(policy);
-        setActiveTab('simpleSummary');
-        setClauseQuery('');
-        setPolicyInsights(null);
-        try {
-            const { data } = await api.get(`/policy/${policy._id || policy.id}/insights`);
-            setPolicyInsights(data);
-        } catch {
-            toast.error('Showing saved summary (live clause lookup unavailable)');
         }
     };
 
@@ -322,14 +373,25 @@ export default function PolicyPage() {
     };
 
     const executeDelete = async (id) => {
+        if (!id || deletingRef.current) return;
+        deletingRef.current = true;
+        setDeletingPolicy(true);
         try {
             await api.delete(`/policy/${id}`);
-            setPolicies(policies.filter((p) => p._id !== id));
+            setPolicies((prev) => prev.filter((p) => p._id !== id));
             toast.success('Policy deleted successfully');
-            if (selectedPolicy?._id === id) setSelectedPolicy(null);
-        } catch {
-            toast.error('Failed to delete policy');
+            if (selectedPolicy?._id === id) closePolicyModal();
+        } catch (err) {
+            if (err.response?.status === 404) {
+                setPolicies((prev) => prev.filter((p) => p._id !== id));
+                if (selectedPolicy?._id === id) closePolicyModal();
+                toast.success('Policy deleted successfully');
+            } else {
+                toast.error(err.response?.data?.error || 'Failed to delete policy');
+            }
         } finally {
+            deletingRef.current = false;
+            setDeletingPolicy(false);
             setPolicyToDelete(null);
         }
     };
@@ -338,6 +400,10 @@ export default function PolicyPage() {
 
     const healthEval = policyInsights?.healthEvaluation || selectedPolicy?.healthEvaluation;
     const cisCard = policyInsights?.cisCard || selectedPolicy?.cisSummary;
+    const modalStatus = selectedPolicy ? getEffectivePolicyStatus(selectedPolicy) : null;
+    const modalScore = selectedPolicy
+        ? Number(healthEval?.healthScore ?? selectedPolicy.healthScore ?? selectedPolicy.verificationScore ?? 0)
+        : 0;
 
     return (
         <div>
@@ -351,7 +417,7 @@ export default function PolicyPage() {
                 className={`upload-zone ${dragOver ? 'dragover' : ''} ${uploading ? 'uploading' : ''}`}
                 role="button"
                 tabIndex={0}
-                aria-label="Upload policy PDF or E-Card image"
+                aria-label="Drop your Policy PDF or E-Card Photo here"
                 onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
                 onDragLeave={() => setDragOver(false)}
                 onDrop={(e) => { e.preventDefault(); setDragOver(false); handleUpload(e.dataTransfer.files[0]); }}
@@ -359,11 +425,11 @@ export default function PolicyPage() {
                 onKeyDown={(e) => { if (!uploading && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); fileRef.current?.click(); } }}
                 style={{ marginBottom: 32 }}
             >
-                <input ref={fileRef} type="file" accept=".pdf,.jpg,.jpeg,.png,.webp"
+                <input ref={fileRef} id="policy-file-upload" name="policyFile" type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" aria-label="Choose policy file to upload"
                     onChange={(e) => handleUpload(e.target.files[0])} style={{ display: 'none' }} />
                 {uploading ? (
                     <div className="upload-progress-container">
-                        <h3 className="gradient-text">Parsing Tables & Indexing Clauses...</h3>
+                        <h2 className="gradient-text">Parsing Tables &amp; Indexing Clauses...</h2>
                         <div className="upload-steps">
                             {['Parse Pages', 'Extract Terms', 'Index & Score'].map((s, i) => (
                                 <div key={s} className={`upload-step ${uploadStep > i ? 'done' : uploadStep === i ? 'active' : ''}`}>
@@ -376,8 +442,8 @@ export default function PolicyPage() {
                 ) : (
                     <>
                         <div className="upload-icon"><Upload size={48} /></div>
-                        <h3>Drop your Policy PDF or E-Card Photo here</h3>
-                        <p>Supports digital PDFs, scanned docs & card photos — max 10MB</p>
+                        <h2>Drop your Policy PDF or E-Card Photo here</h2>
+                        <p>Supports digital PDFs, scanned docs &amp; card photos — max 10MB</p>
                         <div className="upload-formats">
                             {['Health', 'Life', 'Auto', 'Home', 'Travel', 'Business', 'E-Card Photo'].map((t) => (
                                 <span key={t} className="upload-format-tag">{t}</span>
@@ -392,32 +458,42 @@ export default function PolicyPage() {
                 <div className="policy-list">
                     {policies.map((policy) => {
                         const typeColor = POLICY_TYPE_COLORS[policy.policyType] || '#64748b';
-                        const expired = policy.endDate && new Date(policy.endDate) < new Date();
-                        const daysLeft = policy.endDate
-                            ? Math.ceil((new Date(policy.endDate) - new Date()) / (1000 * 60 * 60 * 24))
-                            : null;
+                        const statusMeta = getEffectivePolicyStatus(policy);
+                        const cardScore = Number(policy.healthScore ?? policy.verificationScore ?? 0);
                         return (
-                            <div key={policy._id} className="policy-card" style={{ '--type-color': typeColor }}
-                                onClick={() => openPolicyModal(policy)}>
+                            <article
+                                key={policy._id}
+                                className="policy-card"
+                                style={{ '--type-color': typeColor }}
+                                onClick={(e) => {
+                                    if (!e.target.closest('button, a')) openPolicyModal(policy);
+                                }}
+                            >
                                 <div className="policy-card-top">
-                                    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                                    <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
                                         <span className="badge" style={{ background: typeColor + '22', color: typeColor, border: `1px solid ${typeColor}44` }}>
                                             {policy.policyType}
                                         </span>
-                                        {policy.healthScore > 0 && (
-                                            <span className="badge badge-success">Health {policy.healthScore}/100</span>
+                                        {cardScore > 0 && (
+                                            <span className={`badge badge-${cardScore >= 70 ? 'success' : cardScore >= 45 ? 'warning' : 'danger'}`}>
+                                                Score {cardScore}/100
+                                            </span>
                                         )}
                                     </div>
-                                    <div style={{ display: 'flex', gap: 6 }} onClick={(e) => e.stopPropagation()}>
-                                        <button className="btn btn-secondary btn-sm" onClick={() => openPolicyModal(policy)}>
+                                    <div style={{ display: 'flex', gap: 6 }}>
+                                        <button type="button" className="btn btn-secondary btn-sm" onClick={() => openPolicyModal(policy)}>
                                             <Eye size={13} /> View
                                         </button>
-                                        <button className="btn btn-danger btn-sm" onClick={() => setPolicyToDelete(policy)}>
+                                        <button type="button" className="btn btn-danger btn-sm" onClick={() => setPolicyToDelete(policy)}>
                                             <Trash2 size={13} /> Delete
                                         </button>
                                     </div>
                                 </div>
-                                <h3 className="policy-provider">{policy.providerName}</h3>
+                                <h3 className="policy-provider">
+                                    <button type="button" className="policy-provider-btn" onClick={() => openPolicyModal(policy)}>
+                                        {policy.providerName}
+                                    </button>
+                                </h3>
                                 <div className="policy-number">#{policy.policyNumber}</div>
                                 <div className="policy-card-mid">
                                     <div className="policy-meta-row">
@@ -426,48 +502,54 @@ export default function PolicyPage() {
                                     </div>
                                     <div className="policy-meta-row">
                                         <span className="label">Status</span>
-                                        <span className={`badge badge-${policy.status === 'active' ? 'success' : 'warning'}`}>{policy.status}</span>
+                                        <span className={`badge badge-${statusMeta.badgeClass}`}>{statusMeta.label}</span>
                                     </div>
-                                    {daysLeft !== null && (
+                                    {statusMeta.daysLeft !== null && (
                                         <div className="policy-meta-row">
-                                            <span className="label">Expires</span>
-                                            <span className={`value ${expired ? 'text-danger' : daysLeft < 30 ? 'text-warning' : ''}`}>
-                                                {expired ? 'Expired' : `${daysLeft}d left`}
+                                            <span className="label">Validity</span>
+                                            <span className={`value ${statusMeta.expired ? 'text-danger' : statusMeta.daysLeft <= 45 ? 'text-warning' : ''}`}>
+                                                {statusMeta.expired
+                                                    ? `Expired ${Math.abs(statusMeta.daysLeft)}d ago`
+                                                    : statusMeta.daysLeft === 0
+                                                      ? 'Expires today'
+                                                      : `${statusMeta.daysLeft}d left`}
                                             </span>
                                         </div>
                                     )}
                                 </div>
                                 <div className="policy-card-bottom">
                                     <div className="score-bar">
-                                        <div className="score-bar-fill" style={{ width: `${policy.verificationScore}%`, background: `linear-gradient(90deg, ${typeColor}, ${typeColor}99)` }} />
+                                        <div className="score-bar-fill" style={{ width: `${cardScore}%`, background: `linear-gradient(90deg, ${typeColor}, ${typeColor}99)` }} />
                                     </div>
-                                    <span className="score-label">Verification: {policy.verificationScore}%</span>
+                                    <span className="score-label">
+                                        Health Score: {cardScore}/100 · Parser Confidence: {policy.verificationScore ?? cardScore}%
+                                    </span>
                                 </div>
-                            </div>
+                            </article>
                         );
                     })}
                 </div>
             ) : (
                 <div className="empty-state">
                     <FileText size={64} />
-                    <h3>No Policies Uploaded</h3>
+                    <h2>No Policies Uploaded</h2>
                     <p>Upload your first insurance policy PDF to get started with AI analysis</p>
                 </div>
             )}
 
             {/* Policy Detail Modal */}
             {selectedPolicy && (
-                <div className="modal-overlay" role="dialog" aria-modal="true" onClick={() => setSelectedPolicy(null)}>
+                <div className="modal-overlay" role="dialog" aria-modal="true" aria-label={selectedPolicy.providerName} onClick={closePolicyModal}>
                     <div className="modal policy-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 960, width: '95%' }}>
                         <div className="modal-header">
                             <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-                                <ScoreRing score={selectedPolicy.verificationScore} />
+                                <ScoreRing score={modalScore} />
                                 <div>
                                     <h2 style={{ fontSize: 20, fontWeight: 700 }}>{selectedPolicy.providerName}</h2>
                                     <div style={{ display: 'flex', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
                                         <span className="badge badge-purple">{selectedPolicy.policyType}</span>
-                                        <span className={`badge badge-${selectedPolicy.status === 'active' ? 'success' : 'warning'}`}>
-                                            {selectedPolicy.status}
+                                        <span className={`badge badge-${modalStatus.badgeClass}`}>
+                                            {modalStatus.label}
                                         </span>
                                         {selectedPolicy.aiSummary?.partialDocument && (
                                             <span className="badge badge-warning">Partial / Scanned Doc</span>
@@ -475,7 +557,7 @@ export default function PolicyPage() {
                                     </div>
                                 </div>
                             </div>
-                            <button type="button" className="modal-close" aria-label="Close policy details" onClick={() => setSelectedPolicy(null)}><X size={18} /></button>
+                            <button type="button" className="modal-close" aria-label="Close policy details" onClick={closePolicyModal}><X size={18} /></button>
                         </div>
 
                         <div className="policy-meta-grid">
@@ -497,9 +579,16 @@ export default function PolicyPage() {
                                 <Zap size={16} style={{ color: 'var(--accent-primary)' }} />
                                 <span>PolicyGuard Intelligence Tabs</span>
                             </div>
-                            <div className="ai-tabs" style={{ flexWrap: 'wrap' }}>
+                            <div className="ai-tabs" style={{ flexWrap: 'wrap' }} role="tablist" aria-label="Policy details tabs">
                                 {TABS.map(({ key, label, icon: Icon }) => (
-                                    <button key={key} className={`ai-tab ${activeTab === key ? 'active' : ''}`} onClick={() => setActiveTab(key)}>
+                                    <button
+                                        key={key}
+                                        type="button"
+                                        role="tab"
+                                        aria-selected={activeTab === key}
+                                        className={`ai-tab ${activeTab === key ? 'active' : ''}`}
+                                        onClick={() => setActiveTab(key)}
+                                    >
                                         <Icon size={14} /> {label}
                                     </button>
                                 ))}
@@ -510,7 +599,7 @@ export default function PolicyPage() {
                                     <div>
                                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 16, marginBottom: 16 }}>
                                             <div style={{ background: 'var(--bg-secondary)', padding: 14, borderRadius: 12, border: '1px solid var(--border-color)' }}>
-                                                <h4 style={{ marginBottom: 8 }}>IRDAI Customer Information Sheet (CIS)</h4>
+                                                <h3 style={{ marginBottom: 8, fontSize: 15, fontWeight: 700 }}>IRDAI Customer Information Sheet (CIS)</h3>
                                                 <div style={{ fontSize: 13, lineHeight: 1.7 }}>
                                                     <div><strong>Room Rent Limit:</strong> {cisCard?.roomRentLimit}</div>
                                                     <div><strong>Co-Pay / Deductible:</strong> {cisCard?.coPay} / {cisCard?.deductible}</div>
@@ -546,7 +635,7 @@ export default function PolicyPage() {
 
                                         {Array.isArray(selectedPolicy.structuredTerms?.insuredMembers) && selectedPolicy.structuredTerms.insuredMembers.length > 0 && (
                                             <div style={{ background: '#fff', border: '1px solid var(--border-color)', borderRadius: 10, padding: 12 }}>
-                                                <strong style={{ fontSize: 13, display: 'block', marginBottom: 8 }}>Insured Members & Declared PEDs</strong>
+                                                <strong style={{ fontSize: 13, display: 'block', marginBottom: 8 }}>Insured Members &amp; Declared PEDs</strong>
                                                 <div className="table-wrapper">
                                                     <table className="table">
                                                         <thead><tr><th>Member</th><th>Relation</th><th>DOB</th><th>Declared PED</th></tr></thead>
@@ -575,7 +664,7 @@ export default function PolicyPage() {
                                 {activeTab === 'clauses' && (
                                     <div>
                                         <form onSubmit={(e) => { e.preventDefault(); searchClauses(); }} style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-                                            <input className="form-input" placeholder="Search indexed PDF clauses (e.g. room rent, cataract, 24 hours, co-pay)..."
+                                            <input id="policy-clause-search" name="clauseQuery" className="form-input" aria-label="Search indexed PDF clauses" placeholder="Search indexed PDF clauses (e.g. room rent, cataract, 24 hours, co-pay)..."
                                                 value={clauseQuery} onChange={(e) => setClauseQuery(e.target.value)} />
                                             <button type="submit" className="btn btn-primary" disabled={searchingClauses}>
                                                 <Search size={15} /> {searchingClauses ? 'Searching...' : 'Search'}
@@ -599,9 +688,11 @@ export default function PolicyPage() {
                                 {activeTab === 'renewalAgent' && (
                                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 16 }}>
                                         <div>
-                                            <h4 style={{ marginBottom: 8 }}><GitCompare size={15} /> Renewal PDF Diff Checker</h4>
-                                            <input ref={renewalRef} type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" onChange={(e) => handleRenewalCompare(e.target.files[0])} style={{ display: 'none' }} />
-                                            <button className="btn btn-secondary btn-sm" onClick={() => renewalRef.current?.click()} disabled={renewalLoading}>
+                                            <h3 style={{ marginBottom: 8, fontSize: 15, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}>
+                                                <GitCompare size={15} /> Renewal PDF Diff Checker
+                                            </h3>
+                                            <input ref={renewalRef} id="renewal-policy-upload" name="renewalFile" type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" aria-label="Upload renewal policy PDF or photo" onChange={(e) => handleRenewalCompare(e.target.files[0])} style={{ display: 'none' }} />
+                                            <button type="button" className="btn btn-secondary btn-sm" onClick={() => renewalRef.current?.click()} disabled={renewalLoading}>
                                                 {renewalLoading ? 'Comparing...' : 'Upload Renewal PDF / Photo'}
                                             </button>
                                             {policyInsights?.renewalDiff && (policyInsights.renewalDiff.diffs || []).length === 0 && (
@@ -618,21 +709,23 @@ export default function PolicyPage() {
                                         </div>
 
                                         <form onSubmit={handleAgentAudit}>
-                                            <h4 style={{ marginBottom: 8 }}><UserCheck size={15} /> Agent Mis-Selling Audit (30d Free-Look)</h4>
-                                            <input className="form-input" placeholder="Agent / Intermediary Name" style={{ marginBottom: 6 }}
+                                            <h3 style={{ marginBottom: 8, fontSize: 15, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}>
+                                                <UserCheck size={15} /> Agent Mis-Selling Audit (30d Free-Look)
+                                            </h3>
+                                            <input id="agent-name" name="agentName" className="form-input" aria-label="Agent or Intermediary Name" placeholder="Agent / Intermediary Name" style={{ marginBottom: 6 }}
                                                 value={agentForm.agentName} onChange={(e) => setAgentForm({ ...agentForm, agentName: e.target.value })} />
-                                            <input className="form-input" placeholder="IRDAI License / Intermediary Code (optional)" style={{ marginBottom: 6 }}
+                                            <input id="agent-intermediary-code" name="intermediaryCode" className="form-input" aria-label="IRDAI License or Intermediary Code" placeholder="IRDAI License / Intermediary Code (optional)" style={{ marginBottom: 6 }}
                                                 value={agentForm.intermediaryCode} onChange={(e) => setAgentForm({ ...agentForm, intermediaryCode: e.target.value })} />
-                                            <input className="form-input" placeholder="Promised Cover (₹)" type="number" style={{ marginBottom: 6 }}
+                                            <input id="agent-promised-cover" name="promisedSumInsured" className="form-input" aria-label="Promised Cover in Rupees" placeholder="Promised Cover (₹)" type="number" style={{ marginBottom: 6 }}
                                                 value={agentForm.promisedSumInsured} onChange={(e) => setAgentForm({ ...agentForm, promisedSumInsured: e.target.value })} />
                                             <label style={{ display: 'block', fontSize: 12, marginBottom: 4 }}>
-                                                <input type="checkbox" checked={agentForm.zeroWaitingPeriod} onChange={(e) => setAgentForm({ ...agentForm, zeroWaitingPeriod: e.target.checked })} /> Promised Zero Waiting Period
+                                                <input id="agent-zero-wait" name="zeroWaitingPeriod" type="checkbox" checked={agentForm.zeroWaitingPeriod} onChange={(e) => setAgentForm({ ...agentForm, zeroWaitingPeriod: e.target.checked })} /> Promised Zero Waiting Period
                                             </label>
                                             <label style={{ display: 'block', fontSize: 12, marginBottom: 4 }}>
-                                                <input type="checkbox" checked={agentForm.noRoomCapPromised} onChange={(e) => setAgentForm({ ...agentForm, noRoomCapPromised: e.target.checked })} /> Promised Single Room / No Cap
+                                                <input id="agent-no-room-cap" name="noRoomCapPromised" type="checkbox" checked={agentForm.noRoomCapPromised} onChange={(e) => setAgentForm({ ...agentForm, noRoomCapPromised: e.target.checked })} /> Promised Single Room / No Cap
                                             </label>
                                             <label style={{ display: 'block', fontSize: 12, marginBottom: 8 }}>
-                                                <input type="checkbox" checked={agentForm.zeroDepPromised} onChange={(e) => setAgentForm({ ...agentForm, zeroDepPromised: e.target.checked })} /> Promised Zero-Depreciation Cover
+                                                <input id="agent-zero-dep" name="zeroDepPromised" type="checkbox" checked={agentForm.zeroDepPromised} onChange={(e) => setAgentForm({ ...agentForm, zeroDepPromised: e.target.checked })} /> Promised Zero-Depreciation Cover
                                             </label>
                                             <button className="btn btn-primary btn-sm" type="submit">Audit vs Actual Policy</button>
                                             {(policyInsights?.agentFollowups || []).slice(0, 2).map((f) => (
@@ -654,16 +747,19 @@ export default function PolicyPage() {
                             <button type="button" onClick={() => viewPolicySourceFile(selectedPolicy)} className="btn btn-secondary" style={{ flex: 1, textAlign: 'center' }}>
                                 <FileText size={15} /> View Source File
                             </button>
-                            <button className="btn btn-secondary" style={{ flex: 1 }} onClick={() => navigate(`/claims?policyId=${selectedPolicy._id}`)}>
+                            <button type="button" className="btn btn-secondary" style={{ flex: 1 }} onClick={() => navigate(`/chat?policyId=${selectedPolicy._id}`)}>
+                                Ask Policy Chat
+                            </button>
+                            <button type="button" className="btn btn-secondary" style={{ flex: 1 }} onClick={() => navigate(`/claims?policyId=${selectedPolicy._id}`)}>
                                 Estimate / File Claim
                             </button>
-                            <button className="btn btn-secondary" style={{ flex: 1 }} onClick={() => navigate(`/terminal?policyId=${selectedPolicy._id}`)}>
+                            <button type="button" className="btn btn-secondary" style={{ flex: 1 }} onClick={() => navigate(`/terminal?policyId=${selectedPolicy._id}`)}>
                                 Ask Parinidhi AI
                             </button>
-                            <button className="btn btn-primary" style={{ flex: 1 }} onClick={() => downloadEmergencyCard(selectedPolicy._id)}>
+                            <button type="button" className="btn btn-primary" style={{ flex: 1 }} onClick={() => downloadEmergencyCard(selectedPolicy._id)}>
                                 <Download size={15} /> Emergency Card PDF
                             </button>
-                            <button className="btn btn-danger" onClick={() => { setPolicyToDelete(selectedPolicy); setSelectedPolicy(null); }}>
+                            <button type="button" className="btn btn-danger" onClick={() => { setPolicyToDelete(selectedPolicy); closePolicyModal(); }}>
                                 <Trash2 size={15} /> Delete
                             </button>
                         </div>
@@ -673,7 +769,7 @@ export default function PolicyPage() {
 
             {/* Delete Confirmation */}
             {policyToDelete && (
-                <div className="modal-overlay" role="dialog" aria-modal="true" onClick={() => setPolicyToDelete(null)}>
+                <div className="modal-overlay" role="dialog" aria-modal="true" aria-label="Confirm delete policy" onClick={() => !deletingPolicy && setPolicyToDelete(null)}>
                     <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 400, textAlign: 'center' }}>
                         <div style={{ padding: 24, background: 'var(--bg-glass)' }}>
                             <div style={{ width: 64, height: 64, borderRadius: '50%', background: 'rgba(239,68,68,0.1)', color: 'var(--danger)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
@@ -684,8 +780,10 @@ export default function PolicyPage() {
                                 Delete <strong>{policyToDelete.providerName}</strong> ({policyToDelete.policyNumber})?
                             </p>
                             <div style={{ display: 'flex', gap: 12 }}>
-                                <button className="btn btn-secondary" onClick={() => setPolicyToDelete(null)} style={{ flex: 1 }}>Cancel</button>
-                                <button className="btn btn-danger" onClick={() => executeDelete(policyToDelete._id)} style={{ flex: 1 }}>Confirm Delete</button>
+                                <button type="button" className="btn btn-secondary" disabled={deletingPolicy} onClick={() => setPolicyToDelete(null)} style={{ flex: 1 }}>Cancel</button>
+                                <button type="button" className="btn btn-danger" disabled={deletingPolicy} onClick={() => executeDelete(policyToDelete._id)} style={{ flex: 1 }}>
+                                    {deletingPolicy ? 'Deleting...' : 'Confirm Delete'}
+                                </button>
                             </div>
                         </div>
                     </div>

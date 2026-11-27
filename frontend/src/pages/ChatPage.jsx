@@ -3,55 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import api from '../services/api';
 import { Send, Bot, User, Plus, MessageSquare, Clock, Copy, Check } from 'lucide-react';
 import toast from 'react-hot-toast';
-
-// ─── Simple markdown renderer ──────────────────────────────────────────────
-function MarkdownText({ content }) {
-    if (!content) return null;
-    const lines = content.split('\n');
-    const elements = [];
-    let listItems = [];
-    let key = 0;
-
-    const flushList = () => {
-        if (listItems.length) {
-            elements.push(<ul key={key++} className="md-list">{listItems}</ul>);
-            listItems = [];
-        }
-    };
-
-    const renderInline = (text) => {
-        const parts = text.split(/(\*\*[^*]+\*\*|\*[^*]+\*|`[^`]+`)/g);
-        return parts.map((p, i) => {
-            if (p.startsWith('**') && p.endsWith('**')) return <strong key={i}>{p.slice(2, -2)}</strong>;
-            if (p.startsWith('*') && p.endsWith('*')) return <em key={i}>{p.slice(1, -1)}</em>;
-            if (p.startsWith('`') && p.endsWith('`')) return <code key={i} className="md-code">{p.slice(1, -1)}</code>;
-            return p;
-        });
-    };
-
-    lines.forEach((line, i) => {
-        if (line.match(/^#{1,3} /)) {
-            flushList();
-            const level = line.match(/^(#+)/)[1].length;
-            const text = line.replace(/^#+\s/, '');
-            const Tag = `h${Math.min(level + 2, 6)}`;
-            elements.push(<Tag key={key++} className={`md-h${level}`}>{renderInline(text)}</Tag>);
-        } else if (line.match(/^[-*] /)) {
-            listItems.push(<li key={key++}>{renderInline(line.replace(/^[-*] /, ''))}</li>);
-        } else if (line.match(/^\d+\. /)) {
-            flushList();
-            elements.push(<p key={key++} className="md-numbered">{renderInline(line)}</p>);
-        } else if (line.trim() === '') {
-            flushList();
-            elements.push(<br key={key++} />);
-        } else {
-            flushList();
-            elements.push(<p key={key++} className="md-p">{renderInline(line)}</p>);
-        }
-    });
-    flushList();
-    return <div className="markdown-content">{elements}</div>;
-}
+import MarkdownText from '../components/shared/MarkdownText';
 
 // ─── Copy Button ────────────────────────────────────────────────────────────
 function CopyBtn({ text }) {
@@ -106,8 +58,16 @@ export default function ChatPage() {
         const urlPolicy = searchParams.get('policyId');
         if (urlPolicy) setSelectedPolicy(urlPolicy);
         const savedSid = sessionStorage.getItem('pg_standard_session');
-        if (savedSid) loadSessionHistory(savedSid);
+        if (savedSid) loadSessionHistory(savedSid, { expectedPolicyId: urlPolicy || null });
     }, []);
+
+    useEffect(() => {
+        const urlPolicy = searchParams.get('policyId');
+        if (urlPolicy && urlPolicy !== selectedPolicy) {
+            setSelectedPolicy(urlPolicy);
+        }
+    }, [searchParams]);
+
     useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
 
     const loadSessions = async () => {
@@ -116,10 +76,18 @@ export default function ChatPage() {
     const loadPolicies = async () => {
         try { const { data } = await api.get('/policy?limit=50'); setPolicies(data.policies || []); } catch { }
     };
-    const loadSessionHistory = async (sid) => {
+    const loadSessionHistory = async (sid, { expectedPolicyId = null } = {}) => {
         try {
             const { data } = await api.get(`/chat/history?sessionId=${sid}`);
             const msgs = data.messages || [];
+            const sessionPolicyId = msgs.find((m) => m.policyId)?.policyId || '';
+            if (expectedPolicyId && sessionPolicyId !== expectedPolicyId) {
+                setMessages([]);
+                setSessionId(null);
+                sessionStorage.removeItem('pg_standard_session');
+                setSelectedPolicy(expectedPolicyId);
+                return;
+            }
             const formatted = msgs.flatMap(m => ([
                 { role: 'user', content: m.message, timestamp: m.timestamp },
                 { role: 'ai', content: m.aiResponse, timestamp: m.timestamp, model: m.model, responseTime: m.responseTimeMs },
@@ -127,8 +95,7 @@ export default function ChatPage() {
             setMessages(formatted);
             setSessionId(sid);
             sessionStorage.setItem('pg_standard_session', sid);
-            if (!searchParams.get('policyId')) {
-                const sessionPolicyId = msgs.find((m) => m.policyId)?.policyId || '';
+            if (!expectedPolicyId && !searchParams.get('policyId')) {
                 setSelectedPolicy(sessionPolicyId);
             }
         } catch { toast.error('Failed to load chat history'); }
@@ -180,30 +147,30 @@ export default function ChatPage() {
             {/* Sidebar */}
             <div className="chat-sidebar">
                 <div className="chat-sidebar-top">
-                    <button className="btn btn-primary w-full" onClick={() => { setMessages([]); setSessionId(null); sessionStorage.removeItem('pg_standard_session'); }}>
+                    <button type="button" className="btn btn-primary w-full" onClick={() => { setMessages([]); setSessionId(null); sessionStorage.removeItem('pg_standard_session'); }}>
                         <Plus size={15} /> New Chat
                     </button>
                 </div>
 
                 <div className="chat-sidebar-section">
-                    <label className="form-label">Policy Context</label>
-                    <select className="form-input form-input-sm" value={selectedPolicy}
+                    <label className="form-label" htmlFor="chat-policy-select">Policy Context</label>
+                    <select id="chat-policy-select" name="policyId" className="form-input form-input-sm" value={selectedPolicy}
                         onChange={e => setSelectedPolicy(e.target.value)}>
                         <option value="">General AI + Live Web Mode</option>
                         {policies.map(p => (
                             <option key={p._id} value={p._id}>{p.providerName} · {p.policyNumber}</option>
                         ))}
                     </select>
-                    <label className="form-label" style={{ marginTop: 10 }}>AI Engine / Model</label>
-                    <select className="form-input form-input-sm" value={selectedModel}
-                        onChange={e => setSelectedModel(e.target.value)} aria-label="AI Model">
+                    <label className="form-label" htmlFor="chat-model-select" style={{ marginTop: 10 }}>AI Engine / Model</label>
+                    <select id="chat-model-select" name="aiModel" className="form-input form-input-sm" value={selectedModel}
+                        onChange={e => setSelectedModel(e.target.value)}>
                         {AI_MODEL_OPTIONS.map(opt => (
                             <option key={opt.value || 'auto'} value={opt.value}>{opt.label}</option>
                         ))}
                     </select>
                     {selectedPolicy && (
                         <div className="policy-context-badge">
-                            <span className="dot active-dot" /> Policy context active
+                            <span className="dot active-dot" aria-hidden="true" /> Policy context active
                         </div>
                     )}
                 </div>
@@ -213,7 +180,7 @@ export default function ChatPage() {
                     {sessions.length === 0 ? (
                         <div className="empty-sessions">No conversations yet</div>
                     ) : sessions.map(s => (
-                        <button key={s.sessionId}
+                        <button key={s.sessionId} type="button"
                             className={`session-item ${sessionId === s.sessionId ? 'active' : ''}`}
                             onClick={() => loadSessionHistory(s.sessionId)}>
                             <MessageSquare size={14} />
@@ -232,24 +199,24 @@ export default function ChatPage() {
                     <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                         <div className="chat-bot-avatar"><Bot size={22} /></div>
                         <div>
-                            <h3 style={{ fontSize: 16, fontWeight: 700 }}>PolicyAI Assistant</h3>
+                            <h1 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>PolicyAI Assistant</h1>
                             <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
                                 {selectedPolicy ? '📋 Policy context active' : '🌐 General insurance assistant'}
                             </span>
                         </div>
                     </div>
-                    <div className="online-indicator"><span className="dot active-dot" /> Online</div>
+                    <div className="online-indicator"><span className="dot active-dot" aria-hidden="true" /> Online</div>
                 </div>
 
                 <div className="chat-messages">
                     {messages.length === 0 && (
                         <div className="chat-welcome">
                             <div className="chat-welcome-avatar"><Bot size={36} /></div>
-                            <h3>How can I help you today?</h3>
+                            <h2>How can I help you today?</h2>
                             <p>Ask me about your insurance policies, coverage, claim procedures, or anything else.</p>
                             <div className="quick-prompts">
                                 {QUICK_PROMPTS.map(q => (
-                                    <button key={q} className="quick-prompt-chip"
+                                    <button key={q} type="button" className="quick-prompt-chip"
                                         onClick={() => { setInput(q); textareaRef.current?.focus(); }}>
                                         {q}
                                     </button>
@@ -297,7 +264,10 @@ export default function ChatPage() {
                     <div className="chat-input-wrapper">
                         <textarea
                             ref={textareaRef}
+                            id="chat-message-input"
+                            name="message"
                             className="chat-textarea"
+                            aria-label="Ask PolicyAI Assistant a question"
                             placeholder="Ask a general question OR ask about your uploaded policy clauses... (Shift+Enter for new line)"
                             value={input}
                             onChange={autoGrow}
@@ -305,7 +275,7 @@ export default function ChatPage() {
                             disabled={loading}
                             rows={1}
                         />
-                        <button className="chat-send-btn" onClick={handleSend} disabled={loading || !input.trim()}>
+                        <button type="button" className="chat-send-btn" aria-label="Send message" onClick={handleSend} disabled={loading || !input.trim()}>
                             <Send size={18} />
                         </button>
                     </div>

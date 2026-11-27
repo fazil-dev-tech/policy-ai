@@ -4,6 +4,7 @@ const { getRedisClient } = require('../config/redis');
 const geminiService = require('./gemini.service');
 const pdfParser = require('./pdfParser.service');
 const searchService = require('./search.service');
+const claimEngine = require('./claimEngine.service');
 const { mapChatMessage } = require('../utils/mappers');
 const logger = require('../utils/logger');
 
@@ -35,6 +36,57 @@ const sanitizeInput = (input) => {
     sanitized = sanitized.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
 
     return sanitized.trim();
+};
+
+const buildEnrichedPolicyContext = (policy = {}, matchedClauses = []) => {
+    const baseTerms = policy.structured_terms || {};
+    const hasRoomInfo =
+        Boolean(baseTerms.roomRentLabel) ||
+        baseTerms.roomRentCapPct !== undefined ||
+        Number(baseTerms.roomRentPerDayCap || 0) > 0;
+
+    const clauseTextCombined = (matchedClauses || []).map((c) => c.clause_text || '').join('\n');
+    let effectiveTerms = { ...baseTerms };
+
+    if ((!hasRoomInfo || !baseTerms.restoration) && clauseTextCombined) {
+        const siValue = Number(policy.coverage_amount || policy.coverageAmount || 0);
+        const inferred = pdfParser.extractDeterministicHints(
+            `${siValue > 0 ? `Basic Floater Sum Insured : Rs. ${siValue}\n` : ''}${clauseTextCombined}`
+        );
+        if (!hasRoomInfo && inferred.roomRentLabel) {
+            effectiveTerms.roomRentLabel = inferred.roomRentLabel;
+            effectiveTerms.roomRentCapPct = inferred.roomRentCapPct ?? null;
+        }
+        if (!baseTerms.restoration && inferred.restoration) {
+            effectiveTerms.restoration = true;
+        }
+    }
+
+    const enrichedPolicy = clauseTextCombined && !policy.raw_extracted_text
+        ? { ...policy, raw_extracted_text: clauseTextCombined }
+        : policy;
+    const liveCis = claimEngine.buildCisCard(enrichedPolicy, effectiveTerms);
+
+    return {
+        effectiveTerms,
+        liveCis,
+        policySummary: {
+            ...(policy.ai_summary || {}),
+            cisSummary: liveCis,
+            structuredTerms: effectiveTerms,
+            verifiedRoomRentNote:
+                effectiveTerms.roomRentLabel && effectiveTerms.roomRentCapPct === null
+                    ? `${effectiveTerms.roomRentLabel} — No 1%/2% daily room-rent percentage cap applies for this Sum Insured tier.`
+                    : null,
+            startDate: policy.start_date || null,
+            endDate: policy.end_date || null,
+            inceptionDate: policy.inception_date || null,
+            policyNumber: policy.policy_number,
+            providerName: policy.provider_name,
+            policyType: policy.policy_type,
+            coverageAmount: Number(policy.coverage_amount || 0),
+        },
+    };
 };
 
 const getSessionId = (userId, sessionId) => {
@@ -163,33 +215,33 @@ const buildOfflinePolicyChatFallback = async ({ userMessage, policySummary = {},
 const processMessage = async ({ userId, policyId, message, sessionId, aiModel }) => {
     const sanitizedMessage = sanitizeInput(message);
     if (!sanitizedMessage) {
-        throw new Error('Invalid message content');
+        const err = new Error('Invalid message content');
+        err.statusCode = 400;
+        throw err;
     }
 
     const currentSessionId = getSessionId(userId, sessionId);
 
     let policySummary = {};
+    let validPolicyId = null;
+    let matchedClauses = [];
     if (policyId) {
         const { data: policy } = await supabaseAdmin
             .from('policies')
-            .select('ai_summary, cis_summary, structured_terms, start_date, end_date, inception_date, policy_number, provider_name, policy_type, coverage_amount')
+            .select('id, ai_summary, cis_summary, structured_terms, start_date, end_date, inception_date, policy_number, provider_name, policy_type, coverage_amount')
             .eq('id', policyId)
             .eq('user_id', userId)
             .maybeSingle();
 
         if (policy) {
-            policySummary = {
-                ...(policy.ai_summary || {}),
-                cisSummary: policy.cis_summary || {},
-                structuredTerms: policy.structured_terms || {},
-                startDate: policy.start_date || null,
-                endDate: policy.end_date || null,
-                inceptionDate: policy.inception_date || null,
-                policyNumber: policy.policy_number,
-                providerName: policy.provider_name,
-                policyType: policy.policy_type,
-                coverageAmount: Number(policy.coverage_amount || 0),
-            };
+            validPolicyId = policy.id;
+            matchedClauses = await pdfParser.searchPolicyClauses({
+                policyId: validPolicyId,
+                userId,
+                query: sanitizedMessage,
+                limit: 6,
+            });
+            ({ policySummary } = buildEnrichedPolicyContext(policy, matchedClauses));
         }
     }
 
@@ -209,16 +261,6 @@ const processMessage = async ({ userId, policyId, message, sessionId, aiModel })
         }));
     }
 
-    let matchedClauses = [];
-    if (policyId) {
-        matchedClauses = await pdfParser.searchPolicyClauses({
-            policyId,
-            userId,
-            query: sanitizedMessage,
-            limit: 5,
-        });
-    }
-
     let aiResult;
     try {
         aiResult = await geminiService.chatAboutPolicy(sanitizedMessage, policySummary, conversationHistory, matchedClauses, { aiModel });
@@ -235,7 +277,7 @@ const processMessage = async ({ userId, policyId, message, sessionId, aiModel })
         .from('chat_history')
         .insert({
             user_id: userId,
-            policy_id: policyId || null,
+            policy_id: validPolicyId,
             session_id: currentSessionId,
             message: sanitizedMessage,
             ai_response: aiResult.response,
@@ -262,8 +304,13 @@ const processMessage = async ({ userId, policyId, message, sessionId, aiModel })
     return {
         id: chatEntry.id,
         sessionId: currentSessionId,
+        policyId: validPolicyId,
         message: sanitizedMessage,
         aiResponse: aiResult.response,
+        citations: matchedClauses.slice(0, 6).map((c) => ({
+            pageNumber: c.page_number,
+            sectionTitle: c.section_title,
+        })),
         model: aiResult.model,
         provider: aiResult.provider,
         responseTimeMs: aiResult.responseTimeMs,
@@ -347,4 +394,5 @@ module.exports = {
     getHistory,
     getUserSessions,
     sanitizeInput,
+    buildEnrichedPolicyContext,
 };

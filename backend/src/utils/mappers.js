@@ -80,6 +80,8 @@ const mapPolicy = (row, signedPdfUrl = null) => {
 
 const mapDocument = (row, signedPdfUrl = null) => {
     if (!row) return null;
+    const rawSummary = row.ai_summary && typeof row.ai_summary === 'object' ? { ...row.ai_summary } : {};
+    delete rawSummary._textExcerpt;
     return {
         id: row.id,
         _id: row.id,
@@ -89,7 +91,7 @@ const mapDocument = (row, signedPdfUrl = null) => {
         pdfUrl: signedPdfUrl || row.pdf_url || `/api/documents/${row.id}/file`,
         storagePath: row.storage_path || '',
         fileSize: Number(row.file_size || 0),
-        aiSummary: row.ai_summary || {},
+        aiSummary: rawSummary,
         status: row.status || 'analyzed',
         createdAt: row.created_at,
         updatedAt: row.updated_at,

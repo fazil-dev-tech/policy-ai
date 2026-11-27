@@ -11,11 +11,32 @@
       <div class="pg-logo">PG</div>
       <div>
         <h1>PolicyGuard Shield</h1>
-        <p>Web · WhatsApp · Gmail Protection</p>
+        <p>Chrome · WhatsApp · Telegram · Email</p>
       </div>
     </div>
-    <span id="statusBadge" class="pg-badge safe">SCANNING</span>
+    <div class="pg-hdr-right">
+      <label class="pg-switch" title="Pause or enable real-time protection">
+        <input type="checkbox" id="enabledToggle" checked />
+        <span class="pg-slider"></span>
+      </label>
+      <span id="statusBadge" class="pg-badge safe">SCANNING</span>
+    </div>
   </header>
+
+  <section class="pg-stats-grid">
+    <div class="pg-stat-box">
+      <div id="statScanned" class="pg-stat-val">0</div>
+      <div class="pg-stat-lbl">Scanned</div>
+    </div>
+    <div class="pg-stat-box danger">
+      <div id="statThreats" class="pg-stat-val">0</div>
+      <div class="pg-stat-lbl">Threats</div>
+    </div>
+    <div class="pg-stat-box safe">
+      <div id="statSafe" class="pg-stat-val">0</div>
+      <div class="pg-stat-lbl">Verified Safe</div>
+    </div>
+  </section>
 
   <section class="pg-card">
     <div class="pg-row">
@@ -27,24 +48,45 @@
       <strong id="riskScore">0 / 100</strong>
     </div>
     <ul id="reasonsList" class="pg-reasons">
-      <li>Open a website, Gmail, or WhatsApp Web to inspect live links.</li>
+      <li>Open any website, WhatsApp Web, Telegram, Instagram DM, Gmail or Outlook.</li>
     </ul>
-    <button id="rescanBtn" class="pg-btn pg-btn-primary">Scan Active Tab Now</button>
+    <div style="display:flex;gap:6px;">
+      <button id="rescanBtn" class="pg-btn pg-btn-primary">Scan Active Tab Now</button>
+      <button id="diagBtn" type="button" class="pg-btn pg-btn-secondary" style="width:auto;white-space:nowrap;">Diagnose Tab</button>
+    </div>
+    <div id="diagFeedback" class="pg-hint"></div>
+  </section>
+
+  <section id="tabThreatsCard" class="pg-card pg-card-danger" style="display:none;">
+    <h3>Active Tab Threats (<span id="tabThreatCount">0</span>)</h3>
+    <ul id="tabThreatsList" class="pg-reasons"></ul>
   </section>
 
   <section class="pg-card">
+    <div class="pg-row" style="align-items:center;margin-bottom:8px;">
+      <span class="pg-label" style="font-weight:700;color:#0f172a;">Detection Sensitivity</span>
+      <select id="sensitivitySelect" class="pg-select-sm">
+        <option value="high">High (Strict · 45+)</option>
+        <option value="balanced">Balanced (Default · 60+)</option>
+        <option value="relaxed">Relaxed (Low Noise · 80+)</option>
+      </select>
+    </div>
+    <label class="pg-toggle" style="margin-bottom:6px;">
+      <input type="checkbox" id="interceptClicksToggle" checked />
+      <span>Block dangerous link &amp; <strong>.apk</strong> clicks before opening</span>
+    </label>
     <label class="pg-toggle">
       <input type="checkbox" id="showSafeToggle" />
-      <span>Show green <strong>✓ SAFE</strong> badges on WhatsApp & Gmail</span>
+      <span>Show green <strong>✓ SAFE</strong> badges in chats &amp; mail</span>
     </label>
-    <p class="pg-hint">🚨 THREAT (Red) and ⚠ SUSPICIOUS (Orange) inline warnings are always enabled.</p>
+    <p class="pg-hint">🚨 THREAT (Red) and ⚠ SUSPICIOUS (Orange) warnings stay active automatically.</p>
   </section>
 
   <section class="pg-card">
     <h3>Report Suspicious URL</h3>
     <select id="reportCategory" class="pg-input">
       <option value="phishing">Fake Insurer Website / Phishing</option>
-      <option value="apk_malware">WhatsApp/Gmail .APK Malware</option>
+      <option value="apk_malware">WhatsApp/Email .APK Malware</option>
       <option value="upi_scam">Reverse-UPI / Fake Refund</option>
       <option value="fake_renewal">Fraudulent Policy Renewal / Portal</option>
       <option value="impersonation">Agent / IRDAI Impersonation</option>
@@ -64,8 +106,24 @@
   </section>
 
   <section class="pg-card">
+    <details id="listsDetails">
+      <summary>Custom Whitelist &amp; Blacklist</summary>
+      <label class="pg-label" style="display:block;margin-top:8px;">Add trusted or blocked domain</label>
+      <div style="display:flex;gap:6px;margin-top:4px;margin-bottom:6px;">
+        <input id="ruleDomainInput" class="pg-input" style="margin-bottom:0;" placeholder="e.g. suspicious-site.xyz" />
+      </div>
+      <div style="display:flex;gap:6px;margin-bottom:8px;">
+        <button id="addWhitelistBtn" type="button" class="pg-btn pg-btn-secondary" style="font-size:11px;padding:5px;">+ Whitelist</button>
+        <button id="addBlacklistBtn" type="button" class="pg-btn pg-btn-danger" style="font-size:11px;padding:5px;">+ Blacklist</button>
+      </div>
+      <div id="customRulesFeedback" class="pg-hint" style="margin-bottom:6px;"></div>
+      <ul id="customRulesList" class="pg-reasons"></ul>
+    </details>
+  </section>
+
+  <section class="pg-card">
     <details id="syncDetails">
-      <summary>Settings & Optional Account Sync</summary>
+      <summary>Settings &amp; Optional Account Sync</summary>
       <label class="pg-label" style="display:block;margin-top:8px;">Backend API URL</label>
       <input id="apiUrlInput" class="pg-input" placeholder="https://policyguard-ai-ecru.vercel.app/api" />
       <div style="display:flex;gap:6px;margin-bottom:7px;">
@@ -92,6 +150,7 @@
     Cyber fraud or financial scam? Call <strong>1930</strong> immediately (Golden Hour &lt; 2h).
   </footer>
 
+  <script src="shared/stage1Engine.js"></script>
   <script src="shared/localRules.js"></script>
   <script src="popup.js"></script>
 </body>

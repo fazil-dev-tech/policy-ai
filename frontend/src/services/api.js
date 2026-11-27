@@ -54,27 +54,6 @@ export const uploadDirectToSignedStorage = async (file, folder = 'incidents') =>
     };
 };
 
-api.interceptors.request.use(
-    async (config) => {
-        let token = localStorage.getItem('accessToken');
-        if (supabase) {
-            const { data } = await supabase.auth.getSession();
-            if (data?.session?.access_token) {
-                token = data.session.access_token;
-                localStorage.setItem('accessToken', token);
-                if (data.session.refresh_token) {
-                    localStorage.setItem('refreshToken', data.session.refresh_token);
-                }
-            }
-        }
-        if (token) {
-            config.headers.Authorization = `Bearer ${token}`;
-        }
-        return config;
-    },
-    (error) => Promise.reject(error)
-);
-
 // Single-flight refresh lock prevents parallel Promise.all calls from racing single-use Supabase refresh tokens
 let refreshPromise = null;
 
@@ -103,6 +82,39 @@ const refreshAccessTokenSingleFlight = async () => {
     });
     return refreshPromise;
 };
+
+api.interceptors.request.use(
+    async (config) => {
+        let token = localStorage.getItem('accessToken');
+        const reqUrl = String(config?.url || '');
+        const isAuthEndpoint = /\/auth\/(login|register|send-otp|verify-otp|refresh)/i.test(reqUrl);
+        if (supabase && !isAuthEndpoint) {
+            const { data } = await supabase.auth.getSession();
+            const session = data?.session;
+            if (session?.access_token) {
+                const expiresAtMs = session.expires_at ? Number(session.expires_at) * 1000 : 0;
+                if (expiresAtMs && expiresAtMs <= Date.now() + 25000) {
+                    try {
+                        token = await refreshAccessTokenSingleFlight();
+                    } catch {
+                        token = session.access_token;
+                    }
+                } else {
+                    token = session.access_token;
+                    localStorage.setItem('accessToken', token);
+                    if (session.refresh_token) {
+                        localStorage.setItem('refreshToken', session.refresh_token);
+                    }
+                }
+            }
+        }
+        if (token) {
+            config.headers.Authorization = `Bearer ${token}`;
+        }
+        return config;
+    },
+    (error) => Promise.reject(error)
+);
 
 api.interceptors.response.use(
     (response) => response,

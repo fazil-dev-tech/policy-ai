@@ -41,6 +41,7 @@ const uploadDocument = async (req, res, next) => {
             });
         }
 
+        const maskedExcerpt = pdfParser.maskSensitivePii(pdfText).slice(0, 7500);
         const extracted = await documentService.extractDocumentInfo(pdfText);
         if (!preUploadedPath) {
             newlyUploadedPath = await storageService.uploadPdfBuffer({
@@ -58,22 +59,27 @@ const uploadDocument = async (req, res, next) => {
                 ? extracted.documentName
                 : originalName || 'Untitled Document';
 
+        const cleanSummary = pdfParser.sanitizeJsonForDb({
+            simpleSummary: extracted.simpleSummary || 'Analysis complete.',
+            keyPoints: extracted.keyPoints || [],
+            actionItems: extracted.actionItems || [],
+            riskFactors: extracted.riskFactors || [],
+            entities: extracted.entities || {},
+            _aiFailed: Boolean(extracted._aiFailed),
+            _textExcerpt: maskedExcerpt,
+        });
+        const cleanDocName = pdfParser.sanitizeUnicodeForDb(resolvedName);
+
         const { data: created, error } = await supabaseAdmin
             .from('documents')
             .insert({
                 user_id: req.user.id,
-                document_name: resolvedName,
+                document_name: cleanDocName,
                 document_type: docType,
                 pdf_url: '',
                 storage_path: storagePath,
                 file_size: fileSize,
-                ai_summary: {
-                    simpleSummary: extracted.simpleSummary || 'Analysis complete.',
-                    keyPoints: extracted.keyPoints || [],
-                    actionItems: extracted.actionItems || [],
-                    riskFactors: extracted.riskFactors || [],
-                    entities: extracted.entities || {},
-                },
+                ai_summary: cleanSummary,
                 status: extracted._aiFailed ? 'failed' : 'analyzed',
             })
             .select()
@@ -170,7 +176,11 @@ const deleteDocument = async (req, res, next) => {
             return res.status(404).json({ error: 'Document not found' });
         }
 
-        await storageService.deleteStorageFile(documentRecord.storage_path);
+        if (documentRecord.storage_path) {
+            await storageService.deleteStorageFile(documentRecord.storage_path).catch((err) => {
+                logger.warn(`Non-fatal storage cleanup error on document ${documentRecord.id}: ${err.message}`);
+            });
+        }
         logger.info(`Document deleted: ${documentRecord.id}`);
 
         res.json({ message: 'Document deleted successfully' });
@@ -181,7 +191,7 @@ const deleteDocument = async (req, res, next) => {
 
 const chatWithDocument = async (req, res, next) => {
     try {
-        const { message } = req.body;
+        const { message, model } = req.body;
         if (!message || !message.trim()) {
             return res.status(400).json({ error: 'Message is required' });
         }
@@ -209,7 +219,8 @@ const chatWithDocument = async (req, res, next) => {
         const result = await documentService.chatAboutDocument(
             message.trim(),
             documentContext,
-            conversationHistory
+            conversationHistory,
+            { model }
         );
 
         res.json({

@@ -203,5 +203,34 @@ describe('claimEngine deterministic math and IRDAI compliance', () => {
             expect(audit.status).toBe('mis_selling_risk');
             expect(audit.discrepancies.length).toBeGreaterThanOrEqual(2);
         });
+
+        test('does not false-flag noRoomCapPromised when wording says proportionate deductions are not applied', () => {
+            const audit = claimEngine.auditAgentPromise(
+                { noRoomCapPromised: true },
+                {
+                    coverageAmount: 1000000,
+                    aiSummary: {
+                        coverage: 'Any room (Except suite or above category)',
+                        exclusions: 'Proportionate deductions are not applied where differential billing is absent.',
+                    },
+                }
+            );
+            expect(audit.status).toBe('verified_match');
+            expect(audit.discrepancies).toHaveLength(0);
+        });
+    });
+
+    describe('buildCisCard unknown room rent honesty', () => {
+        test('does not fabricate 1% room rent limit when room terms were not explicitly detected', () => {
+            const cis = claimEngine.buildCisCard(
+                {
+                    policyType: 'health',
+                    coverageAmount: 1000000,
+                    aiSummary: { coverage: 'Hospitalization up to Sum Insured', exclusions: 'Standard waiting periods' },
+                },
+                { coPayPct: 0 }
+            );
+            expect(cis.roomRentLimit).toBe('Verify in Policy Schedule / Clause Citations');
+        });
     });
 });

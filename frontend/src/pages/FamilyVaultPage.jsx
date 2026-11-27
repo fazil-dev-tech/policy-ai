@@ -42,6 +42,8 @@ export default function FamilyVaultPage() {
     const [members, setMembers] = useState([]);
     const [unassignedPolicies, setUnassignedPolicies] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [savingMember, setSavingMember] = useState(false);
+    const [deletingMember, setDeletingMember] = useState(false);
     const [activeSos, setActiveSos] = useState('hospital');
     const [form, setForm] = useState({ fullName: '', relationship: 'parent', bloodGroup: '', emergencyContact: '', dateOfBirth: '', chronicConditions: '', notes: '', linkPolicyId: '' });
 
@@ -63,10 +65,12 @@ export default function FamilyVaultPage() {
 
     const handleAddMember = async (e) => {
         e.preventDefault();
+        if (savingMember) return;
         if (!form.fullName.trim()) {
             toast.error('Please enter the family member name');
             return;
         }
+        setSavingMember(true);
         try {
             await api.post('/family', form);
             toast.success('Family member added to Vault!');
@@ -74,13 +78,16 @@ export default function FamilyVaultPage() {
             loadVault();
         } catch (err) {
             toast.error(err.response?.data?.error || 'Failed to add member');
+        } finally {
+            setSavingMember(false);
         }
     };
 
     const [memberToDelete, setMemberToDelete] = useState(null);
 
     const confirmDeleteMember = async () => {
-        if (!memberToDelete) return;
+        if (!memberToDelete || deletingMember) return;
+        setDeletingMember(true);
         try {
             await api.delete(`/family/${memberToDelete.id}`);
             toast.success('Member removed');
@@ -88,6 +95,8 @@ export default function FamilyVaultPage() {
             loadVault();
         } catch {
             toast.error('Delete failed');
+        } finally {
+            setDeletingMember(false);
         }
     };
 
@@ -132,12 +141,19 @@ export default function FamilyVaultPage() {
             {/* Emergency SOS Console */}
             <div className="card" style={{ padding: 22, marginBottom: 24, border: '1px solid rgba(220,38,38,0.28)', background: 'rgba(254,242,242,0.55)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10, marginBottom: 14 }}>
-                    <h3 style={{ margin: 0, color: 'var(--danger)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <h2 style={{ margin: 0, fontSize: '1.08rem', color: '#b91c1c', display: 'flex', alignItems: 'center', gap: 8 }}>
                         <AlertCircle size={18} /> 1-Tap Emergency SOS Playbook
-                    </h3>
-                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    </h2>
+                    <div role="tablist" aria-label="Emergency SOS scenarios" style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                         {SOS_SCENARIOS.map((s) => (
-                            <button key={s.id} className={`btn btn-sm ${activeSos === s.id ? 'btn-danger' : 'btn-secondary'}`} onClick={() => setActiveSos(s.id)}>
+                            <button
+                                key={s.id}
+                                type="button"
+                                role="tab"
+                                aria-selected={activeSos === s.id}
+                                className={`btn btn-sm ${activeSos === s.id ? 'btn-danger' : 'btn-secondary'}`}
+                                onClick={() => setActiveSos(s.id)}
+                            >
                                 {s.title}
                             </button>
                         ))}
@@ -153,43 +169,63 @@ export default function FamilyVaultPage() {
 
             <div className="grid-2">
                 <form className="card" style={{ padding: 20 }} onSubmit={handleAddMember}>
-                    <h3 style={{ marginBottom: 12 }}><Plus size={16} /> Add Family Member</h3>
-                    <input className="form-input" placeholder="Full Name" style={{ marginBottom: 8 }}
+                    <h2 style={{ marginBottom: 12, fontSize: '1.08rem' }}><Plus size={16} /> Add Family Member</h2>
+                    <label htmlFor="family-full-name" className="form-label" style={{ fontSize: 12 }}>Full Name</label>
+                    <input id="family-full-name" name="fullName" className="form-input" placeholder="Full Name" style={{ marginBottom: 8 }}
                         value={form.fullName} onChange={(e) => setForm({ ...form, fullName: e.target.value })} />
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
-                        <select className="form-input" value={form.relationship} onChange={(e) => setForm({ ...form, relationship: e.target.value })}>
-                            <option value="self">Self</option>
-                            <option value="spouse">Spouse</option>
-                            <option value="child">Child</option>
-                            <option value="parent">Parent</option>
-                            <option value="in_law">In-Law</option>
-                            <option value="sibling">Sibling</option>
-                        </select>
-                        <input className="form-input" placeholder="Blood Group (e.g. O+)" value={form.bloodGroup} onChange={(e) => setForm({ ...form, bloodGroup: e.target.value })} />
+                        <div>
+                            <label htmlFor="family-relationship" className="form-label" style={{ fontSize: 12 }}>Relationship</label>
+                            <select id="family-relationship" name="relationship" className="form-input" value={form.relationship} onChange={(e) => setForm({ ...form, relationship: e.target.value })}>
+                                <option value="self">Self</option>
+                                <option value="spouse">Spouse</option>
+                                <option value="child">Child</option>
+                                <option value="parent">Parent</option>
+                                <option value="in_law">In-Law</option>
+                                <option value="sibling">Sibling</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label htmlFor="family-blood-group" className="form-label" style={{ fontSize: 12 }}>Blood Group</label>
+                            <input id="family-blood-group" name="bloodGroup" className="form-input" placeholder="Blood Group (e.g. O+)" value={form.bloodGroup} onChange={(e) => setForm({ ...form, bloodGroup: e.target.value })} />
+                        </div>
                     </div>
-                    <input className="form-input" placeholder="Emergency Phone" style={{ marginBottom: 8 }}
+                    <label htmlFor="family-emergency-contact" className="form-label" style={{ fontSize: 12 }}>Emergency Phone</label>
+                    <input id="family-emergency-contact" name="emergencyContact" className="form-input" placeholder="Emergency Phone" style={{ marginBottom: 8 }}
                         value={form.emergencyContact} onChange={(e) => setForm({ ...form, emergencyContact: e.target.value })} />
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
-                        <input className="form-input" type="date" title="Date of Birth (optional)"
-                            value={form.dateOfBirth} onChange={(e) => setForm({ ...form, dateOfBirth: e.target.value })} />
-                        <input className="form-input" placeholder="Vault Notes (optional)"
-                            value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
+                        <div>
+                            <label htmlFor="family-dob" className="form-label" style={{ fontSize: 12 }}>Date of Birth (Optional)</label>
+                            <input id="family-dob" name="dateOfBirth" className="form-input" type="date"
+                                value={form.dateOfBirth} onChange={(e) => setForm({ ...form, dateOfBirth: e.target.value })} />
+                        </div>
+                        <div>
+                            <label htmlFor="family-notes" className="form-label" style={{ fontSize: 12 }}>Vault Notes</label>
+                            <input id="family-notes" name="notes" className="form-input" placeholder="Vault Notes (optional)"
+                                value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
+                        </div>
                     </div>
-                    <input className="form-input" placeholder="Declared PEDs / Allergies (comma-separated)" style={{ marginBottom: 8 }}
+                    <label htmlFor="family-peds" className="form-label" style={{ fontSize: 12 }}>Declared PEDs / Allergies</label>
+                    <input id="family-peds" name="chronicConditions" className="form-input" placeholder="Declared PEDs / Allergies (comma-separated)" style={{ marginBottom: 8 }}
                         value={form.chronicConditions} onChange={(e) => setForm({ ...form, chronicConditions: e.target.value })} />
                     {unassignedPolicies.length > 0 && (
-                        <select className="form-input" style={{ marginBottom: 10 }} value={form.linkPolicyId} onChange={(e) => setForm({ ...form, linkPolicyId: e.target.value })}>
-                            <option value="">Link an existing policy (optional)</option>
-                            {unassignedPolicies.map((p) => (
-                                <option key={p.id} value={p.id}>{p.provider_name} — #{p.policy_number}</option>
-                            ))}
-                        </select>
+                        <>
+                            <label htmlFor="family-link-policy" className="form-label" style={{ fontSize: 12 }}>Link Unassigned Policy</label>
+                            <select id="family-link-policy" name="linkPolicyId" className="form-input" style={{ marginBottom: 10 }} value={form.linkPolicyId} onChange={(e) => setForm({ ...form, linkPolicyId: e.target.value })}>
+                                <option value="">Link an existing policy (optional)</option>
+                                {unassignedPolicies.map((p) => (
+                                    <option key={p.id} value={p.id}>{p.provider_name} — #{p.policy_number}</option>
+                                ))}
+                            </select>
+                        </>
                     )}
-                    <button className="btn btn-primary" type="submit" style={{ width: '100%' }}>Save to Family Vault</button>
+                    <button className="btn btn-primary" type="submit" disabled={savingMember} style={{ width: '100%' }}>
+                        {savingMember ? 'Saving...' : 'Save to Family Vault'}
+                    </button>
                 </form>
 
                 <div className="card" style={{ padding: 20 }}>
-                    <h3 style={{ marginBottom: 12 }}><Users size={16} /> Vault Members ({members.length})</h3>
+                    <h2 style={{ marginBottom: 12, fontSize: '1.08rem' }}><Users size={16} /> Vault Members ({members.length})</h2>
                     {members.length > 0 ? (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                             {members.map((m) => (
@@ -209,17 +245,24 @@ export default function FamilyVaultPage() {
                                     {(m.policies || []).map((p) => (
                                         <div key={p.id} style={{ fontSize: 12, marginTop: 6, padding: 8, background: 'var(--bg-secondary)', borderRadius: 6, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
                                             <div>
-                                                <Shield size={12} /> <strong>{p.provider_name}</strong> (#{p.policy_number}) · ₹{Number(p.coverage_amount || 0).toLocaleString('en-IN')} · {p.ai_summary?.helplineNumber || 'Refer card'}
+                                                <Shield size={12} /> <strong>{p.provider_name}</strong> (#{p.policy_number}) · ₹{Number(p.coverage_amount || 0).toLocaleString('en-IN')} · {p.ai_summary?.helplineNumber || p.structured_terms?.helplineNumber || p.cis_summary?.helplineNumber || 'Refer card'}
                                             </div>
                                             <div style={{ display: 'flex', gap: 4 }}>
-                                                <button className="btn btn-secondary btn-sm" onClick={() => navigate(`/claims?policyId=${p.id}`)}>Claims</button>
-                                                <button className="btn btn-primary btn-sm" onClick={() => downloadEmergencyCard(p.id)}><Download size={12} /> Card</button>
+                                                <button type="button" className="btn btn-secondary btn-sm" onClick={() => navigate(`/claims?policyId=${p.id}`)}>Claims</button>
+                                                <button type="button" className="btn btn-primary btn-sm" onClick={() => downloadEmergencyCard(p.id)}><Download size={12} /> Card</button>
                                             </div>
                                         </div>
                                     ))}
                                     {unassignedPolicies.length > 0 && (
-                                        <select className="form-input" style={{ marginTop: 8, fontSize: 11, padding: '4px 8px' }}
-                                            value="" onChange={(e) => handleLinkPolicy(m.id, e.target.value)}>
+                                        <select
+                                            id={`link-policy-${m.id}`}
+                                            name={`linkPolicy_${m.id}`}
+                                            aria-label={`Link policy to ${m.full_name}`}
+                                            className="form-input"
+                                            style={{ marginTop: 8, fontSize: 11, padding: '4px 8px' }}
+                                            value=""
+                                            onChange={(e) => handleLinkPolicy(m.id, e.target.value)}
+                                        >
                                             <option value="">+ Link unassigned policy...</option>
                                             {unassignedPolicies.map((p) => (
                                                 <option key={p.id} value={p.id}>{p.provider_name} — #{p.policy_number}</option>
@@ -236,7 +279,7 @@ export default function FamilyVaultPage() {
             </div>
 
             {memberToDelete && (
-                <div className="modal-overlay" role="dialog" aria-modal="true" onClick={() => setMemberToDelete(null)}>
+                <div className="modal-overlay" role="dialog" aria-modal="true" onClick={() => !deletingMember && setMemberToDelete(null)}>
                     <div className="modal" style={{ maxWidth: 420 }} onClick={(e) => e.stopPropagation()}>
                         <div className="modal-header">
                             <h2>Remove Family Member?</h2>
@@ -245,8 +288,10 @@ export default function FamilyVaultPage() {
                             Are you sure you want to remove <strong>{memberToDelete.name || 'this family member'}</strong> from your Family Vault? Linked policies will remain safely in your account.
                         </p>
                         <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-                            <button type="button" className="btn btn-secondary" onClick={() => setMemberToDelete(null)}>Cancel</button>
-                            <button type="button" className="btn btn-danger" onClick={confirmDeleteMember}>Remove Member</button>
+                            <button type="button" className="btn btn-secondary" disabled={deletingMember} onClick={() => setMemberToDelete(null)}>Cancel</button>
+                            <button type="button" className="btn btn-danger" disabled={deletingMember} onClick={confirmDeleteMember}>
+                                {deletingMember ? 'Removing...' : 'Remove Member'}
+                            </button>
                         </div>
                     </div>
                 </div>

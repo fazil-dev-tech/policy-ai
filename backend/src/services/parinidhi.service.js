@@ -8,9 +8,11 @@ const logger = require('../utils/logger');
 
 const POLICY_RESEARCH_INTENT = /\b(list|compare|comparison|best|recommend|top|vs)\b/i;
 const INSURANCE_DOMAIN_KEYWORDS = /\b(insur\w*|polic\w*|plans?|coverage|insurers?|premium|claim\w*|irdai|health|hospital\w*|floater|term life|motor|star health|hdfc ergo|icici lombard|niva bupa|care health|acko|bajaj|tata aig|lic|tpa|deductible|moratorium)\b/i;
+const VALID_PARINIDHI_MODES = new Set(['auto', 'research', 'general', 'context']);
 
 const detectParinidhiMode = (message, policyId, requestedMode = 'auto') => {
-    if (requestedMode && requestedMode !== 'auto') return requestedMode;
+    const normalizedMode = VALID_PARINIDHI_MODES.has(requestedMode) ? requestedMode : 'auto';
+    if (normalizedMode !== 'auto') return normalizedMode;
     const text = String(message || '').trim();
     if (policyId && !/\b(compare|other|best|market|list policies|available coverage)\b/i.test(text)) {
         return 'context';
@@ -186,16 +188,21 @@ const processParinidhiTurn = async ({ userId, message, policyId = null, sessionI
 
         const clauseBlock = matchedClauses.length
             ? `\nMATCHED POLICY CLAUSES (Cite [Page X] strictly):\n${matchedClauses
-                  .map((c) => `[Page ${c.page_number} · ${c.section_title}]: ${c.clause_text.slice(0, 700)}`)
+                  .map((c) => `[Page ${c.page_number} · ${c.section_title}]: ${c.clause_text.slice(0, 1400)}`)
                   .join('\n---\n')}`
             : '';
+
+        const enrichedContext = activePolicy
+            ? chatbotService.buildEnrichedPolicyContext(activePolicy, matchedClauses)
+            : null;
 
         const policyBlock = activePolicy
             ? `\nACTIVE POLICY SUMMARY:\nProvider: ${activePolicy.provider_name}, Policy #: ${activePolicy.policy_number}, Cover: ₹${Number(
                   activePolicy.coverage_amount || 0
               ).toLocaleString('en-IN')}\n${JSON.stringify({
-                  cisSummary: activePolicy.cis_summary || {},
-                  structuredTerms: activePolicy.structured_terms || {},
+                  cisSummary: enrichedContext.liveCis,
+                  structuredTerms: enrichedContext.effectiveTerms,
+                  verifiedRoomRentNote: enrichedContext.policySummary.verifiedRoomRentNote || null,
                   aiSummary: activePolicy.ai_summary || {},
                   startDate: activePolicy.start_date || null,
                   endDate: activePolicy.end_date || null,
@@ -205,9 +212,10 @@ const processParinidhiTurn = async ({ userId, message, policyId = null, sessionI
 
         const systemPrompt = `You are Parinidhi, a dual-purpose general AI and Indian insurance intelligence voice assistant for PolicyAI / PolicyGuard.
 Rules:
-1. Respond in ${safeLanguage}, keeping technical numbers, ₹ figures, and [Page X] citations clear and natural for voice playback.
+1. Respond in ${safeLanguage}, keeping technical numbers, ₹ figures, and [Page X] citations clear and natural for voice playback without exposing internal JSON field names.
 2. When policy clauses/schedule context are provided and relevant, cite exact [Page X] references and never invent policy limits.
-3. For general-purpose questions (even when a policy is selected), answer clearly and thoughtfully using your general knowledge.`;
+3. Align multi-tier Sum Insured PDF benefit tables accurately with the insured's coverageAmount (e.g., never apply the Rs. 5,00,000 tier's 1% room cap to a >= 10,00,000 policy where "Any room (Except suite or above category)" applies); trust verified cisSummary.roomRentLimit.
+4. For general-purpose questions (even when a policy is selected), answer clearly and thoughtfully using your general knowledge.`;
 
         const fullPrompt = `${policyBlock}${clauseBlock}\n\nRECENT CONVERSATION:\n${historyBlock}\n\nUser: ${cleanMessage}\nParinidhi:`;
 
@@ -239,14 +247,11 @@ Rules:
                 ].join('\n');
                 modelLabel = 'offline:policy-clauses';
             } else if (isPolicyQuestion && activePolicy) {
-                const cis = activePolicy.cis_summary || {};
+                const cis = enrichedContext?.liveCis || activePolicy.cis_summary || {};
+                const effTerms = enrichedContext?.effectiveTerms || activePolicy.structured_terms || {};
                 const aiSum = activePolicy.ai_summary || {};
-                const members = Array.isArray(activePolicy.structured_terms?.insuredMembers)
-                    ? activePolicy.structured_terms.insuredMembers
-                    : [];
-                const declaredPeds = Array.isArray(activePolicy.structured_terms?.declaredPeds)
-                    ? activePolicy.structured_terms.declaredPeds
-                    : [];
+                const members = Array.isArray(effTerms.insuredMembers) ? effTerms.insuredMembers : [];
+                const declaredPeds = Array.isArray(effTerms.declaredPeds) ? effTerms.declaredPeds : [];
                 aiText = [
                     `Live AI synthesis is temporarily rate-limited. Here are verified facts on **${activePolicy.provider_name} (#${activePolicy.policy_number})**:`,
                     `- **Sum Insured**: ₹${Number(activePolicy.coverage_amount || 0).toLocaleString('en-IN')}`,
@@ -306,7 +311,7 @@ Rules:
 
     const { error: historyErr } = await supabaseAdmin.from('chat_history').insert({
         user_id: userId,
-        policy_id: policyId || null,
+        policy_id: activePolicy?.id || null,
         session_id: currentSessionId,
         message: cleanMessage,
         ai_response: resultPayload.aiResponse,

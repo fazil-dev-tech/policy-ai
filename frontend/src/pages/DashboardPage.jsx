@@ -1,61 +1,173 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
-import { FileText, Shield, TrendingUp, Upload, ArrowRight, ShieldAlert, Users, Sparkles, Car, HeartPulse } from 'lucide-react';
+import {
+    FileText, Shield, TrendingUp, Upload, ArrowRight, ShieldAlert,
+    Users, Sparkles, Car, HeartPulse, FileSearch, MessageSquare,
+    RefreshCw, AlertTriangle, CheckCircle2, Clock, Settings
+} from 'lucide-react';
 import { AnimatedCounter, Reveal, SpotlightCard } from '../components/shared/MotionPrimitives';
+
+const getPolicyExpiryMeta = (policy) => {
+    if (policy?.status === 'expired') {
+        return { isExpired: true, isExpiringSoon: false, daysLeft: -1, label: 'Expired', tone: 'danger' };
+    }
+    if (!policy?.endDate) {
+        return { isExpired: false, isExpiringSoon: false, daysLeft: null, label: 'Active', tone: 'success' };
+    }
+    const endMs = new Date(policy.endDate).getTime();
+    if (Number.isNaN(endMs)) {
+        return { isExpired: false, isExpiringSoon: false, daysLeft: null, label: 'Active', tone: 'success' };
+    }
+    const daysLeft = Math.ceil((endMs - Date.now()) / (1000 * 60 * 60 * 24));
+    if (daysLeft < 0) {
+        return { isExpired: true, isExpiringSoon: false, daysLeft, label: `Expired ${Math.abs(daysLeft)}d ago`, tone: 'danger' };
+    }
+    if (daysLeft <= 45) {
+        return {
+            isExpired: false,
+            isExpiringSoon: true,
+            daysLeft,
+            label: daysLeft === 0 ? 'Renews today' : `${daysLeft}d left`,
+            tone: 'warning',
+        };
+    }
+    return { isExpired: false, isExpiringSoon: false, daysLeft, label: 'Active', tone: 'success' };
+};
 
 export default function DashboardPage() {
     const { user } = useAuth();
     const navigate = useNavigate();
-    const [stats, setStats] = useState({ policies: 0, incidents: 0, familyMembers: 0, threatCount: 0 });
+    const [stats, setStats] = useState({
+        policies: 0,
+        claimsTotal: 0,
+        incidents: 0,
+        damageReports: 0,
+        settlements: 0,
+        filedClaims: 0,
+        documents: 0,
+        familyMembers: 0,
+        threatCount: 0,
+        scansTotal: 0,
+    });
     const [policies, setPolicies] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [refreshing, setRefreshing] = useState(false);
     const [loadError, setLoadError] = useState('');
+    const [partialWarning, setPartialWarning] = useState('');
 
-    useEffect(() => {
-        loadDashboard();
-    }, []);
-
-    const loadDashboard = async () => {
-        setLoading(true);
+    const loadDashboard = useCallback(async ({ silent = false } = {}) => {
+        if (silent) setRefreshing(true);
+        else setLoading(true);
         setLoadError('');
+        setPartialWarning('');
+
         try {
-            const [policyRes, incRes, famRes, scanRes] = await Promise.all([
+            const results = await Promise.allSettled([
                 api.get('/policy?limit=50'),
-                api.get('/incidents').catch(() => ({ data: { incidents: [] } })),
-                api.get('/family').catch(() => ({ data: { members: [] } })),
-                api.get('/security/scans').catch(() => ({ data: { scans: [] } })),
+                api.get('/incidents'),
+                api.get('/damage'),
+                api.get('/settlements'),
+                api.get('/claims?limit=50'),
+                api.get('/family'),
+                api.get('/security/scans'),
+                api.get('/documents?limit=50'),
             ]);
-            setPolicies(policyRes.data.policies || []);
+
+            const [policyR, incR, dmgR, setlR, claimR, famR, scanR, docR] = results;
+
+            if (policyR.status === 'rejected') {
+                throw policyR.reason;
+            }
+
+            const failedSecondary = results.slice(1).filter((r) => r.status === 'rejected').length;
+            if (failedSecondary > 0) {
+                setPartialWarning('Some live module counters could not refresh cleanly. Click Retry to sync again.');
+            }
+
+            const policyList = policyR.value?.data?.policies || [];
+            const incidentsCount = incR.status === 'fulfilled' ? (incR.value?.data?.incidents || []).length : 0;
+            const damageCount = dmgR.status === 'fulfilled' ? (dmgR.value?.data?.reports || []).length : 0;
+            const settlementsCount = setlR.status === 'fulfilled' ? (setlR.value?.data?.settlements || []).length : 0;
+            const filedClaimsCount = claimR.status === 'fulfilled'
+                ? (claimR.value?.data?.total ?? (claimR.value?.data?.claims || []).length)
+                : 0;
+            const familyCount = famR.status === 'fulfilled' ? (famR.value?.data?.members || []).length : 0;
+            const scans = scanR.status === 'fulfilled' ? (scanR.value?.data?.scans || []) : [];
+            const docsCount = docR.status === 'fulfilled'
+                ? (docR.value?.data?.total ?? (docR.value?.data?.documents || []).length)
+                : 0;
+
+            setPolicies(policyList);
             setStats({
-                policies: policyRes.data.total ?? (policyRes.data.policies || []).length,
-                incidents: (incRes.data?.incidents || []).length,
-                familyMembers: (famRes.data?.members || []).length,
-                threatCount: (scanRes.data?.scans || []).filter((s) => s.status !== 'safe').length,
+                policies: policyR.value?.data?.total ?? policyList.length,
+                claimsTotal: incidentsCount + damageCount + settlementsCount + filedClaimsCount,
+                incidents: incidentsCount,
+                damageReports: damageCount,
+                settlements: settlementsCount,
+                filedClaims: filedClaimsCount,
+                documents: docsCount,
+                familyMembers: familyCount,
+                threatCount: scans.filter((s) => s.status !== 'safe').length,
+                scansTotal: scans.length,
             });
         } catch (err) {
             console.error('Dashboard load error:', err);
             setLoadError(err.response?.data?.error || 'Could not load dashboard metrics.');
         } finally {
             setLoading(false);
+            setRefreshing(false);
         }
-    };
+    }, []);
+
+    useEffect(() => {
+        loadDashboard();
+    }, [loadDashboard]);
 
     if (loading) {
         return <div className="loading-spinner"><div className="spinner" /></div>;
     }
 
-    const expiringSoon = policies.filter((p) => {
-        if (!p.endDate) return false;
-        const d = Math.ceil((new Date(p.endDate) - new Date()) / (1000 * 60 * 60 * 24));
-        return d >= 0 && d <= 45;
+    const enrichedPolicies = policies.map((p) => {
+        const expiry = getPolicyExpiryMeta(p);
+        const displayScore = Number(p.healthScore || p.verificationScore || 0);
+        return { ...p, expiry, displayScore };
     });
 
-    const totalSumInsured = policies.reduce((sum, p) => sum + Number(p.coverageAmount || 0), 0);
-    const avgHealthScore = policies.length > 0
-        ? Math.round(policies.reduce((sum, p) => sum + Number(p.verificationScore || 0), 0) / policies.length)
+    const expiringSoon = enrichedPolicies.filter((p) => p.expiry.isExpiringSoon);
+    const expiredPolicies = enrichedPolicies.filter((p) => p.expiry.isExpired);
+    const activePoliciesCount = Math.max(0, enrichedPolicies.length - expiredPolicies.length);
+
+    const totalSumInsured = enrichedPolicies.reduce((sum, p) => sum + Number(p.coverageAmount || 0), 0);
+    const avgHealthScore = enrichedPolicies.length > 0
+        ? Math.round(enrichedPolicies.reduce((sum, p) => sum + p.displayScore, 0) / enrichedPolicies.length)
         : 0;
+
+    const firstName = user?.name?.trim()?.split(/\s+/)?.[0] || 'User';
+
+    const quickModules = [
+        { icon: Upload, label: 'Policies & CIS', desc: 'Score PDFs & clause search', path: '/policies', color: 'purple', chip: stats.policies > 0 ? `${stats.policies} saved` : 'Upload' },
+        { icon: FileSearch, label: 'Document AI', desc: 'Summarize any insurance PDF', path: '/analyzer', color: 'blue', chip: stats.documents > 0 ? `${stats.documents} docs` : 'PDF Q&A' },
+        { icon: MessageSquare, label: 'Policy Chat', desc: 'Clause-cited NVIDIA NIM QA', path: '/chat', color: 'purple', chip: 'AI Chat' },
+        { icon: Sparkles, label: 'Parinidhi AI', desc: '3D voice & IRDAI research', path: '/terminal', color: 'blue', chip: '3D Voice' },
+        { icon: Shield, label: 'Claims & Motor AI', desc: 'Estimator, bike/car & GRO', path: '/claims', color: 'green', chip: stats.claimsTotal > 0 ? `${stats.claimsTotal} saved` : 'Simulate' },
+        { icon: ShieldAlert, label: 'Browser Shield', desc: 'WhatsApp/Gmail scam blocker', path: '/shield', color: 'amber', chip: stats.threatCount > 0 ? `${stats.threatCount} alerts` : 'MV3 Ext' },
+        { icon: Users, label: 'Family & SOS', desc: 'Offline emergency cards', path: '/family', color: 'blue', chip: stats.familyMembers > 0 ? `${stats.familyMembers} members` : 'Setup' },
+        { icon: TrendingUp, label: 'Market & IRDAI', desc: 'Verified insurer benchmarks', path: '/market', color: 'purple', chip: 'Live' },
+        ...(user?.role === 'admin'
+            ? [{ icon: Settings, label: 'Admin Telemetry', desc: 'Users, domains & moderation', path: '/admin', color: 'red', chip: 'Admin' }]
+            : []),
+    ];
+
+    const claimsSubtitle = stats.claimsTotal > 0
+        ? [
+            stats.incidents > 0 ? `${stats.incidents} est` : null,
+            stats.damageReports > 0 ? `${stats.damageReports} motor` : null,
+            stats.settlements > 0 ? `${stats.settlements} audit` : null,
+            stats.filedClaims > 0 ? `${stats.filedClaims} filed` : null,
+        ].filter(Boolean).join(' · ')
+        : 'Claims & Motor Analyses';
 
     return (
         <div>
@@ -65,7 +177,7 @@ export default function DashboardPage() {
                         <span className="dot active-dot" aria-hidden="true" />
                         POLICYGUARD WORKSPACE · PROTECTED
                     </span>
-                    <h1>Welcome back, {user?.name?.split(' ')[0] || 'User'}</h1>
+                    <h1>Welcome back, {firstName}</h1>
                     <p>Live insurance portfolio, deterministic claims readiness, Parinidhi AI, and threat defense</p>
                 </div>
                 <div className="dashboard-hero-actions">
@@ -77,10 +189,26 @@ export default function DashboardPage() {
                             </div>
                             <div className="portfolio-divider" aria-hidden="true" />
                             <div>
-                                <span className="meta-label">Avg Policy Score</span>
-                                <strong style={{ color: avgHealthScore >= 75 ? 'var(--success)' : 'var(--accent-primary)' }}>
+                                <span className="meta-label">Avg Health Score</span>
+                                <strong style={{ color: avgHealthScore >= 70 ? 'var(--success)' : avgHealthScore >= 45 ? '#d97706' : 'var(--accent-primary)' }}>
                                     <AnimatedCounter value={avgHealthScore} suffix="/100" />
                                 </strong>
+                            </div>
+                            <div className="portfolio-divider" aria-hidden="true" />
+                            <div className="portfolio-strip-btns">
+                                <button type="button" className="btn btn-primary btn-sm" onClick={() => navigate('/policies')}>
+                                    <Upload size={14} /> Upload
+                                </button>
+                                <button
+                                    type="button"
+                                    className="btn btn-secondary btn-sm"
+                                    onClick={() => loadDashboard({ silent: true })}
+                                    disabled={refreshing}
+                                    title="Refresh dashboard metrics"
+                                    aria-label="Refresh dashboard metrics"
+                                >
+                                    <RefreshCw size={14} className={refreshing ? 'spin-icon' : ''} />
+                                </button>
                             </div>
                         </SpotlightCard>
                     ) : (
@@ -90,64 +218,162 @@ export default function DashboardPage() {
                                 <strong style={{ color: 'var(--success)' }}>Ready · Encrypted</strong>
                             </div>
                             <div className="portfolio-divider" aria-hidden="true" />
-                            <button type="button" className="btn btn-primary btn-sm" onClick={() => navigate('/policies')}>
-                                <Upload size={14} /> Upload Policy
-                            </button>
+                            <div className="portfolio-strip-btns">
+                                <button type="button" className="btn btn-primary btn-sm" onClick={() => navigate('/policies')}>
+                                    <Upload size={14} /> Upload Policy
+                                </button>
+                                <button
+                                    type="button"
+                                    className="btn btn-secondary btn-sm"
+                                    onClick={() => loadDashboard({ silent: true })}
+                                    disabled={refreshing}
+                                    title="Refresh dashboard metrics"
+                                    aria-label="Refresh dashboard metrics"
+                                >
+                                    <RefreshCw size={14} className={refreshing ? 'spin-icon' : ''} />
+                                </button>
+                            </div>
                         </SpotlightCard>
                     )}
                 </div>
             </Reveal>
 
             {loadError && (
-                <div className="card" style={{ padding: 14, marginBottom: 20, border: '1px solid rgba(220,38,38,0.3)', background: 'rgba(254,242,242,0.75)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
-                    <span style={{ color: 'var(--danger)', fontSize: 13 }}>{loadError}</span>
-                    <button className="btn btn-secondary btn-sm" onClick={loadDashboard}>Retry</button>
+                <div className="dashboard-alert-banner danger" role="alert">
+                    <div className="dashboard-alert-content">
+                        <AlertTriangle size={16} />
+                        <span>{loadError}</span>
+                    </div>
+                    <button type="button" className="btn btn-secondary btn-sm" onClick={() => loadDashboard()}>Retry</button>
+                </div>
+            )}
+
+            {!loadError && partialWarning && (
+                <div className="dashboard-alert-banner warning" role="status">
+                    <div className="dashboard-alert-content">
+                        <AlertTriangle size={16} />
+                        <span>{partialWarning}</span>
+                    </div>
+                    <button type="button" className="btn btn-secondary btn-sm" onClick={() => loadDashboard({ silent: true })}>Retry</button>
+                </div>
+            )}
+
+            {expiredPolicies.length > 0 && (
+                <div className="dashboard-alert-banner danger" role="region" aria-label="Expired Policies Alert">
+                    <div className="dashboard-alert-content">
+                        <AlertTriangle size={16} />
+                        <span>
+                            <strong>Expired Policies ({expiredPolicies.length}):</strong> Review renewal status to avoid waiting-period loss:
+                        </span>
+                        <div className="dashboard-alert-pills">
+                            {expiredPolicies.map((p) => (
+                                <button
+                                    key={p._id}
+                                    type="button"
+                                    className="dashboard-alert-pill danger"
+                                    onClick={() => navigate(`/policies?policyId=${p._id}`)}
+                                >
+                                    {p.providerName} (#{p.policyNumber}) · {p.expiry.label}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
                 </div>
             )}
 
             {expiringSoon.length > 0 && (
-                <div className="card" style={{ padding: 14, marginBottom: 20, border: '1px solid rgba(217,119,6,0.35)', background: 'rgba(254,243,199,0.68)' }}>
-                    <strong>Upcoming Policy Renewals ({expiringSoon.length}):</strong>{' '}
-                    {expiringSoon.map((p) => `${p.providerName} (#${p.policyNumber})`).join(' · ')}
+                <div className="dashboard-alert-banner warning" role="region" aria-label="Upcoming Policy Renewals">
+                    <div className="dashboard-alert-content">
+                        <Clock size={16} />
+                        <span>
+                            <strong>Upcoming Renewals ({expiringSoon.length}):</strong>
+                        </span>
+                        <div className="dashboard-alert-pills">
+                            {expiringSoon.map((p) => (
+                                <button
+                                    key={p._id}
+                                    type="button"
+                                    className="dashboard-alert-pill warning"
+                                    onClick={() => navigate(`/policies?policyId=${p._id}`)}
+                                >
+                                    {p.providerName} (#{p.policyNumber}) · {p.expiry.label}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
                 </div>
             )}
 
             <div className="stats-grid">
                 <Reveal delay={0}>
-                    <SpotlightCard className="stat-card" role="button" tabIndex={0} onClick={() => navigate('/policies')} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate('/policies'); } }} style={{ cursor: 'pointer' }}>
+                    <SpotlightCard
+                        className="stat-card"
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => navigate('/policies')}
+                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate('/policies'); } }}
+                        style={{ cursor: 'pointer' }}
+                    >
                         <div className="stat-card-top">
                             <div className="stat-icon purple"><FileText size={22} /></div>
-                            <span className="stat-hint">{stats.policies > 0 ? 'Manage' : 'Upload →'}</span>
+                            <span className="stat-hint">
+                                {expiredPolicies.length > 0
+                                    ? `${activePoliciesCount} active · ${expiredPolicies.length} expired`
+                                    : stats.policies > 0
+                                      ? 'All Active'
+                                      : 'Upload ->'}
+                            </span>
                         </div>
                         <div className="stat-value"><AnimatedCounter value={stats.policies} /></div>
-                        <div className="stat-label">Active Policies</div>
+                        <div className="stat-label">{stats.policies > 0 ? 'Policies in Vault' : 'Active Policies'}</div>
                     </SpotlightCard>
                 </Reveal>
                 <Reveal delay={60}>
-                    <SpotlightCard className="stat-card" role="button" tabIndex={0} onClick={() => navigate('/claims')} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate('/claims'); } }} style={{ cursor: 'pointer' }}>
+                    <SpotlightCard
+                        className="stat-card"
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => navigate('/claims')}
+                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate('/claims'); } }}
+                        style={{ cursor: 'pointer' }}
+                    >
                         <div className="stat-card-top">
                             <div className="stat-icon green"><Shield size={22} /></div>
-                            <span className="stat-hint">{stats.incidents > 0 ? 'Review' : 'Simulate →'}</span>
+                            <span className="stat-hint">{stats.claimsTotal > 0 ? 'Review' : 'Simulate ->'}</span>
                         </div>
-                        <div className="stat-value"><AnimatedCounter value={stats.incidents} /></div>
-                        <div className="stat-label">Claim Analyses Saved</div>
+                        <div className="stat-value"><AnimatedCounter value={stats.claimsTotal} /></div>
+                        <div className="stat-label">{stats.claimsTotal > 0 ? `Claims & Motor (${claimsSubtitle})` : 'Claims & Motor Analyses'}</div>
                     </SpotlightCard>
                 </Reveal>
                 <Reveal delay={120}>
-                    <SpotlightCard className="stat-card" role="button" tabIndex={0} onClick={() => navigate('/family')} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate('/family'); } }} style={{ cursor: 'pointer' }}>
+                    <SpotlightCard
+                        className="stat-card"
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => navigate('/family')}
+                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate('/family'); } }}
+                        style={{ cursor: 'pointer' }}
+                    >
                         <div className="stat-card-top">
                             <div className="stat-icon blue"><Users size={22} /></div>
-                            <span className="stat-hint">{stats.familyMembers > 0 ? 'SOS Card' : 'Add Family →'}</span>
+                            <span className="stat-hint">{stats.familyMembers > 0 ? 'SOS Card' : 'Add Family ->'}</span>
                         </div>
                         <div className="stat-value"><AnimatedCounter value={stats.familyMembers} /></div>
                         <div className="stat-label">Family Vault Members</div>
                     </SpotlightCard>
                 </Reveal>
                 <Reveal delay={180}>
-                    <SpotlightCard className="stat-card" role="button" tabIndex={0} onClick={() => navigate('/shield')} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate('/shield'); } }} style={{ cursor: 'pointer' }}>
+                    <SpotlightCard
+                        className="stat-card"
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => navigate('/shield')}
+                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate('/shield'); } }}
+                        style={{ cursor: 'pointer' }}
+                    >
                         <div className="stat-card-top">
                             <div className="stat-icon amber"><ShieldAlert size={22} /></div>
-                            <span className="stat-hint">{stats.threatCount > 0 ? 'Inspect' : 'Shield →'}</span>
+                            <span className="stat-hint">{stats.scansTotal > 0 ? `${stats.scansTotal} scanned` : 'Shield ->'}</span>
                         </div>
                         <div className="stat-value"><AnimatedCounter value={stats.threatCount} /></div>
                         <div className="stat-label">Shield Warnings Cached</div>
@@ -159,36 +385,95 @@ export default function DashboardPage() {
                 <div className="card">
                     <div className="card-header">
                         <h2>Recent Policies</h2>
-                        <button className="btn btn-secondary btn-sm" onClick={() => navigate('/policies')}>
+                        <button type="button" className="btn btn-secondary btn-sm" onClick={() => navigate('/policies')}>
                             {policies.length > 0 ? 'View All' : 'Go to Vault'} <ArrowRight size={14} />
                         </button>
                     </div>
-                    {policies.length > 0 ? (
+                    {enrichedPolicies.length > 0 ? (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                            {policies.slice(0, 5).map((p) => (
-                                <div key={p._id} className="policy-card" role="button" tabIndex={0} style={{ cursor: 'pointer' }}
-                                    onClick={() => navigate(`/policies?policyId=${p._id}`)}
-                                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate(`/policies?policyId=${p._id}`); } }}>
-                                    <div className="policy-type">{p.policyType}</div>
-                                    <h3>{p.providerName}</h3>
-                                    <div className="policy-info">
-                                        <div className="policy-info-row">
-                                            <span className="label">Policy #</span>
-                                            <span className="value">{p.policyNumber}</span>
+                            {enrichedPolicies.slice(0, 5).map((p) => {
+                                const scoreTier = p.displayScore >= 70 ? 'high' : p.displayScore >= 45 ? 'medium' : 'low';
+                                return (
+                                    <article
+                                        key={p._id}
+                                        className="policy-card dashboard-policy-card"
+                                        onClick={(e) => {
+                                            if (!e.target.closest('button, a')) navigate(`/policies?policyId=${p._id}`);
+                                        }}
+                                    >
+                                        <div className="dashboard-policy-top">
+                                            <div className="dashboard-policy-badges">
+                                                <span className="policy-type" style={{ marginBottom: 0 }}>{p.policyType}</span>
+                                                <span className={`badge badge-${scoreTier === 'high' ? 'success' : scoreTier === 'medium' ? 'warning' : 'danger'}`}>
+                                                    Score {p.displayScore}/100
+                                                </span>
+                                                <span className={`badge badge-${p.expiry.tone}`}>
+                                                    {p.expiry.isExpired ? <AlertTriangle size={11} /> : p.expiry.isExpiringSoon ? <Clock size={11} /> : <CheckCircle2 size={11} />}
+                                                    {p.expiry.label}
+                                                </span>
+                                            </div>
                                         </div>
-                                        <div className="policy-info-row">
-                                            <span className="label">Coverage</span>
-                                            <span className="value">₹{Number(p.coverageAmount || 0).toLocaleString('en-IN')}</span>
+                                        <h3>
+                                            <button
+                                                type="button"
+                                                className="dashboard-policy-title-btn"
+                                                onClick={() => navigate(`/policies?policyId=${p._id}`)}
+                                            >
+                                                {p.providerName}
+                                            </button>
+                                        </h3>
+                                        <div className="policy-info">
+                                            <div className="policy-info-row">
+                                                <span className="label">Policy #</span>
+                                                <span className="value">{p.policyNumber}</span>
+                                            </div>
+                                            <div className="policy-info-row">
+                                                <span className="label">Coverage</span>
+                                                <span className="value">₹{Number(p.coverageAmount || 0).toLocaleString('en-IN')}</span>
+                                            </div>
+                                            {p.endDate && (
+                                                <div className="policy-info-row">
+                                                    <span className="label">End Date</span>
+                                                    <span className="value">{new Date(p.endDate).toLocaleDateString('en-IN')}</span>
+                                                </div>
+                                            )}
                                         </div>
-                                    </div>
-                                    <div className="score-bar">
-                                        <div
-                                            className={`score-bar-fill ${p.verificationScore > 70 ? 'high' : p.verificationScore > 40 ? 'medium' : 'low'}`}
-                                            style={{ width: `${p.verificationScore || 0}%` }}
-                                        />
-                                    </div>
-                                </div>
-                            ))}
+                                        <div className="score-bar">
+                                            <div
+                                                className={`score-bar-fill ${scoreTier}`}
+                                                style={{ width: `${Math.min(100, Math.max(0, p.displayScore))}%` }}
+                                            />
+                                        </div>
+                                        <div className="dashboard-policy-actions">
+                                            <button
+                                                type="button"
+                                                className="btn btn-secondary btn-sm"
+                                                onClick={() => navigate(`/policies?policyId=${p._id}`)}
+                                            >
+                                                Inspect CIS <ArrowRight size={12} />
+                                            </button>
+                                            <button
+                                                type="button"
+                                                className="btn btn-secondary btn-sm"
+                                                onClick={() => navigate(`/chat?policyId=${p._id}`)}
+                                            >
+                                                <MessageSquare size={12} /> Ask Policy Chat
+                                            </button>
+                                        </div>
+                                    </article>
+                                );
+                            })}
+                            {enrichedPolicies.length <= 2 && (
+                                <button
+                                    type="button"
+                                    className="dashboard-add-policy-strip"
+                                    onClick={() => navigate('/policies')}
+                                >
+                                    <Upload size={15} />
+                                    <span>Upload another Health, Motor, or Renewal PDF to compare CIS coverage</span>
+                                    <ArrowRight size={14} />
+                                </button>
+                            )}
                         </div>
                     ) : (
                         <div className="vault-activation-stack">
@@ -199,10 +484,10 @@ export default function DashboardPage() {
                                 <h3>No Policies Uploaded Yet</h3>
                                 <p>Drop your Health, Car, 2-Wheeler, or Term PDF to decode hidden room-rent caps, waiting periods &amp; exclusions.</p>
                                 <div className="vault-starter-actions">
-                                    <button className="btn btn-primary" onClick={() => navigate('/policies')}>
+                                    <button type="button" className="btn btn-primary" onClick={() => navigate('/policies')}>
                                         <Upload size={15} /> Upload First Policy
                                     </button>
-                                    <button className="btn btn-secondary" onClick={() => navigate('/claims')}>
+                                    <button type="button" className="btn btn-secondary" onClick={() => navigate('/claims')}>
                                         Try Claim Simulator
                                     </button>
                                 </div>
@@ -244,7 +529,7 @@ export default function DashboardPage() {
                                             <StepIcon size={19} />
                                         </div>
                                         <div style={{ flex: 1, minWidth: 0 }}>
-                                            <h4>{title}</h4>
+                                            <h3>{title}</h3>
                                             <p>{desc}</p>
                                         </div>
                                         <ArrowRight size={15} className="quick-action-arrow" />
@@ -257,33 +542,30 @@ export default function DashboardPage() {
 
                 <div className="card">
                     <div className="card-header">
-                        <h2>Quick Actions</h2>
-                        <span className="quick-actions-chip">5 Modules</span>
+                        <h2>Workspace Modules</h2>
+                        <span className="quick-actions-chip">{quickModules.length} Tools</span>
                     </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 11 }}>
-                        {[
-                            { icon: Upload, label: 'Upload & Score Policy PDF', desc: 'Plain-English coverage card, waiting periods & page links', path: '/policies', color: 'purple' },
-                            { icon: Sparkles, label: 'Talk with Parinidhi AI (3D Voice)', desc: 'Voice & text policy advisor with live insurer checks', path: '/terminal', color: 'blue' },
-                            { icon: Shield, label: 'Claim Estimator & Vehicle Damage AI', desc: 'Room-rent slider, car & 2-wheeler damage AI & appeals', path: '/claims', color: 'green' },
-                            { icon: ShieldAlert, label: 'Download Browser Shield Extension', desc: 'Protect Chrome, WhatsApp Web & Gmail from scam links', path: '/shield', color: 'amber' },
-                            { icon: TrendingUp, label: 'Market & IRDAI Rights', desc: 'Verify official insurers and compare live coverage terms', path: '/market', color: 'purple' },
-                        ].map(({ icon: Icon, label, desc, path, color }) => (
+                    <div className="dashboard-quick-grid">
+                        {quickModules.map(({ icon: Icon, label, desc, path, color, chip }) => (
                             <div
                                 key={path}
-                                className="quick-action-tile"
+                                className="quick-action-tile compact"
                                 role="button"
                                 tabIndex={0}
                                 onClick={() => navigate(path)}
                                 onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate(path); } }}
                             >
                                 <div className={`stat-icon ${color}`}>
-                                    <Icon size={20} />
+                                    <Icon size={18} />
                                 </div>
                                 <div style={{ flex: 1, minWidth: 0 }}>
-                                    <h4>{label}</h4>
+                                    <div className="quick-tile-title-row">
+                                        <h3>{label}</h3>
+                                        {chip && <span className="quick-tile-mini-chip">{chip}</span>}
+                                    </div>
                                     <p>{desc}</p>
                                 </div>
-                                <ArrowRight size={16} className="quick-action-arrow" />
+                                <ArrowRight size={15} className="quick-action-arrow" />
                             </div>
                         ))}
                     </div>

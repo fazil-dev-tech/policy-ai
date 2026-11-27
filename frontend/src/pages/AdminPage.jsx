@@ -103,7 +103,7 @@ export default function AdminPage() {
     };
 
     if (loading) return <div className="loading-spinner"><div className="spinner" /></div>;
-    if (!stats) return <div className="empty-state"><h3>Unable to load admin data</h3></div>;
+    if (!stats) return <div className="empty-state"><h2 style={{ fontSize: '1.15rem' }}>Unable to load admin data</h2></div>;
 
     const policyChartData = (stats.analytics?.policyTypeDistribution || []).map((d) => ({
         name: d._id || 'Unknown',
@@ -160,7 +160,7 @@ export default function AdminPage() {
             <div className="grid-2" style={{ marginBottom: 32 }}>
                 <div className="card">
                     <div className="card-header">
-                        <h3>Policy Distribution</h3>
+                        <h2 style={{ fontSize: '1.08rem', margin: 0 }}>Policy Distribution</h2>
                     </div>
                     {policyChartData.length > 0 ? (
                         <ResponsiveContainer width="100%" height={300}>
@@ -180,7 +180,7 @@ export default function AdminPage() {
 
                 <div className="card">
                     <div className="card-header">
-                        <h3>User Growth (30 Days)</h3>
+                        <h2 style={{ fontSize: '1.08rem', margin: 0 }}>User Growth (30 Days)</h2>
                     </div>
                     {userGrowthData.length > 0 ? (
                         <ResponsiveContainer width="100%" height={300}>
@@ -202,24 +202,24 @@ export default function AdminPage() {
             <div className="grid-2" style={{ marginBottom: 32 }}>
                 <div className="card">
                     <div className="card-header">
-                        <h3>Claims Overview</h3>
+                        <h2 style={{ fontSize: '1.08rem', margin: 0 }}>Claims Overview</h2>
                     </div>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                         <div style={{ background: 'var(--bg-glass)', padding: 16, borderRadius: 12 }}>
-                            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>Pending</div>
-                            <div style={{ fontSize: 24, fontWeight: 700, color: '#f59e0b' }}>{stats.overview?.pendingClaims}</div>
+                            <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 4 }}>Pending</div>
+                            <div style={{ fontSize: 24, fontWeight: 700, color: '#b45309' }}>{stats.overview?.pendingClaims}</div>
                         </div>
                         <div style={{ background: 'var(--bg-glass)', padding: 16, borderRadius: 12 }}>
-                            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>Approved</div>
-                            <div style={{ fontSize: 24, fontWeight: 700, color: '#10b981' }}>{stats.overview?.approvedClaims}</div>
+                            <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 4 }}>Approved</div>
+                            <div style={{ fontSize: 24, fontWeight: 700, color: '#047857' }}>{stats.overview?.approvedClaims}</div>
                         </div>
                         <div style={{ background: 'var(--bg-glass)', padding: 16, borderRadius: 12 }}>
-                            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>Rejected</div>
-                            <div style={{ fontSize: 24, fontWeight: 700, color: '#ef4444' }}>{stats.overview?.rejectedClaims}</div>
+                            <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 4 }}>Rejected</div>
+                            <div style={{ fontSize: 24, fontWeight: 700, color: '#b91c1c' }}>{stats.overview?.rejectedClaims}</div>
                         </div>
                         <div style={{ background: 'var(--bg-glass)', padding: 16, borderRadius: 12 }}>
-                            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>Avg Amount</div>
-                            <div style={{ fontSize: 24, fontWeight: 700, color: '#e11d48' }}>
+                            <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 4 }}>Avg Amount</div>
+                            <div style={{ fontSize: 24, fontWeight: 700, color: '#be123c' }}>
                                 ₹{Math.round(stats.analytics?.claimAmountStats?.avgAmount || 0).toLocaleString()}
                             </div>
                         </div>
@@ -228,20 +228,20 @@ export default function AdminPage() {
 
                 <div className="card">
                     <div className="card-header">
-                        <h3>AI Usage</h3>
+                        <h2 style={{ fontSize: '1.08rem', margin: 0 }}>AI Usage</h2>
                     </div>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                         <div style={{ background: 'var(--bg-glass)', padding: 16, borderRadius: 12 }}>
-                            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>Total Chats</div>
-                            <div style={{ fontSize: 24, fontWeight: 700, color: '#0284c7' }}>{stats.aiUsage?.totalChats}</div>
+                            <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 4 }}>Total Chats</div>
+                            <div style={{ fontSize: 24, fontWeight: 700, color: '#0369a1' }}>{stats.aiUsage?.totalChats}</div>
                         </div>
                         <div style={{ background: 'var(--bg-glass)', padding: 16, borderRadius: 12 }}>
-                            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>Recent (7d)</div>
-                            <div style={{ fontSize: 24, fontWeight: 700, color: '#059669' }}>{stats.aiUsage?.recentChats}</div>
+                            <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 4 }}>Recent (7d)</div>
+                            <div style={{ fontSize: 24, fontWeight: 700, color: '#047857' }}>{stats.aiUsage?.recentChats}</div>
                         </div>
                         <div style={{ background: 'var(--bg-glass)', padding: 16, borderRadius: 12, gridColumn: 'span 2' }}>
-                            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>Avg Chats/Day</div>
-                            <div style={{ fontSize: 24, fontWeight: 700, color: '#e11d48' }}>{stats.aiUsage?.avgChatsPerDay}</div>
+                            <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 4 }}>Avg Chats/Day</div>
+                            <div style={{ fontSize: 24, fontWeight: 700, color: '#be123c' }}>{stats.aiUsage?.avgChatsPerDay}</div>
                         </div>
                     </div>
                 </div>
@@ -250,7 +250,7 @@ export default function AdminPage() {
             {/* Fraud Alerts */}
             <div className="card">
                 <div className="card-header">
-                    <h3><AlertTriangle size={18} style={{ color: 'var(--warning)', marginRight: 8 }} />Fraud Detection Alerts</h3>
+                    <h2 style={{ fontSize: '1.08rem', margin: 0 }}><AlertTriangle size={18} style={{ color: '#b45309', marginRight: 8 }} />Fraud Detection Alerts</h2>
                 </div>
                 {(stats.fraudAlerts?.policies?.length > 0 || stats.fraudAlerts?.claims?.length > 0) ? (
                     <div className="table-wrapper">
@@ -302,7 +302,7 @@ export default function AdminPage() {
             {/* Browser Shield Scam Moderation & Verified Registry */}
             <div className="grid-2" style={{ marginTop: 28 }}>
                 <div className="card" style={{ padding: 20 }}>
-                    <h3 style={{ marginBottom: 12 }}>Browser Shield Scam Moderation ({scamReports.length})</h3>
+                    <h2 style={{ marginBottom: 12, fontSize: '1.08rem' }}>Browser Shield Scam Moderation ({scamReports.length})</h2>
                     {scamReports.length > 0 ? (
                         <div className="table-wrapper" style={{ maxHeight: 280, overflowY: 'auto' }}>
                             <table className="table">
@@ -315,8 +315,8 @@ export default function AdminPage() {
                                             <td><span className={`badge ${r.moderation_status === 'verified' ? 'badge-danger' : r.moderation_status === 'rejected' ? 'badge-success' : 'badge-warning'}`}>{r.moderation_status}</span></td>
                                             <td>
                                                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                                                    <button className="btn btn-danger btn-sm" onClick={() => handleModerateReport(r.id, 'verified')}>Verify</button>
-                                                    <button className="btn btn-secondary btn-sm" onClick={() => handleModerateReport(r.id, 'rejected')}>Reject</button>
+                                                    <button type="button" className="btn btn-danger btn-sm" onClick={() => handleModerateReport(r.id, 'verified')}>Verify</button>
+                                                    <button type="button" className="btn btn-secondary btn-sm" onClick={() => handleModerateReport(r.id, 'rejected')}>Reject</button>
                                                 </div>
                                             </td>
                                         </tr>
@@ -325,16 +325,16 @@ export default function AdminPage() {
                             </table>
                         </div>
                     ) : (
-                        <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>No community scam reports queued.</p>
+                        <p style={{ color: 'var(--text-secondary)', fontSize: 13 }}>No community scam reports queued.</p>
                     )}
                 </div>
 
                 <div className="card" style={{ padding: 20 }}>
-                    <h3 style={{ marginBottom: 12 }}>Verified Domains Manager ({verifiedDomains.length})</h3>
+                    <h2 style={{ marginBottom: 12, fontSize: '1.08rem' }}>Verified Domains Manager ({verifiedDomains.length})</h2>
                     <form onSubmit={handleAddDomain} style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap' }}>
-                        <input className="form-input" placeholder="domain.in" style={{ flex: '1 1 130px' }} value={newDomain.domain} onChange={(e) => setNewDomain({ ...newDomain, domain: e.target.value })} />
-                        <input className="form-input" placeholder="Provider Name" style={{ flex: '1 1 140px' }} value={newDomain.providerName} onChange={(e) => setNewDomain({ ...newDomain, providerName: e.target.value })} />
-                        <select className="form-input" style={{ flex: '0 1 140px' }} value={newDomain.category} onChange={(e) => setNewDomain({ ...newDomain, category: e.target.value })}>
+                        <input id="admin-domain-host" name="domain" aria-label="Verified domain host" className="form-input" placeholder="domain.in" style={{ flex: '1 1 130px' }} value={newDomain.domain} onChange={(e) => setNewDomain({ ...newDomain, domain: e.target.value })} />
+                        <input id="admin-domain-provider" name="providerName" aria-label="Official provider name" className="form-input" placeholder="Provider Name" style={{ flex: '1 1 140px' }} value={newDomain.providerName} onChange={(e) => setNewDomain({ ...newDomain, providerName: e.target.value })} />
+                        <select id="admin-domain-category" name="category" aria-label="Domain category" className="form-input" style={{ flex: '0 1 140px' }} value={newDomain.category} onChange={(e) => setNewDomain({ ...newDomain, category: e.target.value })}>
                             <option value="insurer">Insurer</option>
                             <option value="regulator">Regulator / Govt / Ombudsman</option>
                             <option value="payment_gateway">Payment Gateway</option>
@@ -355,7 +355,7 @@ export default function AdminPage() {
                                 </button>
                             </div>
                         )) : (
-                            <p style={{ color: 'var(--text-muted)' }}>No verified domains configured.</p>
+                            <p style={{ color: 'var(--text-secondary)' }}>No verified domains configured.</p>
                         )}
                     </div>
                 </div>
@@ -364,7 +364,7 @@ export default function AdminPage() {
             {/* Registered Users Directory + Add Market Provider */}
             <div className="grid-2" style={{ marginTop: 28 }}>
                 <div className="card" style={{ padding: 20 }}>
-                    <h3 style={{ marginBottom: 12 }}>Registered Users Directory ({users.length})</h3>
+                    <h2 style={{ marginBottom: 12, fontSize: '1.08rem' }}>Registered Users Directory ({users.length})</h2>
                     {users.length > 0 ? (
                         <div className="table-wrapper" style={{ maxHeight: 280, overflowY: 'auto' }}>
                             <table className="table">
@@ -383,36 +383,37 @@ export default function AdminPage() {
                             </table>
                         </div>
                     ) : (
-                        <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>No users loaded.</p>
+                        <p style={{ color: 'var(--text-secondary)', fontSize: 13 }}>No users loaded.</p>
                     )}
                 </div>
 
                 <form className="card" style={{ padding: 20 }} onSubmit={handleAddProvider}>
-                    <h3 style={{ marginBottom: 12 }}>Add Market Benchmark Provider</h3>
-                    <input className="form-input" placeholder="Insurer Name (e.g. HDFC ERGO General)" style={{ marginBottom: 8 }}
+                    <h2 style={{ marginBottom: 12, fontSize: '1.08rem' }}>Add Market Benchmark Provider</h2>
+                    <label htmlFor="admin-provider-name" className="form-label">Insurer Name</label>
+                    <input id="admin-provider-name" name="providerName" className="form-input" placeholder="Insurer Name (e.g. HDFC ERGO General)" style={{ marginBottom: 8 }}
                         value={providerForm.providerName} onChange={(e) => setProviderForm({ ...providerForm, providerName: e.target.value })} />
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
                         <div>
-                            <label className="form-label">Settlement Ratio (%)</label>
-                            <input className="form-input" type="number" step="0.1" min={0} max={100}
+                            <label htmlFor="admin-csr" className="form-label">Settlement Ratio (%)</label>
+                            <input id="admin-csr" name="claimSettlementRatio" className="form-input" type="number" step="0.1" min={0} max={100}
                                 value={providerForm.claimSettlementRatio} onChange={(e) => setProviderForm({ ...providerForm, claimSettlementRatio: e.target.value })} />
                         </div>
                         <div>
-                            <label className="form-label">Avg Claim Days</label>
-                            <input className="form-input" type="number" min={0}
+                            <label htmlFor="admin-claim-days" className="form-label">Avg Claim Days</label>
+                            <input id="admin-claim-days" name="averageClaimTime" className="form-input" type="number" min={0}
                                 value={providerForm.averageClaimTime} onChange={(e) => setProviderForm({ ...providerForm, averageClaimTime: e.target.value })} />
                         </div>
                         <div>
-                            <label className="form-label">Rating (0–5)</label>
-                            <input className="form-input" type="number" step="0.1" min={0} max={5}
+                            <label htmlFor="admin-rating" className="form-label">Rating (0–5)</label>
+                            <input id="admin-rating" name="rating" className="form-input" type="number" step="0.1" min={0} max={5}
                                 value={providerForm.rating} onChange={(e) => setProviderForm({ ...providerForm, rating: e.target.value })} />
                         </div>
                         <div>
-                            <label className="form-label">Min / Max Premium (₹)</label>
+                            <span className="form-label">Min / Max Premium (₹)</span>
                             <div style={{ display: 'flex', gap: 6 }}>
-                                <input className="form-input" type="number" min={0} placeholder="Min"
+                                <input id="admin-min-prem" name="minPremium" aria-label="Minimum annual premium" className="form-input" type="number" min={0} placeholder="Min"
                                     value={providerForm.minPremium} onChange={(e) => setProviderForm({ ...providerForm, minPremium: e.target.value })} />
-                                <input className="form-input" type="number" min={0} placeholder="Max"
+                                <input id="admin-max-prem" name="maxPremium" aria-label="Maximum annual premium" className="form-input" type="number" min={0} placeholder="Max"
                                     value={providerForm.maxPremium} onChange={(e) => setProviderForm({ ...providerForm, maxPremium: e.target.value })} />
                             </div>
                         </div>

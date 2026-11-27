@@ -39,31 +39,50 @@ IMPORTANT:
 - If a section cannot be determined, return an empty string or empty array.
 - The output MUST be valid JSON only.`;
 
-const getFallbackData = () => ({
-    documentName: 'Document Pending Manual Review',
-    documentType: 'general',
-    simpleSummary: 'AI summary is temporarily rate-limited. Review key clauses or ask questions in document chat.',
-    keyPoints: ['Automated AI extraction reached temporary provider rate limits.'],
-    actionItems: [],
-    riskFactors: [],
-    entities: {},
-    _aiFailed: true,
-});
+const getFallbackData = (pdfText = '') => {
+    const cleanLines = String(pdfText || '')
+        .split('\n')
+        .map((l) => l.trim())
+        .filter((l) => l.length >= 18 && !/^---\s*PAGE/i.test(l));
+    const low = String(pdfText || '').toLowerCase();
+    const documentType =
+        /\b(invoice|gstin|tax\s*invoice|bill\s*no|total\s*amount)\b/i.test(low) ? 'invoice'
+        : /\b(agreement|contract|hereby|termination|indemnity)\b/i.test(low) ? 'contract'
+        : /\b(summons|court|legal\s*notice|plaintiff|counsel)\b/i.test(low) ? 'legal'
+        : /\b(dear\s+(?:sir|madam|customer)|sincerely|regards)\b/i.test(low) ? 'letter'
+        : /\b(diagnosis|report|lab|pathology|summary\s*of\s*benefits)\b/i.test(low) ? 'report'
+        : 'general';
+
+    return {
+        documentName: 'Document Pending Manual Review',
+        documentType,
+        simpleSummary: cleanLines.slice(0, 3).join(' ').slice(0, 420) || 'AI summary is temporarily unavailable. Review key clauses or ask questions in document chat.',
+        keyPoints: cleanLines.slice(0, 5),
+        actionItems: [],
+        riskFactors: [],
+        entities: {},
+        _aiFailed: true,
+    };
+};
 
 const extractDocumentInfo = async (pdfText) => {
+    const masked = pdfParser.maskSensitivePii(String(pdfText || ''));
     try {
-        const masked = pdfParser.maskSensitivePii(String(pdfText || ''));
-        const prompt = `${DOCUMENT_EXTRACTION_PROMPT}\n\nDocument Text:\n---\n${masked.substring(0, 24000)}\n---`;
+        const sliced =
+            masked.length <= 22000
+                ? masked
+                : `${masked.slice(0, 15500)}\n\n...[MIDDLE SECTION OMITTED]...\n\n${masked.slice(-6000)}`;
+        const prompt = `${DOCUMENT_EXTRACTION_PROMPT}\n\nDocument Text:\n---\n${sliced}\n---`;
         const { data, provider } = await aiService.generateJson(prompt);
         logger.info(`Document extraction successful via ${provider}`);
         return data;
     } catch (error) {
         logger.error('Document AI extraction failed:', error.message);
-        return getFallbackData();
+        return getFallbackData(masked);
     }
 };
 
-const chatAboutDocument = async (userMessage, documentContext, conversationHistory = []) => {
+const chatAboutDocument = async (userMessage, documentContext, conversationHistory = [], options = {}) => {
     const cleanQuestion = sanitizeInput(String(userMessage || ''));
     if (!cleanQuestion) {
         const err = new Error('Message is required');
@@ -76,7 +95,7 @@ const chatAboutDocument = async (userMessage, documentContext, conversationHisto
         const systemPrompt = `You are an expert Document Analyst AI assistant for the PolicyAI platform. Your role is to answer questions about uploaded documents based on the context provided.
 
 RULES:
-1. Answer based ONLY on the provided document context when the user asks about their specific document.
+1. Answer based ONLY on the provided document context & extracted text excerpt when the user asks about their specific document.
 2. If the user asks a general knowledge question, you are free to answer it helpfully using your general knowledge.
 3. NEVER make up document details that are not in the context.
 4. Be helpful, clear, concise, and use simple language.
@@ -89,7 +108,10 @@ RULES:
         }
         prompt += `\nUser: ${cleanQuestion}\nAssistant:`;
 
-        const result = await aiService.generateText(prompt, { systemPrompt });
+        const result = await aiService.generateText(prompt, {
+            systemPrompt,
+            ...(options?.model ? { model: String(options.model).trim() } : {}),
+        });
         logger.info(`Document chat response generated via ${result.provider} in ${result.responseTimeMs}ms`);
 
         return {

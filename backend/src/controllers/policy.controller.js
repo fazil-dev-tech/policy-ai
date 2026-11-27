@@ -15,14 +15,12 @@ const enrichAndMapPolicy = (row, signedUrl = null) => {
     if (!mapped) return null;
     const structuredTerms = row.structured_terms || {};
     const evalRes = claimEngine.calculateHealthScore(row, structuredTerms);
-    const cisSummary = Object.keys(row.cis_summary || {}).length
-        ? row.cis_summary
-        : claimEngine.buildCisCard(row, structuredTerms, evalRes);
+    const cisSummary = claimEngine.buildCisCard(row, structuredTerms, evalRes);
 
     return {
         ...mapped,
         structuredTerms,
-        healthScore: Number(row.health_score || evalRes.healthScore),
+        healthScore: Number(evalRes.healthScore || row.health_score || 0),
         inceptionDate: row.inception_date || null,
         cisSummary,
         renewalDiff: row.renewal_diff || {},
@@ -140,11 +138,11 @@ const analyzeAndStorePolicyBuffer = async ({ userId, buffer, mimeType, originaln
     const healthEval = claimEngine.calculateHealthScore(baseDraft, structuredTerms);
     const cisSummary = claimEngine.buildCisCard(baseDraft, structuredTerms, healthEval);
 
-    const insertPayload = {
+    const insertPayload = pdfParser.sanitizeJsonForDb({
         ...baseDraft,
         health_score: healthEval.healthScore,
         cis_summary: cisSummary,
-    };
+    });
 
     const { data: created, error } = await supabaseAdmin.from('policies').insert(insertPayload).select().single();
     if (error) {
@@ -365,7 +363,9 @@ const compareRenewalPolicy = async (req, res, next) => {
             oldPolicy.ai_summary,
             renewalExtracted,
             oldPolicy.coverage_amount,
-            renewalExtracted.coverageAmount || oldPolicy.coverage_amount
+            renewalExtracted.coverageAmount || oldPolicy.coverage_amount,
+            oldPolicy.structured_terms || {},
+            renewalExtracted.structuredTerms || {}
         );
 
         const diffPayload = {
@@ -508,7 +508,11 @@ const deletePolicy = async (req, res, next) => {
         if (error) return next(error);
         if (!policy) return res.status(404).json({ error: 'Policy not found' });
 
-        await storageService.deleteStorageFile(policy.storage_path);
+        if (policy.storage_path) {
+            await storageService.deleteStorageFile(policy.storage_path).catch((err) => {
+                logger.warn(`Non-fatal storage cleanup error on policy ${policy.id}: ${err.message}`);
+            });
+        }
         logger.info(`Policy deleted: ${policy.policy_number}`);
 
         res.json({ message: 'Policy deleted successfully' });

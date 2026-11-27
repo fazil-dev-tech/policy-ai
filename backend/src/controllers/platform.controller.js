@@ -16,7 +16,7 @@ const SCAM_CATEGORY_ALIASES = {
     reverse_upi: 'upi_scam',
     fake_agent: 'impersonation',
 };
-const VALID_SURFACES = ['web', 'whatsapp', 'gmail', 'manual'];
+const VALID_SURFACES = ['web', 'whatsapp', 'gmail', 'outlook', 'telegram', 'instagram', 'manual'];
 const VALID_RELATIONSHIPS = ['self', 'spouse', 'parent', 'child', 'in_law', 'sibling', 'other'];
 
 /**
@@ -39,7 +39,7 @@ const resolveOptionalUserId = async (req) => {
 // ─── Browser Shield & Extension Security Endpoints ──────────────────────────
 const checkSingleUrl = async (req, res, next) => {
     try {
-        const { url, sourceSurface = 'manual', contextFlags = '' } = req.body || {};
+        const { url, sourceSurface = 'manual', contextFlags = '', sensitivity = 'balanced', filename = '' } = req.body || {};
         if (!url) return res.status(400).json({ error: 'url is required' });
         const userId = await resolveOptionalUserId(req);
         const result = await securityService.checkUrlThreat({
@@ -48,6 +48,8 @@ const checkSingleUrl = async (req, res, next) => {
             contextFlags,
             userId,
             allowExternalIntel: true,
+            sensitivity,
+            filename,
         });
         res.json(result);
     } catch (error) {
@@ -57,13 +59,14 @@ const checkSingleUrl = async (req, res, next) => {
 
 const batchCheckUrls = async (req, res, next) => {
     try {
-        const { items = [], urls = [], sourceSurface = 'web' } = req.body || {};
+        const { items = [], urls = [], sourceSurface = 'web', sensitivity = 'balanced' } = req.body || {};
         const normalized = items.length ? items : urls;
         const userId = await resolveOptionalUserId(req);
         const results = await securityService.batchCheckUrls({
             items: normalized,
             sourceSurface,
             userId,
+            sensitivity,
         });
         res.json({ results, count: results.length });
     } catch (error) {

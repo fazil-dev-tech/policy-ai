@@ -26,7 +26,9 @@ const checkUrlSchema = z.object({
     body: z.object({
         url: z.string().trim().min(1, 'url is required').max(2048),
         sourceSurface: z.string().optional(),
-        contextFlags: z.string().optional(),
+        contextFlags: z.string().max(4000).optional(),
+        filename: z.string().max(255).optional(),
+        sensitivity: z.enum(['high', 'balanced', 'relaxed']).optional(),
     }),
 });
 
@@ -35,6 +37,7 @@ const batchCheckSchema = z.object({
         items: z.array(z.any()).max(30).optional(),
         urls: z.array(z.any()).max(30).optional(),
         sourceSurface: z.string().optional(),
+        sensitivity: z.enum(['high', 'balanced', 'relaxed']).optional(),
     }),
 });
 

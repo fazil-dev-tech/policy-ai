@@ -7,7 +7,7 @@
     "api/index.js": {
       "maxDuration": 60,
       "memory": 1024,
-      "includeFiles": "backend/node_modules/pdfjs-dist/legacy/build/**"
+      "includeFiles": "{backend/node_modules/pdfjs-dist/legacy/build/**,frontend/public/policyguard-extension.zip,extension/**}"
     }
   },
   "rewrites": [

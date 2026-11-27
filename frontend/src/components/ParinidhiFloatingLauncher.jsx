@@ -12,8 +12,8 @@ export default function ParinidhiFloatingLauncher() {
             type="button"
             className="parinidhi-fab"
             onClick={() => navigate('/terminal')}
-            title="Talk with Parinidhi AI (3D Voice & Policy Research)"
-            aria-label="Open Parinidhi AI Voice Advisor"
+            title="Ask Parinidhi AI (3D Voice & Policy Research)"
+            aria-label="Ask Parinidhi AI Voice Advisor"
         >
             <span className="parinidhi-fab-pulse" aria-hidden="true" />
             <Mic size={16} />

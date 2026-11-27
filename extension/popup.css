@@ -1,6 +1,6 @@
 * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
 body {
-  width: 350px;
+  width: 365px;
   margin: 0;
   padding: 12px;
   background: linear-gradient(180deg, #fff5fa 0%, #ffffff 100%);
@@ -20,13 +20,50 @@ body {
   display: flex; align-items: center; justify-content: center;
 }
 .pg-brand h1 { margin: 0; font-size: 14px; font-weight: 800; }
-.pg-brand p { margin: 0; font-size: 11px; color: #64748b; }
+.pg-brand p { margin: 0; font-size: 10.5px; color: #64748b; }
+.pg-hdr-right { display: flex; align-items: center; gap: 6px; }
 .pg-badge {
-  padding: 4px 10px; border-radius: 999px; font-size: 11px; font-weight: 800;
+  padding: 4px 9px; border-radius: 999px; font-size: 10.5px; font-weight: 800;
 }
 .pg-badge.safe { background: #dcfce7; color: #166534; }
 .pg-badge.suspicious { background: #fef3c7; color: #92400e; }
 .pg-badge.threat { background: #fee2e2; color: #991b1b; }
+.pg-badge.off { background: #e2e8f0; color: #475569; }
+
+.pg-switch {
+  position: relative; display: inline-block; width: 34px; height: 19px; cursor: pointer;
+}
+.pg-switch input { opacity: 0; width: 0; height: 0; }
+.pg-slider {
+  position: absolute; inset: 0; background: #cbd5e1; border-radius: 999px; transition: .2s;
+}
+.pg-slider::before {
+  content: ""; position: absolute; height: 15px; width: 15px; left: 2px; bottom: 2px;
+  background: #fff; border-radius: 50%; transition: .2s;
+}
+.pg-switch input:checked + .pg-slider { background: #10b981; }
+.pg-switch input:checked + .pg-slider::before { transform: translateX(15px); }
+
+.pg-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.pg-stat-box {
+  background: rgba(255,255,255,0.92);
+  border: 1px solid rgba(236, 72, 153, 0.16);
+  border-radius: 10px;
+  padding: 7px 6px;
+  text-align: center;
+}
+.pg-stat-box.danger { border-color: rgba(220, 38, 38, 0.22); background: #fef2f2; }
+.pg-stat-box.safe { border-color: rgba(16, 185, 129, 0.22); background: #ecfdf5; }
+.pg-stat-val { font-size: 14px; font-weight: 800; color: #0f172a; }
+.pg-stat-box.danger .pg-stat-val { color: #b91c1c; }
+.pg-stat-box.safe .pg-stat-val { color: #047857; }
+.pg-stat-lbl { font-size: 10px; color: #64748b; font-weight: 600; }
+
 .pg-card {
   background: rgba(255,255,255,0.92);
   border: 1px solid rgba(236, 72, 153, 0.2);
@@ -35,16 +72,22 @@ body {
   margin-bottom: 10px;
   box-shadow: 0 4px 14px rgba(236, 72, 153, 0.06);
 }
+.pg-card-danger {
+  border-color: rgba(220, 38, 38, 0.35);
+  background: #fef2f2;
+}
 .pg-card h3 { margin: 0 0 8px; font-size: 12px; font-weight: 700; }
-.pg-row { display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 4px; }
+.pg-row { display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 4px; gap: 6px; }
 .pg-label { color: #64748b; font-size: 11px; }
 .pg-reasons { margin: 8px 0; padding-left: 16px; font-size: 11px; color: #334155; }
-.pg-toggle { display: flex; align-items: center; gap: 8px; font-size: 12px; cursor: pointer; }
+.pg-reasons li { margin-bottom: 4px; }
+.pg-toggle { display: flex; align-items: center; gap: 8px; font-size: 11.5px; cursor: pointer; }
 .pg-hint { font-size: 11px; color: #64748b; margin: 6px 0 0; }
-.pg-input {
+.pg-input, .pg-select-sm {
   width: 100%; padding: 7px 9px; margin-bottom: 7px; font-size: 12px;
   border: 1px solid #e2e8f0; border-radius: 8px; background: #fff;
 }
+.pg-select-sm { width: auto; padding: 4px 8px; margin-bottom: 0; font-size: 11px; font-weight: 600; }
 .pg-btn {
   width: 100%; padding: 8px; border: none; border-radius: 8px;
   font-size: 12px; font-weight: 700; cursor: pointer;
@@ -52,5 +95,9 @@ body {
 .pg-btn-primary { background: linear-gradient(135deg, #ec4899, #f472b6); color: #fff; }
 .pg-btn-secondary { background: #f1f5f9; color: #0f172a; }
 .pg-btn-danger { background: #dc2626; color: #fff; }
+.pg-rule-rm {
+  margin-left: 6px; padding: 1px 6px; border: none; border-radius: 5px;
+  background: rgba(15, 23, 42, 0.08); font-size: 10px; font-weight: 700; cursor: pointer;
+}
 details summary { font-size: 12px; font-weight: 700; cursor: pointer; }
 .pg-footer { font-size: 11px; text-align: center; color: #475569; padding-top: 2px; }

@@ -141,6 +141,8 @@ const calculateHealthScore = (policy = {}, terms = {}) => {
             toNum(mergedTerms.roomRentCapPct, 0) >= 100 ||
             (mergedTerms.roomRentCapPct === null && !textShowsRoomCap) ||
             /(?<!not\s)at actuals|\bno capping\b|\bno room rent limit\b|\bany room\b/i.test(combinedText));
+    const hasExplicitRoomCap = hasRoomPerDayCap || hasRoomPctCap || (textShowsRoomCap && !noRoomCap);
+    const roomStatus = noRoomCap ? 'no_cap' : hasExplicitRoomCap ? 'capped' : 'unknown';
 
     const hasExplicitCopay =
         mergedTerms.coPayPct !== undefined && mergedTerms.coPayPct !== null && mergedTerms.coPayPct !== '';
@@ -192,12 +194,21 @@ const calculateHealthScore = (policy = {}, terms = {}) => {
             detail: hasZeroDep ? 'Covered' : 'Not confirmed in schedule',
         });
     } else {
-        roomPts = noRoomCap ? 20 : 10;
-        if (!noRoomCap) gaps.push('Room rent cap may trigger Proportionate Deduction across surgeon, OT, and diagnostic charges.');
+        roomPts = roomStatus === 'no_cap' ? 20 : roomStatus === 'capped' ? 10 : 14;
+        if (roomStatus === 'capped') {
+            gaps.push('Room rent cap may trigger Proportionate Deduction across surgeon, OT, and diagnostic charges.');
+        } else if (roomStatus === 'unknown') {
+            gaps.push('Room-rent eligibility not confirmed in extracted summary — search Clause Citations for "room" before admission.');
+        }
         checklist.push({
             item: 'Room Rent Capping Rule',
-            status: noRoomCap ? 'strong' : 'warning',
-            detail: noRoomCap ? 'Single Private / At Actuals' : 'Sub-limit detected — check proportionate deduction risk',
+            status: roomStatus === 'no_cap' ? 'strong' : 'warning',
+            detail:
+                roomStatus === 'no_cap'
+                    ? mergedTerms.roomRentLabel || 'Single Private / At Actuals'
+                    : roomStatus === 'capped'
+                      ? 'Sub-limit detected — check proportionate deduction risk'
+                      : 'Not explicitly extracted — verify in Clause Citations',
         });
     }
     score += roomPts;
@@ -247,11 +258,29 @@ const calculateHealthScore = (policy = {}, terms = {}) => {
             hasZeroDep,
             hasRestoration,
             noRoomCap,
+            roomStatus,
             copayPct,
             initialWaitDays,
             pedWaitMonths,
         },
     };
+};
+
+const formatCisRoomRent = (mergedTerms = {}, detected = {}) => {
+    if (mergedTerms.roomRentLabel) return mergedTerms.roomRentLabel;
+    if (toNum(mergedTerms.roomRentPerDayCap, 0) > 0) {
+        return `Up to ₹${toNum(mergedTerms.roomRentPerDayCap, 0).toLocaleString('en-IN')} / day`;
+    }
+    if (toNum(mergedTerms.roomRentCapPct, 0) > 0 && toNum(mergedTerms.roomRentCapPct, 0) < 100) {
+        return `Up to ${toNum(mergedTerms.roomRentCapPct, 0)}% of Sum Insured / day`;
+    }
+    if (detected.roomStatus === 'no_cap' || detected.noRoomCap) {
+        return 'Any Room / Up to Single Standard A/C Room (No Cap)';
+    }
+    if (detected.roomStatus === 'capped') {
+        return 'Room Sub-Limit Applies (Check Policy Schedule)';
+    }
+    return 'Verify in Policy Schedule / Clause Citations';
 };
 
 const buildCisCard = (policy = {}, terms = {}, evaluation = null) => {
@@ -263,7 +292,7 @@ const buildCisCard = (policy = {}, terms = {}, evaluation = null) => {
         insurerName: policy.providerName || policy.provider_name || 'Unknown Insurer',
         policyType: policy.policyType || policy.policy_type || 'health',
         sumInsured: Number(policy.coverageAmount ?? policy.coverage_amount ?? 0),
-        roomRentLimit: mergedTerms.roomRentLabel || (scoreData.detectedTerms.noRoomCap ? 'Up to Single Standard A/C Room' : '1% of Sum Insured / day'),
+        roomRentLimit: formatCisRoomRent(mergedTerms, scoreData.detectedTerms),
         coPay: `${scoreData.detectedTerms.copayPct}%`,
         deductible: `₹${Number(mergedTerms.deductible || 0).toLocaleString('en-IN')}`,
         initialWaitingPeriod: `${scoreData.detectedTerms.initialWaitDays} days (except accidents)`,
@@ -283,9 +312,10 @@ const computeHealthClaimEstimate = (policy = {}, terms = {}, input = {}) => {
     const billAmount = Math.max(0, toNum(input.estimatedBill ?? input.estimatedAmount, 0));
     const roomPerDay = Math.max(0, toNum(input.roomRentPerDay, 0));
     const inputRoomCap = toNum(input.policyRoomCapPerDay, 0);
+    const hasExplicitZeroRoomCap = input.policyRoomCapPerDay === 0 || input.policyRoomCapPerDay === '0';
     const termRoomCap = toNum(terms.roomRentPerDayCap, 0);
     const pctRoomCap = toNum(terms.roomRentCapPct, 0) > 0 ? (toNum(policy.coverageAmount ?? policy.coverage_amount, 0) * toNum(terms.roomRentCapPct, 0)) / 100 : 0;
-    const policyRoomCap = inputRoomCap > 0 ? inputRoomCap : termRoomCap > 0 ? termRoomCap : pctRoomCap;
+    const policyRoomCap = hasExplicitZeroRoomCap ? 0 : inputRoomCap > 0 ? inputRoomCap : termRoomCap > 0 ? termRoomCap : pctRoomCap;
     const copayPct = Math.min(80, Math.max(0, toNum(input.copayPct, toNum(terms.coPayPct, 0))));
     const deductible = Math.max(0, toNum(input.deductible, toNum(terms.deductible, 0)));
     const consumablesPct = Math.min(35, Math.max(0, toNum(input.consumablesPct, 8)));
@@ -678,7 +708,14 @@ const computeReadinessChecklist = (scenarioType, evidenceList = [], policy = {},
     return { readinessScore, doneCount, totalCount: checks.length, checks };
 };
 
-const comparePolicyRenewal = (oldSummary = {}, newSummary = {}, oldCov = 0, newCov = 0) => {
+const comparePolicyRenewal = (
+    oldSummary = {},
+    newSummary = {},
+    oldCov = 0,
+    newCov = 0,
+    oldTerms = {},
+    newTerms = {}
+) => {
     const diffs = [];
     if (Number(newCov) !== Number(oldCov)) {
         diffs.push({
@@ -686,6 +723,38 @@ const comparePolicyRenewal = (oldSummary = {}, newSummary = {}, oldCov = 0, newC
             oldValue: `₹${Number(oldCov).toLocaleString('en-IN')}`,
             newValue: `₹${Number(newCov).toLocaleString('en-IN')}`,
             severity: Number(newCov) < Number(oldCov) ? 'warning' : 'improved',
+        });
+    }
+    if (oldTerms?.roomRentLabel && newTerms?.roomRentLabel && oldTerms.roomRentLabel !== newTerms.roomRentLabel) {
+        diffs.push({
+            field: 'Room Rent Limit',
+            oldValue: oldTerms.roomRentLabel,
+            newValue: newTerms.roomRentLabel,
+            severity: /any room|at actuals|no cap/i.test(newTerms.roomRentLabel) ? 'improved' : 'warning',
+        });
+    }
+    if (
+        oldTerms?.coPayPct !== undefined &&
+        newTerms?.coPayPct !== undefined &&
+        Number(oldTerms.coPayPct) !== Number(newTerms.coPayPct)
+    ) {
+        diffs.push({
+            field: 'Co-Pay %',
+            oldValue: `${Number(oldTerms.coPayPct)}%`,
+            newValue: `${Number(newTerms.coPayPct)}%`,
+            severity: Number(newTerms.coPayPct) > Number(oldTerms.coPayPct) ? 'warning' : 'improved',
+        });
+    }
+    if (
+        oldTerms?.deductible !== undefined &&
+        newTerms?.deductible !== undefined &&
+        Number(oldTerms.deductible) !== Number(newTerms.deductible)
+    ) {
+        diffs.push({
+            field: 'Deductible',
+            oldValue: `₹${Number(oldTerms.deductible).toLocaleString('en-IN')}`,
+            newValue: `₹${Number(newTerms.deductible).toLocaleString('en-IN')}`,
+            severity: Number(newTerms.deductible) > Number(oldTerms.deductible) ? 'warning' : 'improved',
         });
     }
     for (const key of ['coverage', 'exclusions', 'claimProcedure', 'helplineNumber']) {
@@ -705,6 +774,7 @@ const comparePolicyRenewal = (oldSummary = {}, newSummary = {}, oldCov = 0, newC
 
 const auditAgentPromise = (promisedTerms = {}, policy = {}) => {
     const summaryText = `${policy.aiSummary?.coverage || ''} ${policy.aiSummary?.exclusions || ''} ${policy.aiSummary?.simpleSummary || ''}`.toLowerCase();
+    const detected = policy.healthEvaluation?.detectedTerms || calculateHealthScore(policy, policy.structuredTerms || {}).detectedTerms;
     const discrepancies = [];
 
     if (promisedTerms.zeroWaitingPeriod && /30\s*days|waiting period|24\s*months|36\s*months/i.test(summaryText)) {
@@ -714,17 +784,22 @@ const auditAgentPromise = (promisedTerms = {}, policy = {}) => {
             risk: 'high',
         });
     }
-    if (promisedTerms.zeroDepPromised && !/zero\s*dep/i.test(summaryText) && policy.policyType === 'auto') {
+    if (promisedTerms.zeroDepPromised && !detected.hasZeroDep && !/zero\s*dep/i.test(summaryText) && policy.policyType === 'auto') {
         discrepancies.push({
             promise: 'Zero Depreciation promised',
             actual: 'Zero-Depreciation cover was not detected in the issued policy schedule.',
             risk: 'high',
         });
     }
-    if (promisedTerms.noRoomCapPromised && /1%\s*of\s*sum|room\s*rent\s*limit|proportionate/i.test(summaryText)) {
+    const textConfirmsRoomCap =
+        !/\bany\s*room\b|\bno\s*capping\b/i.test(summaryText) &&
+        (/\b1%\s*of\s*sum|\broom\s*rent\s*(?:cap|limit|sub-?limit)/i.test(summaryText) ||
+            (/\bproportionate\s*deduction/i.test(summaryText) &&
+                !/proportionate\s*deductions?\s*(?:are\s*)?not\s*applied/i.test(summaryText)));
+    if (promisedTerms.noRoomCapPromised && (detected.roomStatus === 'capped' || (detected.roomStatus !== 'no_cap' && textConfirmsRoomCap))) {
         discrepancies.push({
             promise: 'Single Room / No Room Cap promised',
-            actual: 'Policy contains room rent sub-limit language.',
+            actual: 'Policy contains room rent sub-limit / capping language.',
             risk: 'medium',
         });
     }

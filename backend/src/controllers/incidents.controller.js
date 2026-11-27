@@ -188,8 +188,8 @@ const analyzeIncident = async (req, res, next) => {
                 file_size: item.size || item.buffer.length,
                 storage_path: storagePath,
                 doc_category: docCategory,
-                ocr_text: ocrText,
-                extracted_data: extractedData,
+                ocr_text: pdfParser.sanitizeUnicodeForDb(ocrText),
+                extracted_data: pdfParser.sanitizeJsonForDb(extractedData),
                 confidence_score: Math.min(100, Math.max(0, Math.round(confidenceScore))),
             });
         }
@@ -216,6 +216,13 @@ const analyzeIncident = async (req, res, next) => {
             }
         }
 
+        const parsedRoomCap =
+            req.body.policyRoomCapPerDay !== undefined &&
+            req.body.policyRoomCapPerDay !== null &&
+            req.body.policyRoomCapPerDay !== ''
+                ? Math.max(0, Number(policyRoomCapPerDay) || 0)
+                : undefined;
+
         const payoutCalculation =
             safeScenario === 'motor_accident' && motorReport
                 ? {
@@ -235,12 +242,12 @@ const analyzeIncident = async (req, res, next) => {
                       ],
                   }
                 : claimEngine.computeHealthClaimEstimate(policy, policy.structured_terms || {}, {
-                      estimatedBill: combinedBillTotal,
-                      roomRentPerDay: Number(roomRentPerDay) || 0,
-                      policyRoomCapPerDay: Number(policyRoomCapPerDay) > 0 ? Number(policyRoomCapPerDay) : undefined,
-                      copayPct: Number(copayPct) > 0 ? Number(copayPct) : undefined,
-                      deductible: Number(deductible) > 0 ? Number(deductible) : undefined,
-                      consumablesPct: consumablesPct || 8,
+                      estimatedBill: Math.max(0, combinedBillTotal),
+                      roomRentPerDay: Math.max(0, Number(roomRentPerDay) || 0),
+                      policyRoomCapPerDay: parsedRoomCap,
+                      copayPct: Number(copayPct) > 0 ? Math.min(80, Number(copayPct)) : undefined,
+                      deductible: Number(deductible) > 0 ? Math.max(0, Number(deductible)) : undefined,
+                      consumablesPct: Math.min(35, Math.max(0, Number(consumablesPct) || 8)),
                       incidentDate: safeIncidentDateIso,
                       isAccident: isAccident === true || isAccident === 'true',
                       isPedRelated: isPedRelated === true || isPedRelated === 'true',
@@ -249,23 +256,25 @@ const analyzeIncident = async (req, res, next) => {
 
         const readiness = claimEngine.computeReadinessChecklist(safeScenario, evidenceRecords, policy, safeIncidentDateIso);
 
+        const incidentInsertPayload = pdfParser.sanitizeJsonForDb({
+            user_id: userId,
+            policy_id: policy.id || null,
+            scenario_type: safeScenario,
+            incident_date: safeIncidentDateIso,
+            title: String(title || 'Claim Assessment').slice(0, 180),
+            description: String(description || '').slice(0, 4000),
+            estimated_amount: Math.max(0, combinedBillTotal),
+            claimant_details: parsedVehicleInfo,
+            payout_calculation: payoutCalculation,
+            readiness_score: readiness.readinessScore,
+            readiness_checklist: readiness.checks,
+            audit_trail: payoutCalculation.auditTrail || { calculatedAt: new Date().toISOString() },
+            status: 'analyzed',
+        });
+
         const { data: savedIncident, error: incErr } = await supabaseAdmin
             .from('incidents')
-            .insert({
-                user_id: userId,
-                policy_id: policy.id || null,
-                scenario_type: safeScenario,
-                incident_date: safeIncidentDateIso,
-                title: String(title || 'Claim Assessment').slice(0, 180),
-                description: String(description || '').slice(0, 4000),
-                estimated_amount: combinedBillTotal,
-                claimant_details: parsedVehicleInfo,
-                payout_calculation: payoutCalculation,
-                readiness_score: readiness.readinessScore,
-                readiness_checklist: readiness.checks,
-                audit_trail: payoutCalculation.auditTrail || { calculatedAt: new Date().toISOString() },
-                status: 'analyzed',
-            })
+            .insert(incidentInsertPayload)
             .select()
             .single();
 
@@ -651,16 +660,18 @@ Document:\n${sheetText}`,
 
         const { data: saved, error } = await supabaseAdmin
             .from('settlements')
-            .insert({
-                user_id: req.user.id,
-                policy_id: policy.id || null,
-                claimed_amount: decoded.claimedAmount,
-                approved_amount: decoded.approvedAmount,
-                shortfall_amount: decoded.shortfallAmount,
-                line_items: Array.isArray(lineItems) ? lineItems : [],
-                discrepancy_flags: decoded.discrepancyFlags,
-                grievance_letter: decoded.grievanceLetter,
-            })
+            .insert(
+                pdfParser.sanitizeJsonForDb({
+                    user_id: req.user.id,
+                    policy_id: policy.id || null,
+                    claimed_amount: decoded.claimedAmount,
+                    approved_amount: decoded.approvedAmount,
+                    shortfall_amount: decoded.shortfallAmount,
+                    line_items: Array.isArray(lineItems) ? lineItems : [],
+                    discrepancy_flags: decoded.discrepancyFlags,
+                    grievance_letter: decoded.grievanceLetter,
+                })
+            )
             .select()
             .single();
 

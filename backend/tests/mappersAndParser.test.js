@@ -12,11 +12,14 @@ const {
     safeIsoDate,
     mapProfile,
     mapPolicy,
+    mapDocument,
     mapMarketProvider,
 } = require('../src/utils/mappers');
 const {
     maskSensitivePii,
     extractDeterministicHints,
+    sanitizeUnicodeForDb,
+    sanitizeJsonForDb,
 } = require('../src/services/pdfParser.service');
 const storageService = require('../src/services/storage.service');
 
@@ -45,6 +48,16 @@ describe('mappers, pdfParser hints & storage path guards', () => {
         const provider = mapMarketProvider({ id: 'm1', provider_name: 'HDFC ERGO', claim_settlement_ratio: '98.5', rating: '4.5' });
         expect(provider.claimSettlementRatio).toBe(98.5);
         expect(provider.rating).toBe(4.5);
+
+        const doc = mapDocument({
+            id: 'd1',
+            user_id: 'u1',
+            document_name: 'Hospital Invoice',
+            document_type: 'invoice',
+            ai_summary: { simpleSummary: 'Bill', _textExcerpt: 'SENSITIVE FULL TEXT' },
+        });
+        expect(doc.aiSummary.simpleSummary).toBe('Bill');
+        expect(doc.aiSummary._textExcerpt).toBeUndefined();
     });
 
     test('maskSensitivePii masks PAN, Aadhaar and +91 mobile numbers', () => {
@@ -52,6 +65,16 @@ describe('mappers, pdfParser hints & storage path guards', () => {
         expect(masked).toContain('[PAN-MASKED]');
         expect(masked).toContain('[AADHAAR-****-9012]');
         expect(masked).toContain('[PHONE-***3210]');
+    });
+
+    test('sanitizeUnicodeForDb and sanitizeJsonForDb strip NUL bytes and unpaired surrogates for Postgres JSONB', () => {
+        const dirty = 'Grade\u0000 Card\x07 \uD800End';
+        expect(sanitizeUnicodeForDb(dirty)).not.toContain('\u0000');
+        expect(sanitizeUnicodeForDb(dirty)).not.toContain('\x07');
+        const obj = sanitizeJsonForDb({ title: dirty, nested: ['ok\u0000', { k: '\uDC00v' }] });
+        expect(obj.title).toContain('Grade Card');
+        expect(obj.nested[0]).toBe('ok');
+        expect(obj.nested[1].k).not.toContain('\uDC00');
     });
 
     test('extractDeterministicHints extracts policy metadata from raw schedule text', () => {
@@ -95,6 +118,19 @@ describe('mappers, pdfParser hints & storage path guards', () => {
         expect(hints.insuredMembers[1].name).toBe('KAVITHA T');
         expect(hints.insuredMembers[1].gender).toBe('Female');
         expect(hints.insuredMembers[1].ped).toBe('No PED Declared');
+    });
+
+    test('extractDeterministicHints detects Any room (Except suite) and automatic restoration on 10L policies', () => {
+        const starTable = [
+            'Basic Floater Sum Insured : Rs. 10,00,000/-',
+            'Room Category: Any room (Except suite or above category)',
+            'The policy provides automatic restoration of sum insured for unlimited number of times.',
+        ].join('\n');
+        const hints = extractDeterministicHints(starTable);
+        expect(hints.coverageAmount).toBe(1000000);
+        expect(hints.roomRentCapPct).toBeNull();
+        expect(hints.roomRentLabel).toBe('Any room (Except suite or above category)');
+        expect(hints.restoration).toBe(true);
     });
 
     test('storageService exports assertSafeUserStoragePath and enforces ownership prefix', () => {

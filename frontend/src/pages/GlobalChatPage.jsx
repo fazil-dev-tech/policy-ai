@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import api from '../services/api';
 import ParinidhiAvatar3D from '../components/ParinidhiAvatar3D';
+import MarkdownText from '../components/shared/MarkdownText';
 import {
     Send, Mic, MicOff, Volume2, VolumeX, User, Plus,
     MessageSquare, Clock, Globe, Sparkles, FileText, ExternalLink
@@ -18,54 +19,6 @@ const LANGUAGE_OPTIONS = [
     { label: 'Bengali', langCode: 'bn-IN' },
     { label: 'Marathi', langCode: 'mr-IN' },
 ];
-
-function MarkdownText({ content }) {
-    if (!content) return null;
-    const lines = String(content).split('\n');
-    const elements = [];
-    let listItems = [];
-    let key = 0;
-
-    const flushList = () => {
-        if (listItems.length) {
-            elements.push(<ul key={key++} className="md-list">{listItems}</ul>);
-            listItems = [];
-        }
-    };
-
-    const renderInline = (text) => {
-        const parts = text.split(/(\*\*[^*]+\*\*|\*[^*]+\*|`[^`]+`)/g);
-        return parts.map((p, i) => {
-            if (p.startsWith('**') && p.endsWith('**')) return <strong key={i}>{p.slice(2, -2)}</strong>;
-            if (p.startsWith('*') && p.endsWith('*')) return <em key={i}>{p.slice(1, -1)}</em>;
-            if (p.startsWith('`') && p.endsWith('`')) return <code key={i} className="md-code">{p.slice(1, -1)}</code>;
-            return p;
-        });
-    };
-
-    lines.forEach((line) => {
-        if (line.match(/^#{1,3} /)) {
-            flushList();
-            const level = line.match(/^(#+)/)[1].length;
-            const text = line.replace(/^#+\s/, '');
-            const Tag = `h${Math.min(level + 2, 6)}`;
-            elements.push(<Tag key={key++} className={`md-h${level}`}>{renderInline(text)}</Tag>);
-        } else if (line.match(/^[-*] /)) {
-            listItems.push(<li key={key++}>{renderInline(line.replace(/^[-*] /, ''))}</li>);
-        } else if (line.match(/^\d+\. /)) {
-            flushList();
-            elements.push(<p key={key++} className="md-numbered">{renderInline(line)}</p>);
-        } else if (line.trim() === '') {
-            flushList();
-            elements.push(<br key={key++} />);
-        } else {
-            flushList();
-            elements.push(<p key={key++} className="md-p">{renderInline(line)}</p>);
-        }
-    });
-    flushList();
-    return <div className="markdown-content">{elements}</div>;
-}
 
 const AI_MODEL_OPTIONS = [
     { value: '', label: 'Auto (NVIDIA Nemotron 3.5 / Ultra)' },
@@ -111,7 +64,7 @@ export default function GlobalChatPage() {
         if (urlPolicy) setSelectedPolicyId(urlPolicy);
         if (urlPrompt) setInput(urlPrompt);
         const savedSid = sessionStorage.getItem('pg_parinidhi_session');
-        if (savedSid) loadSessionHistory(savedSid);
+        if (savedSid && !urlPolicy && !urlPrompt) loadSessionHistory(savedSid);
 
         const synth = typeof window !== 'undefined' ? window.speechSynthesis : null;
         const onVoicesChanged = () => { synth?.getVoices?.(); };
@@ -203,7 +156,8 @@ export default function GlobalChatPage() {
 
     const loadSessionHistory = async (sid) => {
         try {
-            const { data } = await api.get(`/chat/history?sessionId=${sid}`);
+            const { data } = await api.get(`/chat/history?sessionId=${encodeURIComponent(sid)}`);
+            if (!mountedRef.current) return;
             const msgs = data.messages || [];
             const formatted = msgs.flatMap((m) => [
                 { role: 'user', content: m.message, timestamp: m.timestamp },
@@ -372,6 +326,7 @@ export default function GlobalChatPage() {
                     <ParinidhiAvatar3D state={avatarState} mouthLevel={mouthLevel} height={210} />
                     <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
                         <button
+                            type="button"
                             className={`btn btn-sm ${isListening ? 'btn-danger' : 'btn-primary'}`}
                             style={{ flex: 1 }}
                             onClick={toggleVoiceInput}
@@ -380,6 +335,7 @@ export default function GlobalChatPage() {
                             {isListening ? <><MicOff size={14} /> Stop Mic</> : <><Mic size={14} /> Speak</>}
                         </button>
                         <button
+                            type="button"
                             className="btn btn-secondary btn-sm"
                             onClick={() => {
                                 if (voiceEnabled) {
@@ -395,7 +351,7 @@ export default function GlobalChatPage() {
                         >
                             {voiceEnabled ? <Volume2 size={14} /> : <VolumeX size={14} />}
                         </button>
-                        <button className="btn btn-secondary btn-sm" onClick={startNewSession} title="New Chat" aria-label="New Chat">
+                        <button type="button" className="btn btn-secondary btn-sm" onClick={startNewSession} title="New Chat" aria-label="New Chat">
                             <Plus size={14} />
                         </button>
                     </div>
@@ -403,10 +359,15 @@ export default function GlobalChatPage() {
 
                 {/* Context & Language Selector */}
                 <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--border-color)' }}>
-                    <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>
+                    <label
+                        htmlFor="parinidhi-policy-select"
+                        style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}
+                    >
                         Optional Policy Context &amp; Language
                     </label>
                     <select
+                        id="parinidhi-policy-select"
+                        name="policyContext"
                         className="form-input"
                         style={{ padding: '6px 10px', fontSize: 12, marginBottom: 6 }}
                         value={selectedPolicyId}
@@ -420,6 +381,8 @@ export default function GlobalChatPage() {
                         ))}
                     </select>
                     <select
+                        id="parinidhi-language-select"
+                        name="responseLanguage"
                         className="form-input"
                         style={{ padding: '6px 10px', fontSize: 12, marginBottom: 6 }}
                         value={language}
@@ -431,6 +394,8 @@ export default function GlobalChatPage() {
                         ))}
                     </select>
                     <select
+                        id="parinidhi-model-select"
+                        name="aiModel"
                         className="form-input"
                         style={{ padding: '6px 10px', fontSize: 12, marginBottom: 8 }}
                         value={selectedModel}
@@ -448,6 +413,7 @@ export default function GlobalChatPage() {
                             { key: 'general', label: 'General' },
                         ].map((m) => (
                             <button
+                                type="button"
                                 key={m.key}
                                 className={`btn btn-sm ${mode === m.key ? 'btn-primary' : 'btn-secondary'}`}
                                 style={{ flex: 1, fontSize: 11, padding: '4px 6px' }}
@@ -461,11 +427,12 @@ export default function GlobalChatPage() {
 
                 {/* History */}
                 <div style={{ flex: 1, overflowY: 'auto', padding: 10 }}>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', padding: '4px 6px' }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', padding: '4px 6px' }}>
                         Recent Sessions
                     </div>
                     {sessions.map((s) => (
                         <button
+                            type="button"
                             key={s.sessionId}
                             onClick={() => loadSessionHistory(s.sessionId)}
                             style={{
@@ -475,12 +442,12 @@ export default function GlobalChatPage() {
                                 color: 'var(--text-primary)',
                             }}
                         >
-                            <MessageSquare size={14} style={{ marginTop: 2, marginRight: 8, color: 'var(--accent-primary)' }} />
+                            <MessageSquare size={14} style={{ marginTop: 2, marginRight: 8, color: '#be123c' }} />
                             <div style={{ flex: 1, overflow: 'hidden' }}>
                                 <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontWeight: 600 }}>
                                     {s.lastMessage}
                                 </div>
-                                <div style={{ fontSize: 10, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 4 }}>
+                                <div style={{ fontSize: 10, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: 4 }}>
                                     <Clock size={10} /> {s.messageCount} msgs
                                 </div>
                             </div>
@@ -505,9 +472,9 @@ export default function GlobalChatPage() {
                             <Sparkles size={18} />
                         </div>
                         <div>
-                            <h3 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>Parinidhi AI — Voice & Live Research Agent</h3>
-                            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                                Context Q&A · General Chat · Live Tavily + Serper Policy Comparison
+                            <h1 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>Parinidhi AI — Voice &amp; Live Research Agent</h1>
+                            <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+                                Context Q&amp;A · General Chat · Live Tavily + Serper Policy Comparison
                             </span>
                         </div>
                     </div>
@@ -516,10 +483,10 @@ export default function GlobalChatPage() {
                 <div className="chat-messages" style={{ flex: 1, overflowY: 'auto', padding: 22, display: 'flex', flexDirection: 'column', gap: 20 }}>
                     {messages.length === 0 && (
                         <div className="empty-state" style={{ margin: 'auto', textAlign: 'center', maxWidth: 560 }}>
-                            <Sparkles size={42} style={{ color: 'var(--accent-primary)', marginBottom: 12 }} />
-                            <h3>Hello, I am Parinidhi</h3>
+                            <Sparkles size={42} style={{ color: '#be123c', marginBottom: 12 }} />
+                            <h2 style={{ fontSize: 20, margin: '0 0 8px' }}>Hello, I am Parinidhi</h2>
                             <p style={{ color: 'var(--text-secondary)', marginBottom: 18 }}>
-                                Talk with me via voice or text! Ask about your uploaded policy clauses, general questions, or ask me to research & compare live health/motor insurance plans.
+                                Talk with me via voice or text! Ask about your uploaded policy clauses, general questions, or ask me to research &amp; compare live health/motor insurance plans.
                             </p>
                             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center' }}>
                                 {[
@@ -527,7 +494,7 @@ export default function GlobalChatPage() {
                                     'Compare Star Health Assure vs HDFC ERGO Optima Secure for room rent and restoration',
                                     'Explain the IRDAI 60-month PED moratorium and 3-hour cashless discharge rule',
                                 ].map((q) => (
-                                    <button key={q} className="btn btn-secondary btn-sm" onClick={() => handleSend(q)}>
+                                    <button type="button" key={q} className="btn btn-secondary btn-sm" onClick={() => handleSend(q)}>
                                         {q}
                                     </button>
                                 ))}
@@ -568,11 +535,11 @@ export default function GlobalChatPage() {
                                                         <strong style={{ fontSize: 13 }}>{card.planName}</strong>
                                                         <span className="badge badge-success" style={{ fontSize: 10 }}>{card.fitRating || 'Match'}</span>
                                                     </div>
-                                                    <div style={{ fontSize: 11, color: 'var(--accent-primary)', fontWeight: 700, marginBottom: 6 }}>{card.insurer}</div>
+                                                    <div style={{ fontSize: 11, color: '#be123c', fontWeight: 700, marginBottom: 6 }}>{card.insurer}</div>
                                                     <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 4 }}>{card.coverageHighlights}</div>
-                                                    {card.waitingPeriodNote && <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Waiting: {card.waitingPeriodNote}</div>}
+                                                    {card.waitingPeriodNote && <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>Waiting: {card.waitingPeriodNote}</div>}
                                                     {card.sourceUrl && /^https?:\/\//i.test(String(card.sourceUrl)) && (
-                                                        <a href={card.sourceUrl} target="_blank" rel="noreferrer" style={{ fontSize: 11, color: 'var(--accent-primary)', display: 'inline-flex', alignItems: 'center', gap: 4, marginTop: 6 }}>
+                                                        <a href={card.sourceUrl} target="_blank" rel="noreferrer" style={{ fontSize: 11, color: '#be123c', display: 'inline-flex', alignItems: 'center', gap: 4, marginTop: 6 }}>
                                                             Source <ExternalLink size={10} />
                                                         </a>
                                                     )}
@@ -591,7 +558,7 @@ export default function GlobalChatPage() {
                                     {msg.citations?.length > 0 && (
                                         <div style={{ marginTop: 10, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                                             {msg.citations.map((cit, ci) => (
-                                                <span key={ci} className="badge" style={{ background: 'rgba(236,72,153,0.1)', color: 'var(--accent-primary)', fontSize: 11 }}>
+                                                <span key={ci} className="badge" style={{ background: 'rgba(236,72,153,0.1)', color: '#be123c', fontSize: 11 }}>
                                                     <FileText size={10} /> Page {cit.pageNumber || 1} · {(cit.sectionTitle || 'Policy Clause').slice(0, 28)}
                                                 </span>
                                             ))}
@@ -599,12 +566,12 @@ export default function GlobalChatPage() {
                                     )}
 
                                     {msg.sources?.length > 0 && (
-                                        <div style={{ marginTop: 8, fontSize: 11, color: 'var(--text-muted)', display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                                        <div style={{ marginTop: 8, fontSize: 11, color: 'var(--text-secondary)', display: 'flex', gap: 10, flexWrap: 'wrap' }}>
                                             <Globe size={12} /> Sources ({msg.searchEngine}):
                                             {msg.sources.slice(0, 3).map((s, si) => {
                                                 const safeHref = /^https?:\/\//i.test(String(s.url || '')) ? s.url : null;
                                                 return safeHref ? (
-                                                    <a key={si} href={safeHref} target="_blank" rel="noreferrer" style={{ color: 'var(--accent-primary)' }}>
+                                                    <a key={si} href={safeHref} target="_blank" rel="noreferrer" style={{ color: '#be123c' }}>
                                                         [{si + 1}] {s.title?.slice(0, 28)}
                                                     </a>
                                                 ) : (
@@ -643,6 +610,9 @@ export default function GlobalChatPage() {
                 <div className="chat-input-area" style={{ padding: '16px 22px', borderTop: '1px solid rgba(255,255,255,0.65)', background: 'rgba(255,255,255,0.52)', backdropFilter: 'blur(18px) saturate(170%)' }}>
                     <div className="chat-input-wrapper">
                         <textarea
+                            id="parinidhi-message-input"
+                            name="message"
+                            aria-label="Ask Parinidhi"
                             ref={textareaRef}
                             className="chat-textarea"
                             placeholder="Ask Parinidhi about your policy, live insurance plans, or press Speak..."
@@ -652,7 +622,13 @@ export default function GlobalChatPage() {
                             disabled={loading}
                             rows={1}
                         />
-                        <button className="chat-send-btn" onClick={() => handleSend()} disabled={loading || !input.trim()}>
+                        <button
+                            type="button"
+                            className="chat-send-btn"
+                            aria-label="Send message to Parinidhi"
+                            onClick={() => handleSend()}
+                            disabled={loading || !input.trim()}
+                        >
                             <Send size={18} />
                         </button>
                     </div>

@@ -12,6 +12,7 @@ const documentChatSchema = z.object({
     body: z.object({
         message: z.string().trim().min(1, 'Message is required').max(4000),
         history: z.array(z.any()).optional(),
+        model: z.string().trim().max(120).optional(),
     }),
 });
 

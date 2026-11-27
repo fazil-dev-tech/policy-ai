@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "PolicyGuard Shield — Browser, WhatsApp & Gmail",
-  "version": "2.0.1",
-  "description": "Real-time insurance phishing, .apk malware, Reverse-UPI scam & lookalike domain protection across Chrome, WhatsApp Web & Gmail.",
+  "name": "PolicyGuard Shield — Browser, Chat & Email",
+  "version": "2.1.0",
+  "description": "Real-time insurance & financial phishing, .apk/double-extension malware, multilingual scam AI & homoglyph protection across Chrome, WhatsApp Web, Telegram, Instagram, Gmail & Outlook.",
   "icons": {
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",
@@ -31,14 +31,37 @@
   },
   "content_scripts": [
     {
+      "matches": [
+        "http://localhost/*",
+        "http://127.0.0.1/*",
+        "https://policyguard-ai-ecru.vercel.app/*"
+      ],
+      "js": ["site-bridge.js"],
+      "run_at": "document_start"
+    },
+    {
       "matches": ["https://web.whatsapp.com/*"],
-      "js": ["shared/localRules.js", "content-whatsapp.js"],
+      "js": ["shared/stage1Engine.js", "shared/localRules.js", "content-whatsapp.js"],
       "css": ["styles/shield.css"],
       "run_at": "document_idle"
     },
     {
-      "matches": ["https://mail.google.com/*"],
-      "js": ["shared/localRules.js", "content-gmail.js"],
+      "matches": [
+        "https://mail.google.com/*",
+        "https://outlook.live.com/*",
+        "https://outlook.office.com/*",
+        "https://outlook.office365.com/*"
+      ],
+      "js": ["shared/stage1Engine.js", "shared/localRules.js", "content-gmail.js"],
+      "css": ["styles/shield.css"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://web.telegram.org/*",
+        "https://www.instagram.com/*"
+      ],
+      "js": ["shared/stage1Engine.js", "shared/localRules.js", "content-social.js"],
       "css": ["styles/shield.css"],
       "run_at": "document_idle"
     },
@@ -46,9 +69,14 @@
       "matches": ["https://*/*", "http://*/*"],
       "exclude_matches": [
         "https://web.whatsapp.com/*",
-        "https://mail.google.com/*"
+        "https://mail.google.com/*",
+        "https://outlook.live.com/*",
+        "https://outlook.office.com/*",
+        "https://outlook.office365.com/*",
+        "https://web.telegram.org/*",
+        "https://www.instagram.com/*"
       ],
-      "js": ["shared/localRules.js", "content-web.js"],
+      "js": ["shared/stage1Engine.js", "shared/localRules.js", "content-web.js"],
       "css": ["styles/shield.css"],
       "run_at": "document_idle"
     }

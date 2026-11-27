@@ -27,7 +27,7 @@ const getNvidiaKeys = () => {
         .filter((v, i, arr) => v && arr.indexOf(v) === i);
 };
 
-const FREE_FIRST_ORDER = ['nvidia', 'groq', 'puter', 'gemini'];
+const FREE_FIRST_ORDER = ['nvidia', 'openrouter', 'groq', 'puter', 'gemini'];
 const PAID_PROVIDERS = ['openai', 'grok'];
 const keyQuotaCooldowns = new Map();
 
@@ -48,6 +48,16 @@ const buildProviderMap = () => ({
             supportsVision: true,
         };
     },
+    openrouter: () =>
+        env.OPENROUTER_API_KEY
+            ? {
+                  provider: 'openrouter',
+                  apiKey: env.OPENROUTER_API_KEY,
+                  baseURL: env.AI_PROVIDER === 'openrouter' && env.AI_BASE_URL ? env.AI_BASE_URL : 'https://openrouter.ai/api/v1',
+                  model: env.AI_MODEL || 'nvidia/nemotron-3-nano-30b-a3b:free',
+                  supportsVision: true,
+              }
+            : null,
     gemini: () =>
         env.GEMINI_API_KEY
             ? { provider: 'gemini', apiKey: env.GEMINI_API_KEY, model: env.AI_MODEL || 'gemini-2.5-flash', supportsVision: true }
@@ -201,6 +211,9 @@ const mapModelForProvider = (requestedModel = '', provider = 'nvidia') => {
     if (provider === 'groq') {
         return /llama|qwen|mixtral|deepseek/i.test(raw) && !raw.includes('/') ? raw : '';
     }
+    if (provider === 'openrouter') {
+        return raw;
+    }
     return raw.endsWith(':free') ? '' : raw;
 };
 
@@ -216,9 +229,11 @@ const callOpenAiCompatibleWithFallback = async ({ cfg, messages, temperature = 0
                   ? NVIDIA_NIM_VISION_FALLBACKS
                   : [mappedOption, cfg.model, ...NVIDIA_NIM_TEXT_FALLBACKS]
           )
-        : cfg.provider === 'groq'
-          ? uniqueModels([mappedOption, cfg.model, 'llama-3.3-70b-versatile', 'llama-3.1-8b-instant'])
-          : [mappedOption || cfg.model];
+        : cfg.provider === 'openrouter'
+          ? uniqueModels([mappedOption, cfg.model, 'nvidia/nemotron-3-nano-30b-a3b:free', 'meta-llama/llama-3.3-70b-instruct:free'])
+          : cfg.provider === 'groq'
+            ? uniqueModels([mappedOption, cfg.model, 'llama-3.3-70b-versatile', 'llama-3.1-8b-instant'])
+            : [mappedOption || cfg.model];
 
     const safeMaxTokens = Math.max(4096, Number(maxTokens) || 4096);
     const totalDeadlineMs = startTime + 45000;
@@ -317,7 +332,7 @@ const runProviderText = async (cfg, prompt, { systemPrompt = '', temperature = 0
         throw gemErr || new Error('Gemini provider failed');
     }
 
-    if (['nvidia', 'openai', 'groq', 'grok'].includes(cfg.provider)) {
+    if (['nvidia', 'openrouter', 'openai', 'groq', 'grok'].includes(cfg.provider)) {
         const messages = [];
         if (systemPrompt) messages.push({ role: 'system', content: systemPrompt });
         messages.push({ role: 'user', content: prompt });
@@ -394,7 +409,7 @@ const generateVisionText = async ({ prompt, images = [], systemPrompt = '', temp
                 return { text, tokensUsed: 0, model: cfg.model, provider: 'gemini', responseTimeMs: Date.now() - startTime };
             }
 
-            if (['nvidia', 'openai'].includes(cfg.provider)) {
+            if (['nvidia', 'openrouter', 'openai'].includes(cfg.provider)) {
                 const contentParts = [{ type: 'text', text: prompt }];
                 for (const img of safeImages) {
                     const normalizedMime = img.mimeType === 'image/jpg' ? 'image/jpeg' : img.mimeType || 'image/jpeg';
